@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnostic Problème Connexion</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover { background: #0056b3; }
+        .result {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .error-detail {
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Diagnostic Problème Connexion</h1>
+        <p>Ce script diagnostique pourquoi vous ne pouvez pas vous connecter.</p>
+
+        <div class="test-section">
+            <h3>🌐 Configuration</h3>
+            <label for="apiUrl">URL de votre API Railway :</label>
+            <input type="text" id="apiUrl" placeholder="https://votre-api.railway.app" value="https://votre-api.railway.app">
+            
+            <label for="siteUrl">URL de votre site Netlify :</label>
+            <input type="text" id="siteUrl" placeholder="https://votre-site.netlify.app" value="https://votre-site.netlify.app">
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 Tests de Diagnostic</h3>
+            <button onclick="runFullDiagnostic()">🚀 Diagnostic Complet</button>
+            <button onclick="testAPIConnectivity()">🌐 Test API</button>
+            <button onclick="testLoginEndpoint()">🔐 Test Login</button>
+            <button onclick="testCredentials()">👤 Test Identifiants</button>
+            <button onclick="testCORS()">🔗 Test CORS</button>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Résultats du Diagnostic</h3>
+            <div id="results"></div>
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        function showResult(message, type = 'info') {
+            const element = document.getElementById('result');
+            element.innerHTML = message;
+            element.className = `result ${type}`;
+        }
+
+        function addTestResult(testName, status, details = '', error = '') {
+            const results = document.getElementById('results');
+            const statusClass = status === 'success' ? 'success' : status === 'error' ? 'error' : 'warning';
+            const statusText = status === 'success' ? '✅ OK' : status === 'error' ? '❌ ERREUR' : '⚠️ ATTENTION';
+            
+            let errorHtml = '';
+            if (error) {
+                errorHtml = `<div class="error-detail">Erreur: ${error}</div>`;
+            }
+            
+            results.innerHTML += `
+                <div class="test-section">
+                    <h4>${testName} <span class="status ${statusClass}">${statusText}</span></h4>
+                    ${details ? `<p>${details}</p>` : ''}
+                    ${errorHtml}
+                </div>
+            `;
+        }
+
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
+        }
+
+        function getSiteUrl() {
+            return document.getElementById('siteUrl').value.replace(/\/$/, '');
+        }
+
+        async function testAPIConnectivity() {
+            const apiUrl = getApiUrl();
+            addTestResult('Test Connectivité API', 'testing');
+            
+            try {
+                const response = await fetch(`${apiUrl}/health`, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addTestResult('Test Connectivité API', 'success', 
+                        `API accessible - Status: ${response.status}, Réponse: ${JSON.stringify(data)}`);
+                } else {
+                    addTestResult('Test Connectivité API', 'error', 
+                        `API répond mais avec erreur - Status: ${response.status}`, 
+                        `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                addTestResult('Test Connectivité API', 'error', 
+                    'API non accessible', 
+                    error.message);
+            }
+        }
+
+        async function testLoginEndpoint() {
+            const apiUrl = getApiUrl();
+            addTestResult('Test Endpoint Login', 'testing');
+            
+            try {
+                const response = await fetch(`${apiUrl}/api/auth/login`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'test@test.com',
+                        password: 'test123'
+                    })
+                });
+                
+                if (response.ok) {
+                    addTestResult('Test Endpoint Login', 'success', 
+                        'Endpoint login accessible et fonctionne');
+                } else if (response.status === 401) {
+                    addTestResult('Test Endpoint Login', 'success', 
+                        'Endpoint login accessible (erreur 401 normale pour mauvais identifiants)');
+                } else {
+                    addTestResult('Test Endpoint Login', 'error', 
+                        `Endpoint login accessible mais erreur - Status: ${response.status}`, 
+                        `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                addTestResult('Test Endpoint Login', 'error', 
+                    'Endpoint login non accessible', 
+                    error.message);
+            }
+        }
+
+        async function testCredentials() {
+            const apiUrl = getApiUrl();
+            addTestResult('Test Identifiants', 'testing');
+            
+            const testAccounts = [
+                { email: 'admin@test.com', password: 'admin123', role: 'Admin' },
+                { email: 'etudiant@test.com', password: 'etudiant123', role: 'Étudiant' },
+                { email: 'tuteur@test.com', password: 'tuteur123', role: 'Tuteur' }
+            ];
+            
+            let successCount = 0;
+            let errorDetails = [];
+            
+            for (const account of testAccounts) {
+                try {
+                    const response = await fetch(`${apiUrl}/api/auth/login`, {
+                        method: 'POST',
+                        mode: 'cors',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(account)
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.token) {
+                            successCount++;
+                        } else {
+                            errorDetails.push(`${account.role}: Pas de token reçu`);
+                        }
+                    } else {
+                        errorDetails.push(`${account.role}: Status ${response.status}`);
+                    }
+                } catch (error) {
+                    errorDetails.push(`${account.role}: ${error.message}`);
+                }
+            }
+            
+            if (successCount === testAccounts.length) {
+                addTestResult('Test Identifiants', 'success', 
+                    `Tous les comptes fonctionnent (${successCount}/${testAccounts.length})`);
+            } else if (successCount > 0) {
+                addTestResult('Test Identifiants', 'warning', 
+                    `Certains comptes fonctionnent (${successCount}/${testAccounts.length})`, 
+                    errorDetails.join(', '));
+            } else {
+                addTestResult('Test Identifiants', 'error', 
+                    'Aucun compte ne fonctionne', 
+                    errorDetails.join(', '));
+            }
+        }
+
+        async function testCORS() {
+            const apiUrl = getApiUrl();
+            const siteUrl = getSiteUrl();
+            addTestResult('Test CORS', 'testing');
+            
+            try {
+                const response = await fetch(`${apiUrl}/health`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Origin': siteUrl
+                    }
+                });
+                
+                if (response.ok) {
+                    addTestResult('Test CORS', 'success', 
+                        'CORS configuré correctement');
+                } else {
+                    addTestResult('Test CORS', 'error', 
+                        `CORS problème - Status: ${response.status}`, 
+                        `HTTP ${response.status}`);
+                }
+            } catch (error) {
+                if (error.message.includes('CORS')) {
+                    addTestResult('Test CORS', 'error', 
+                        'Erreur CORS détectée', 
+                        error.message);
+                } else {
+                    addTestResult('Test CORS', 'warning', 
+                        'Erreur de connexion (pas forcément CORS)', 
+                        error.message);
+                }
+            }
+        }
+
+        async function runFullDiagnostic() {
+            document.getElementById('results').innerHTML = '';
+            showResult('🚀 Diagnostic complet en cours...', 'info');
+            
+            await testAPIConnectivity();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testLoginEndpoint();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testCredentials();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testCORS();
+            
+            showResult('✅ Diagnostic terminé ! Consultez les résultats ci-dessus.', 'success');
+        }
+
+        // Test automatique au chargement
+        window.onload = function() {
+            showResult('🔍 Prêt pour le diagnostic de connexion', 'info');
+        };
+    </script>
+</body>
+</html>

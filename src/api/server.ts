@@ -59,6 +59,16 @@ app.get('/', (req, res) => {
     status: 'OK', 
     message: 'StudySwift Pro API',
     version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    database: prisma ? 'Connected' : 'Not connected'
+  });
+});
+
+// Endpoint de test simple
+app.get('/test', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Test endpoint working',
     timestamp: new Date().toISOString()
   });
 });
@@ -71,6 +81,13 @@ app.post('/api/auth/register', async (req, res) => {
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ 
         error: 'Email, mot de passe, prénom et nom sont requis' 
+      });
+    }
+
+    // Mode démo si pas de base de données
+    if (!prisma) {
+      return res.status(503).json({ 
+        error: 'Service temporairement indisponible - Base de données non connectée' 
       });
     }
 
@@ -2180,7 +2197,14 @@ app.delete('/api/admin/flashcards/:flashcardId', authenticateToken, requireAdmin
 // Start server
 async function startServer() {
   try {
-    await connectDatabase();
+    // Essayer de se connecter à la base de données, mais ne pas échouer si impossible
+    try {
+      await connectDatabase();
+      console.log('✅ Base de données connectée');
+    } catch (dbError) {
+      console.log('⚠️ Base de données non accessible:', dbError.message);
+      console.log('🚀 Serveur démarré sans base de données (mode démo)');
+    }
     
     // Seed database in development
     if (process.env.NODE_ENV === 'development') {
