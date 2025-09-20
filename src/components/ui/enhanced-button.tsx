@@ -20,10 +20,10 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         
         // Enhanced variants for educational platform
-        hero: "bg-gradient-primary text-white shadow-primary hover:shadow-glow hover:scale-105 transition-spring font-semibold",
-        success: "bg-success text-success-foreground shadow-soft hover:bg-success/90 hover:shadow-primary transition-spring",
-        premium: "bg-gradient-to-r from-primary to-secondary text-white shadow-primary hover:shadow-glow hover:scale-105 transition-spring font-semibold",
-        glass: "bg-white/10 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20 transition-smooth",
+        hero: "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 font-semibold",
+        success: "bg-success hover:bg-success/90 text-success-foreground shadow-lg hover:shadow-xl transition-all duration-300",
+        premium: "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 font-semibold",
+        glass: "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all duration-300",
       },
       size: {
         default: "h-9 px-4 py-2",

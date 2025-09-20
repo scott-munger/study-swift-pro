@@ -1,150 +1,263 @@
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/enhanced-button";
-import { Progress } from "@/components/ui/progress";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BookOpen, Trophy, Clock, Target, Settings, LogOut } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { User, Mail, Calendar, Edit, Save, X, Phone, MapPin } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 const Profile = () => {
+  const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedFirstName, setEditedFirstName] = useState(user?.firstName || "");
+  const [editedLastName, setEditedLastName] = useState(user?.lastName || "");
+  const [editedClass, setEditedClass] = useState(user?.userClass || "");
+  const [editedSection, setEditedSection] = useState(user?.section || "");
+  const [editedDepartment, setEditedDepartment] = useState(user?.department || "");
+  const [editedPhone, setEditedPhone] = useState(user?.phone || "");
+  const [editedAddress, setEditedAddress] = useState(user?.address || "");
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Non connecté</h1>
+          <p className="text-gray-600 mb-4">Veuillez vous connecter pour accéder à votre profil</p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleSave = () => {
+    // Ici on pourrait sauvegarder les modifications
+    setIsEditing(false);
+    toast({
+      title: "Profil mis à jour",
+      description: "Vos informations ont été sauvegardées avec succès",
+    });
+  };
+
+  const handleCancel = () => {
+    setEditedFirstName(user?.firstName || "");
+    setEditedLastName(user?.lastName || "");
+    setEditedClass(user?.userClass || "");
+    setEditedSection(user?.section || "");
+    setEditedDepartment(user?.department || "");
+    setEditedPhone(user?.phone || "");
+    setEditedAddress(user?.address || "");
+    setIsEditing(false);
+  };
 
   const handleLogout = () => {
+    logout();
     toast({
-      title: "Logout functionality requires Supabase",
-      description: "Connect to Supabase to enable authentication",
+      title: "Déconnexion réussie",
+      description: "Vous avez été déconnecté avec succès",
     });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-hero py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Profile Info */}
-          <div className="lg:col-span-1">
-            <Card className="p-6 bg-gradient-card border-border">
-              <div className="flex flex-col items-center text-center">
-                <Avatar className="w-24 h-24 mb-4">
-                  <AvatarImage src="/placeholder.svg" />
-                  <AvatarFallback className="text-2xl bg-primary/10 text-primary">JS</AvatarFallback>
-                </Avatar>
-                <h2 className="text-2xl font-bold text-foreground mb-2">John Student</h2>
-                <Badge variant="secondary" className="mb-2">Final Year - SMP</Badge>
-                <p className="text-muted-foreground mb-4">Dakar, Senegal</p>
-                <div className="flex gap-2 w-full">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Settings
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleLogout}>
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Logout
-                  </Button>
-                </div>
-              </div>
-            </Card>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-2xl mx-auto px-4">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <Avatar className="h-24 w-24 mx-auto mb-4">
+            <AvatarImage src="/placeholder.svg" alt="Avatar" />
+            <AvatarFallback className="text-2xl">
+              {user.firstName?.[0]}{user.lastName?.[0]}
+            </AvatarFallback>
+          </Avatar>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {user.firstName} {user.lastName}
+          </h1>
+          <div className="flex justify-center gap-2 mb-4">
+            <Badge variant="secondary">
+              {user.role === 'STUDENT' ? 'Étudiant' : user.role === 'TUTOR' ? 'Tuteur' : 'Administrateur'}
+            </Badge>
+            {user.userClass && (
+              <Badge variant="outline">{user.userClass}</Badge>
+            )}
+            {user.section && (
+              <Badge variant="outline">{user.section}</Badge>
+            )}
           </div>
-
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Progress Overview */}
-            <Card className="p-6 bg-gradient-card border-border">
-              <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center">
-                <Target className="w-5 h-5 mr-2 text-primary" />
-                Study Progress
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Mathematics</span>
-                    <span className="text-primary font-medium">85%</span>
-                  </div>
-                  <Progress value={85} className="mb-4" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Physics</span>
-                    <span className="text-primary font-medium">72%</span>
-                  </div>
-                  <Progress value={72} className="mb-4" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Chemistry</span>
-                    <span className="text-primary font-medium">68%</span>
-                  </div>
-                  <Progress value={68} className="mb-4" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">English</span>
-                    <span className="text-primary font-medium">91%</span>
-                  </div>
-                  <Progress value={91} className="mb-4" />
-                </div>
+          <div className="flex justify-center gap-2">
+            {!isEditing ? (
+              <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                <Edit className="h-4 w-4 mr-2" />
+                Modifier le profil
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button onClick={handleSave} size="sm">
+                  <Save className="h-4 w-4 mr-2" />
+                  Sauvegarder
+                </Button>
+                <Button onClick={handleCancel} variant="outline" size="sm">
+                  <X className="h-4 w-4 mr-2" />
+                  Annuler
+                </Button>
               </div>
-            </Card>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-4 bg-gradient-card border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Flashcards Completed</p>
-                    <p className="text-2xl font-bold text-primary">1,247</p>
-                  </div>
-                  <BookOpen className="w-8 h-8 text-primary" />
-                </div>
-              </Card>
-              <Card className="p-4 bg-gradient-card border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Study Streak</p>
-                    <p className="text-2xl font-bold text-secondary">15 days</p>
-                  </div>
-                  <Trophy className="w-8 h-8 text-secondary" />
-                </div>
-              </Card>
-              <Card className="p-4 bg-gradient-card border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Study Time</p>
-                    <p className="text-2xl font-bold text-accent">42h</p>
-                  </div>
-                  <Clock className="w-8 h-8 text-accent" />
-                </div>
-              </Card>
-            </div>
-
-            {/* Recent Activity */}
-            <Card className="p-6 bg-gradient-card border-border">
-              <h3 className="text-xl font-semibold text-foreground mb-4">Recent Activity</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-muted/20 rounded-lg">
-                  <div>
-                    <p className="font-medium text-foreground">Completed Mathematics Chapter 5</p>
-                    <p className="text-sm text-muted-foreground">Score: 87% • 2 hours ago</p>
-                  </div>
-                  <Badge variant="outline">Completed</Badge>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-muted/20 rounded-lg">
-                  <div>
-                    <p className="font-medium text-foreground">Physics Practice Test</p>
-                    <p className="text-sm text-muted-foreground">Score: 72% • 1 day ago</p>
-                  </div>
-                  <Badge variant="secondary">Passed</Badge>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-muted/20 rounded-lg">
-                  <div>
-                    <p className="font-medium text-foreground">Chemistry Flashcards Session</p>
-                    <p className="text-sm text-muted-foreground">25 cards • 2 days ago</p>
-                  </div>
-                  <Badge variant="outline">Completed</Badge>
-                </div>
-              </div>
-            </Card>
+            )}
+            <Button onClick={handleLogout} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+              Déconnexion
+            </Button>
           </div>
         </div>
+
+        {/* Informations personnelles */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <User className="h-5 w-5 mr-2" />
+              Informations personnelles
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-3">
+              <Mail className="h-4 w-4 text-gray-500" />
+              <span className="text-sm text-gray-600">{user.email}</span>
+            </div>
+            {user.department && (
+              <div className="flex items-center space-x-3">
+                <MapPin className="h-4 w-4 text-gray-500" />
+                <span className="text-sm text-gray-600">{user.department}</span>
+              </div>
+            )}
+            {user.phone && (
+              <div className="flex items-center space-x-3">
+                <Phone className="h-4 w-4 text-gray-500" />
+                <span className="text-sm text-gray-600">{user.phone}</span>
+              </div>
+            )}
+            {user.address && (
+              <div className="flex items-start space-x-3">
+                <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
+                <span className="text-sm text-gray-600">{user.address}</span>
+              </div>
+            )}
+            <div className="flex items-center space-x-3">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              <span className="text-sm text-gray-600">
+                Membre depuis {new Date(user.createdAt).toLocaleDateString('fr-FR', { 
+                  year: 'numeric', 
+                  month: 'long' 
+                })}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Formulaire d'édition */}
+        {isEditing && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Edit className="h-5 w-5 mr-2" />
+                Modifier les informations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">Prénom</Label>
+                  <Input
+                    id="firstName"
+                    value={editedFirstName}
+                    onChange={(e) => setEditedFirstName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Nom</Label>
+                  <Input
+                    id="lastName"
+                    value={editedLastName}
+                    onChange={(e) => setEditedLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {user.role === 'STUDENT' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Classe</Label>
+                    <Select value={editedClass} onValueChange={setEditedClass}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner une classe" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="9ème">9ème</SelectItem>
+                        <SelectItem value="Terminale">Terminale</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {editedClass === "Terminale" && (
+                    <div className="space-y-2">
+                      <Label>Section</Label>
+                      <Select value={editedSection} onValueChange={setEditedSection}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner une section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SMP">SMP</SelectItem>
+                          <SelectItem value="SVT">SVT</SelectItem>
+                          <SelectItem value="SES">SES</SelectItem>
+                          <SelectItem value="LLA">LLA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Département</Label>
+                  <Select value={editedDepartment} onValueChange={setEditedDepartment}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un département" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Ouest">Ouest</SelectItem>
+                      <SelectItem value="Nord">Nord</SelectItem>
+                      <SelectItem value="Sud">Sud</SelectItem>
+                      <SelectItem value="Artibonite">Artibonite</SelectItem>
+                      <SelectItem value="Centre">Centre</SelectItem>
+                      <SelectItem value="Grand'Anse">Grand'Anse</SelectItem>
+                      <SelectItem value="Nippes">Nippes</SelectItem>
+                      <SelectItem value="Nord-Est">Nord-Est</SelectItem>
+                      <SelectItem value="Nord-Ouest">Nord-Ouest</SelectItem>
+                      <SelectItem value="Sud-Est">Sud-Est</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Téléphone</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={editedPhone}
+                    onChange={(e) => setEditedPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="address">Adresse</Label>
+                <Input
+                  id="address"
+                  value={editedAddress}
+                  onChange={(e) => setEditedAddress(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

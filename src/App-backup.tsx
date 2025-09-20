@@ -11,20 +11,16 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
 import Flashcards from "./pages/Flashcards";
+import Tutors from "./pages/Tutors";
 import Forum from "./pages/Forum";
 import Admin from "./pages/Admin";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
-import AdminTest from "./pages/AdminTest";
-import SimpleTest from "./pages/SimpleTest";
-import AdminModeration from "./pages/AdminModeration";
 import AdminUsers from "./pages/AdminUsers";
-import AdminSubjects from "./pages/AdminSubjects";
-import AdminFlashcards from "./pages/AdminFlashcards";
-import SimpleAdminDashboard from "./pages/SimpleAdminDashboard";
+import AdminModeration from "./pages/AdminModeration";
+import TutorDashboard from "./pages/TutorDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
 import RoleBasedRedirect from "./components/RoleBasedRedirect";
-import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 import DatabaseTest from "./components/DatabaseTest";
 import FunctionalityTest from "./components/FunctionalityTest";
@@ -45,34 +41,22 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="/flashcards" element={
-                <ProtectedRoute allowedRoles={['STUDENT', 'TUTOR']} redirectTo="/profile">
-                  <Flashcards />
-                </ProtectedRoute>
-              } />
+              <Route path="/flashcards" element={<Flashcards />} />
+              <Route path="/tutors" element={<Tutors />} />
               <Route path="/forum" element={<Forum />} />
               
               {/* Routes basées sur les rôles */}
               <Route path="/dashboard" element={<RoleBasedRedirect />} />
-              <Route path="/student/dashboard" element={
-                <ProtectedRoute allowedRoles={['STUDENT']} redirectTo="/profile">
-                  <StudentDashboard />
-                </ProtectedRoute>
-              } />
+              <Route path="/student/dashboard" element={<StudentDashboard />} />
+              <Route path="/tutor/dashboard" element={<TutorDashboard />} />
+              <Route path="/tutor/students" element={<TutorDashboard />} />
               
               {/* Routes admin */}
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/admin/test" element={<AdminTest />} />
-              <Route path="/simple-test" element={<SimpleTest />} />
-              <Route path="/admin/moderation" element={<AdminModeration />} />
               <Route path="/admin/users" element={<AdminUsers />} />
-              <Route path="/admin/subjects" element={<AdminSubjects />} />
-              <Route path="/admin/flashcards" element={<AdminFlashcards />} />
-              
-              {/* Routes admin simples */}
-              <Route path="/simple-admin/dashboard" element={<SimpleAdminDashboard />} />
+              <Route path="/admin/moderation" element={<AdminModeration />} />
               
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -84,3 +68,6 @@ const App = () => (
 );
 
 export default App;
+
+
+

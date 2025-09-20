@@ -22,3 +22,32 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+/generated/prisma
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+
+# Database
+*.db
+*.sqlite
+
+# Test files
+test-*.html
+*-test.html
+force-*.html
+emergency-*.html
+fix-*.html
+debug-*.html
+auto-*.html
+clear-*.js
+cleanup-*.js
+init-*.js
+seed-*.js
+start-*.js
+
+# Deployment scripts
+prepare-deployment.js
