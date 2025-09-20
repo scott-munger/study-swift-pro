@@ -9,8 +9,16 @@ const PORT = process.env.PORT || 8081;
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
+  origin: [
+    process.env.CORS_ORIGIN || '*',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://*.netlify.app',
+    'https://*.railway.app'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json());
 
