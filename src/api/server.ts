@@ -8,7 +8,10 @@ const app = express();
 const PORT = process.env.PORT || 8081;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
+}));
 app.use(express.json());
 
 // JWT Secret (in production, use environment variable)
@@ -35,6 +38,21 @@ const authenticateToken = (req: any, res: any, next: any) => {
 // Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Serveur en cours d\'exécution' });
+});
+
+// Endpoint de santé simple pour Railway
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Serveur en cours d\'exécution' });
+});
+
+// Endpoint racine
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'StudySwift Pro API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Authentication routes
