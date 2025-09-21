@@ -1,16 +1,16 @@
 # 🌐 Guide pour obtenir l'URL publique Railway
 
 ## 🔍 Problème actuel
-Votre API Railway utilise l'URL interne : `study-swift-pro.railway.internal`
+Votre API Railway utilise l'URL interne : `tyala-platform.railway.internal`
 Cette URL n'est **PAS accessible** depuis l'extérieur (Netlify, mobile, etc.)
 
 ## ✅ Solution : Obtenir l'URL publique
 
 ### Méthode 1 : Vérifier dans Railway Dashboard
 1. Aller sur [railway.app](https://railway.app)
-2. Cliquer sur votre projet "study-swift-pro"
+2. Cliquer sur votre projet "tyala-platform"
 3. Chercher une section "Domains" ou "URL"
-4. L'URL publique ressemble à : `https://study-swift-pro-production-xxxx.up.railway.app`
+4. L'URL publique ressemble à : `https://tyala-platform-production-xxxx.up.railway.app`
 
 ### Méthode 2 : Générer un domaine public
 1. Dans Railway → Votre projet
@@ -25,7 +25,7 @@ Cette URL n'est **PAS accessible** depuis l'extérieur (Netlify, mobile, etc.)
 
 ## 🎯 URL publique typique
 ```
-https://study-swift-pro-production-xxxx.up.railway.app
+https://tyala-platform-production-xxxx.up.railway.app
 ```
 
 ## 🔧 Une fois l'URL publique obtenue

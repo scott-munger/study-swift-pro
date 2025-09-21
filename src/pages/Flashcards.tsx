@@ -6,10 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   BookOpen, Clock, Trophy, RotateCcw, ChevronRight, Play, Eye, EyeOff, 
   CheckCircle, XCircle, User, Brain, Target, Zap, Star, TrendingUp,
-  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle
+  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn,
+  Plus, Edit, Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,6 +24,43 @@ const Flashcards = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // Vérifier si l'utilisateur est connecté et a le bon rôle
+  useEffect(() => {
+    if (!user) {
+      toast({
+        title: "Accès restreint",
+        description: "Vous devez être connecté pour accéder aux flashcards",
+        variant: "destructive"
+      });
+      navigate('/login');
+    } else if (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN') {
+      toast({
+        title: "Accès non autorisé",
+        description: "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards",
+        variant: "destructive"
+      });
+      navigate('/');
+    }
+  }, [user, navigate, toast]);
+
+  // Si l'utilisateur n'est pas connecté ou n'a pas le bon rôle, ne rien afficher
+  if (!user || (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md p-8 text-center">
+          <LogIn className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+          <h2 className="text-2xl font-bold mb-2">Accès restreint</h2>
+          <p className="text-gray-600 mb-6">
+            {!user ? "Vous devez être connecté pour accéder aux flashcards" : "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards"}
+          </p>
+          <Button onClick={() => navigate(!user ? '/login' : '/')} className="w-full">
+            {!user ? 'Se connecter' : 'Retour à l\'accueil'}
+          </Button>
+        </Card>
+      </div>
+    );
+  }
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
@@ -46,6 +88,14 @@ const Flashcards = () => {
   const [subjectFlashcards, setSubjectFlashcards] = useState<any[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
 
+  // États pour la création de flashcards
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    question: '',
+    answer: '',
+    difficulty: 'medium'
+  });
+
   // Fonction pour charger les statistiques utilisateur
   const loadUserStats = async () => {
     try {
@@ -71,8 +121,12 @@ const Flashcards = () => {
   const loadAvailableSubjects = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        console.log('🔍 Aucun token trouvé pour charger les matières');
+        return;
+      }
 
+      console.log('🔍 Chargement des matières...');
       const response = await fetch('http://localhost:8081/api/subjects-flashcards', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -81,10 +135,19 @@ const Flashcards = () => {
 
       if (response.ok) {
         const subjects = await response.json();
+        console.log('🔍 Matières reçues:', subjects);
+        
+        // Attendre que l'utilisateur soit chargé avant de filtrer
+        const currentUser = user || (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null);
+        console.log('🔍 Utilisateur actuel pour filtrage:', currentUser);
         
         // Filtrer les matières selon le profil de l'utilisateur
         const filteredSubjects = filterSubjectsByProfile(subjects);
+        console.log('🔍 Matières filtrées:', filteredSubjects);
+        console.log('🔍 Nombre de matières filtrées:', filteredSubjects.length);
         setAvailableSubjects(filteredSubjects);
+      } else {
+        console.error('🔍 Erreur de réponse:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Erreur lors du chargement des matières:', error);
@@ -96,52 +159,72 @@ const Flashcards = () => {
     // Récupérer les informations du profil
     const currentUser = user || (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null);
     
+    console.log('🔍 filterSubjectsByProfile - Utilisateur:', currentUser);
+    console.log('🔍 filterSubjectsByProfile - Nombre de matières à filtrer:', subjects.length);
+    
     if (!currentUser) {
+      console.log('🔍 filterSubjectsByProfile - Pas d\'utilisateur, retour de toutes les matières');
       return subjects; // Retourner toutes les matières si pas d'utilisateur
     }
 
-    // Si c'est un tuteur, donner accès à toutes les matières
-    if (currentUser.role === 'TUTOR') {
+    // Si c'est un tuteur ou admin, donner accès à toutes les matières
+    if (currentUser.role === 'TUTOR' || currentUser.role === 'ADMIN') {
+      console.log('🔍 filterSubjectsByProfile - Utilisateur TUTOR/ADMIN, retour de toutes les matières');
       return subjects;
     }
 
+    // Pour les étudiants, filtrer selon leur niveau ET leur section
     const userClass = currentUser.userClass;
     const userSection = currentUser.section;
-
-    // Définir les matières par classe et section
-    const subjectsByProfile = {
-      "9ème": {
-        "Général": ["Français", "Histoire-Géographie", "Anglais", "Sciences"]
-      },
-      "Terminale": {
-        "SMP": ["Mathématiques", "Physique", "Chimie"],
-        "SVT": ["Biologie", "SVT"],
-        "SES": ["SES"],
-        "LLA": ["LLA"]
-      }
-    };
-
-    // Si pas de section définie, retourner toutes les matières de la classe
-    if (!userSection) {
-      return subjects.filter(subject => {
-        const classSubjects = subjectsByProfile[userClass as keyof typeof subjectsByProfile];
-        if (!classSubjects) return true;
-        
-        // Vérifier si la matière est dans au moins une section de la classe
-        return Object.values(classSubjects).some(sectionSubjects => 
-          sectionSubjects.includes(subject.name)
-        );
-      });
-    }
-
-    // Filtrer selon la classe et la section
-    const allowedSubjects = subjectsByProfile[userClass as keyof typeof subjectsByProfile]?.[userSection as keyof typeof subjectsByProfile["Terminale"]];
     
-    if (!allowedSubjects) {
-      return subjects; // Retourner toutes les matières si section non reconnue
+    console.log('🔍 filterSubjectsByProfile - Classe utilisateur:', userClass);
+    console.log('🔍 filterSubjectsByProfile - Section utilisateur:', userSection);
+    
+    // Si pas de classe définie, retourner toutes les matières
+    if (!userClass) {
+      console.log('🔍 filterSubjectsByProfile - Pas de classe définie, retour de toutes les matières');
+      return subjects;
     }
 
-    return subjects.filter(subject => allowedSubjects.includes(subject.name));
+    // Filtrer selon le niveau de la matière correspondant à la classe de l'étudiant
+    const classToLevel = {
+      "9ème": "9ème",
+      "Terminale": "Terminale"
+    };
+    
+    const expectedLevel = classToLevel[userClass as keyof typeof classToLevel];
+    console.log('🔍 filterSubjectsByProfile - Niveau attendu:', expectedLevel);
+    
+    const filteredSubjects = subjects.filter(subject => {
+      // Vérifier d'abord le niveau
+      const levelMatches = subject.level === expectedLevel;
+      
+      if (!levelMatches) {
+        return false;
+      }
+      
+      // Si la matière n'a pas de section spécifique (matières générales), l'étudiant y a accès
+      if (!subject.section) {
+        console.log(`🔍 filterSubjectsByProfile - Matière générale: ${subject.name} (${subject.level})`);
+        return true;
+      }
+      
+      // Si la matière a une section spécifique, vérifier que l'étudiant est dans cette section
+      const sectionMatches = subject.section === userSection;
+      
+      if (sectionMatches) {
+        console.log(`🔍 filterSubjectsByProfile - Matière de section: ${subject.name} (${subject.level}, ${subject.section})`);
+      } else {
+        console.log(`🔍 filterSubjectsByProfile - Matière non accessible: ${subject.name} (${subject.level}, ${subject.section}) - Étudiant en ${userSection}`);
+      }
+      
+      return sectionMatches;
+    });
+    
+    console.log('🔍 filterSubjectsByProfile - Nombre de matières filtrées:', filteredSubjects.length);
+    console.log('🔍 filterSubjectsByProfile - Matières accessibles:', filteredSubjects.map(s => `${s.name} (${s.section || 'Générale'})`));
+    
+    return filteredSubjects;
   };
 
   // Fonction pour charger les flashcards d'une matière
@@ -163,6 +246,184 @@ const Flashcards = () => {
     } catch (error) {
       console.error('Erreur lors du chargement des flashcards:', error);
     }
+  };
+
+  // Fonction pour créer une nouvelle flashcard
+  const createFlashcard = async (question: string, answer: string, subjectId: number, difficulty: string = 'medium') => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return false;
+
+      const response = await fetch('http://localhost:8081/api/flashcards', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          question,
+          answer,
+          subjectId,
+          difficulty
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Flashcard créée avec succès",
+        });
+        // Recharger les flashcards de la matière
+        await loadSubjectFlashcards(subjectId);
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Erreur lors de la création",
+          variant: "destructive"
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création de la flashcard:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur de connexion",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
+
+  // Fonction pour mettre à jour une flashcard
+  const updateFlashcard = async (flashcardId: number, question: string, answer: string, subjectId: number, difficulty: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return false;
+
+      const response = await fetch(`http://localhost:8081/api/flashcards/${flashcardId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          question,
+          answer,
+          subjectId,
+          difficulty
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Flashcard mise à jour avec succès",
+        });
+        // Recharger les flashcards de la matière
+        await loadSubjectFlashcards(subjectId);
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Erreur lors de la mise à jour",
+          variant: "destructive"
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour de la flashcard:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur de connexion",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
+
+  // Fonction pour supprimer une flashcard
+  const deleteFlashcard = async (flashcardId: number, subjectId: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return false;
+
+      const response = await fetch(`http://localhost:8081/api/flashcards/${flashcardId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Flashcard supprimée avec succès",
+        });
+        // Recharger les flashcards de la matière
+        await loadSubjectFlashcards(subjectId);
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Erreur lors de la suppression",
+          variant: "destructive"
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la flashcard:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur de connexion",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
+
+  // Fonction pour gérer la création d'une flashcard
+  const handleCreateFlashcard = async () => {
+    if (!selectedSubject || !createForm.question || !createForm.answer) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez remplir tous les champs requis",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    if (!subject) {
+      toast({
+        title: "Erreur",
+        description: "Matière non trouvée",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const success = await createFlashcard(
+      createForm.question,
+      createForm.answer,
+      subject.id,
+      createForm.difficulty
+    );
+
+    if (success) {
+      setShowCreateModal(false);
+      setCreateForm({ question: '', answer: '', difficulty: 'medium' });
+      // Recharger les statistiques
+      await loadUserStats();
+    }
+  };
+
+  // Fonction pour réinitialiser le formulaire de création
+  const resetCreateForm = () => {
+    setCreateForm({ question: '', answer: '', difficulty: 'medium' });
   };
 
   // Fonction pour enregistrer une tentative de flashcard
@@ -201,6 +462,8 @@ const Flashcards = () => {
       // Utiliser les données du contexte ou du localStorage
       const currentUser = user || JSON.parse(savedUser);
       
+      console.log('🔍 useEffect - Utilisateur chargé:', currentUser);
+      
       setSelectedClass(currentUser.userClass);
       if (currentUser.section) {
         setSelectedSection(currentUser.section);
@@ -209,11 +472,13 @@ const Flashcards = () => {
       // Charger les données depuis l'API
       const loadData = async () => {
         setLoadingStats(true);
+        console.log('🔍 useEffect - Chargement des données...');
         await Promise.all([
           loadUserStats(),
           loadAvailableSubjects()
         ]);
         setLoadingStats(false);
+        console.log('🔍 useEffect - Données chargées');
       };
 
       loadData();
@@ -223,8 +488,13 @@ const Flashcards = () => {
   // Charger les matières même si l'utilisateur n'est pas encore chargé dans le contexte
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token && availableSubjects.length === 0 && !loadingStats) {
-      // Essayer de charger les matières si on a un token mais pas encore de matières
+    const savedUser = localStorage.getItem('user');
+    
+    // Seulement si on a un token et un utilisateur mais pas encore de matières
+    if (token && savedUser && availableSubjects.length === 0 && !loadingStats) {
+      console.log('🔍 useEffect secondaire - Tentative de chargement des matières...');
+      const currentUser = JSON.parse(savedUser);
+      console.log('🔍 useEffect secondaire - Utilisateur du localStorage:', currentUser);
       loadAvailableSubjects();
     }
   }, [availableSubjects.length, loadingStats]);
@@ -829,6 +1099,33 @@ const Flashcards = () => {
             <div className="text-center mb-6">
               <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Choisissez votre parcours d'apprentissage</h2>
               <p className="text-base md:text-lg text-gray-600">Sélectionnez une matière et un chapitre pour commencer</p>
+              
+              {/* Message informatif sur les sections */}
+              {user && user.role === 'STUDENT' && user.section && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-center mb-2">
+                    <BookOpen className="w-5 h-5 text-blue-600 mr-2" />
+                    <span className="text-sm font-medium text-blue-800">Section {user.section}</span>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    Vous avez accès aux matières générales et aux matières spécifiques à votre section ({user.section}).
+                    Pour accéder à d'autres matières, modifiez votre profil.
+                  </p>
+                </div>
+              )}
+              
+              {user && user.role === 'STUDENT' && !user.section && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center justify-center mb-2">
+                    <BookOpen className="w-5 h-5 text-yellow-600 mr-2" />
+                    <span className="text-sm font-medium text-yellow-800">Section non définie</span>
+                  </div>
+                  <p className="text-sm text-yellow-700">
+                    Vous n'avez accès qu'aux matières générales. Pour accéder aux matières spécifiques (SMP, SVT, LLA, SES), 
+                    modifiez votre profil pour définir votre section.
+                  </p>
+                </div>
+              )}
                   </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
@@ -942,6 +1239,85 @@ const Flashcards = () => {
             );
           })()}
           </Card>
+
+              {/* Create Flashcard Section */}
+              {selectedSubject && (
+                <Card className="p-4 md:p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 md:w-12 md:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                        <Plus className="w-5 h-5 md:w-6 md:h-6 text-purple-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg md:text-xl font-bold text-gray-900">Créer une Flashcard</h3>
+                        <p className="text-sm md:text-base text-gray-600">Ajoutez votre propre flashcard</p>
+                      </div>
+                    </div>
+                    <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+                      <DialogTrigger asChild>
+                        <Button onClick={resetCreateForm} className="bg-purple-600 hover:bg-purple-700">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Nouvelle Flashcard
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Créer une nouvelle flashcard</DialogTitle>
+                          <DialogDescription>
+                            Ajoutez une nouvelle flashcard pour {selectedSubject}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="question">Question *</Label>
+                            <Textarea
+                              id="question"
+                              value={createForm.question}
+                              onChange={(e) => setCreateForm({...createForm, question: e.target.value})}
+                              placeholder="Posez votre question..."
+                              rows={3}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="answer">Réponse *</Label>
+                            <Textarea
+                              id="answer"
+                              value={createForm.answer}
+                              onChange={(e) => setCreateForm({...createForm, answer: e.target.value})}
+                              placeholder="Donnez la réponse..."
+                              rows={3}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="difficulty">Difficulté</Label>
+                            <Select value={createForm.difficulty} onValueChange={(value) => setCreateForm({...createForm, difficulty: value})}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="easy">Facile</SelectItem>
+                                <SelectItem value="medium">Moyen</SelectItem>
+                                <SelectItem value="hard">Difficile</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+                            Annuler
+                          </Button>
+                          <Button onClick={handleCreateFlashcard} className="bg-purple-600 hover:bg-purple-700">
+                            Créer la flashcard
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    💡 Créez vos propres flashcards pour personnaliser votre apprentissage
+                  </div>
+                </Card>
+              )}
 
               {/* Chapter Selection */}
               <Card className="p-4 md:p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl">
@@ -1144,7 +1520,7 @@ const Flashcards = () => {
                 <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
                   <BookOpen className="w-4 h-4 text-blue-600" />
                   <span className="text-sm font-medium text-gray-700">
-                    Carte {currentCard + 1} sur {demoFlashcards[selectedSubject as keyof typeof demoFlashcards]?.length || 0}
+                    Carte {currentCard + 1} sur {subjectFlashcards.length}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">

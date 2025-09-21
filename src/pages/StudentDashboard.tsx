@@ -12,7 +12,8 @@ import {
   Star,
   Target,
   Zap,
-  TrendingUp
+  TrendingUp,
+  User
 } from 'lucide-react';
 
 const StudentDashboard = () => {
@@ -84,7 +85,7 @@ const StudentDashboard = () => {
         </div>
 
         {/* Actions Principales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
           <Card className="text-center p-8 hover:shadow-lg transition-shadow cursor-pointer" 
                 onClick={() => navigate('/flashcards')}>
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -112,6 +113,21 @@ const StudentDashboard = () => {
             <Button size="lg" variant="outline" className="w-full">
               <MessageSquare className="h-5 w-5 mr-2" />
               Accéder au Forum
+            </Button>
+          </Card>
+
+          <Card className="text-center p-8 hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => navigate('/profile')}>
+            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <User className="w-8 h-8 text-purple-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Profil</h3>
+            <p className="text-gray-600 mb-4">
+              Gérez vos informations personnelles et paramètres
+            </p>
+            <Button size="lg" variant="outline" className="w-full">
+              <User className="h-5 w-5 mr-2" />
+              Voir mon Profil
             </Button>
           </Card>
         </div>
@@ -156,32 +172,78 @@ const StudentDashboard = () => {
               Votre Progression
             </CardTitle>
             <CardDescription>
-              Suivez vos progrès dans chaque matière
+              Suivez vos progrès dans vos matières de {user.userClass} {user.section ? `- ${user.section}` : ''}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Mathématiques</span>
-                  <span className="text-sm text-muted-foreground">75%</span>
-                </div>
-                <Progress value={75} className="h-3" />
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">SVT</span>
-                  <span className="text-sm text-muted-foreground">60%</span>
-                </div>
-                <Progress value={60} className="h-3" />
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Physique</span>
-                  <span className="text-sm text-muted-foreground">45%</span>
-                </div>
-                <Progress value={45} className="h-3" />
-              </div>
+              {(() => {
+                // Définir les matières selon la classe et section de l'étudiant
+                let subjects = [];
+                
+                if (user.userClass === '9ème') {
+                  subjects = [
+                    { name: 'Français', progress: 80, color: 'text-blue-600' },
+                    { name: 'Histoire-Géographie', progress: 65, color: 'text-green-600' },
+                    { name: 'Anglais', progress: 70, color: 'text-purple-600' },
+                    { name: 'Sciences', progress: 75, color: 'text-orange-600' }
+                  ];
+                } else if (user.userClass === 'Terminale') {
+                  if (user.section === 'SMP') {
+                    subjects = [
+                      { name: 'Mathématiques', progress: 85, color: 'text-blue-600' },
+                      { name: 'Physique', progress: 70, color: 'text-green-600' },
+                      { name: 'Chimie', progress: 65, color: 'text-purple-600' },
+                      { name: 'Informatique', progress: 60, color: 'text-orange-600' }
+                    ];
+                  } else if (user.section === 'SVT') {
+                    subjects = [
+                      { name: 'Biologie', progress: 80, color: 'text-blue-600' },
+                      { name: 'Sciences de la Terre', progress: 70, color: 'text-green-600' },
+                      { name: 'Chimie', progress: 65, color: 'text-purple-600' },
+                      { name: 'Physique', progress: 60, color: 'text-orange-600' }
+                    ];
+                  } else if (user.section === 'SES') {
+                    subjects = [
+                      { name: 'Économie', progress: 75, color: 'text-blue-600' },
+                      { name: 'Sociologie', progress: 70, color: 'text-green-600' },
+                      { name: 'Mathématiques', progress: 65, color: 'text-purple-600' },
+                      { name: 'Histoire-Géographie', progress: 80, color: 'text-orange-600' }
+                    ];
+                  } else if (user.section === 'LLA') {
+                    subjects = [
+                      { name: 'Littérature', progress: 85, color: 'text-blue-600' },
+                      { name: 'Philosophie', progress: 70, color: 'text-green-600' },
+                      { name: 'Langues Vivantes', progress: 75, color: 'text-purple-600' },
+                      { name: 'Histoire-Géographie', progress: 80, color: 'text-orange-600' }
+                    ];
+                  } else {
+                    // Section non spécifiée - matières générales
+                    subjects = [
+                      { name: 'Mathématiques', progress: 75, color: 'text-blue-600' },
+                      { name: 'Français', progress: 80, color: 'text-green-600' },
+                      { name: 'Histoire-Géographie', progress: 70, color: 'text-purple-600' }
+                    ];
+                  }
+                } else {
+                  // Classe non reconnue - matières par défaut
+                  subjects = [
+                    { name: 'Mathématiques', progress: 75, color: 'text-blue-600' },
+                    { name: 'Français', progress: 80, color: 'text-green-600' },
+                    { name: 'Histoire-Géographie', progress: 70, color: 'text-purple-600' }
+                  ];
+                }
+
+                return subjects.map((subject, index) => (
+                  <div key={index} className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{subject.name}</span>
+                      <span className="text-sm text-muted-foreground">{subject.progress}%</span>
+                    </div>
+                    <Progress value={subject.progress} className="h-3" />
+                  </div>
+                ));
+              })()}
             </div>
           </CardContent>
         </Card>

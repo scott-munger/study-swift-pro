@@ -10,7 +10,7 @@ The provided database string is invalid. Error parsing connection string: invali
 ### 1. Aller dans Railway Dashboard
 - [railway.app](https://railway.app)
 - Projet "charismatic-freedom"
-- Service "study-swift-pro"
+- Service "tyala-platform"
 - **Settings → Variables**
 
 ### 2. Vérifier la DATABASE_URL actuelle
@@ -43,7 +43,7 @@ mysql://root:password@containers-us-west-xxx.railway.app:3306/railway
 
 ### 5. Vérifier après correction
 ```bash
-curl -X POST https://study-swift-pro-production.up.railway.app/api/init
+curl -X POST https://tyala-platform-production.up.railway.app/api/init
 ```
 
 ## 🧪 Test

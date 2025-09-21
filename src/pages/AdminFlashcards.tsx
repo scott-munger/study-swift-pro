@@ -68,33 +68,48 @@ const AdminFlashcards = () => {
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
+    console.log('🔐 AdminFlashcards - Token trouvé:', savedToken ? 'Oui' : 'Non');
+    console.log('🔐 AdminFlashcards - Token:', savedToken);
+    
     if (savedToken) {
       setToken(savedToken);
       loadFlashcards(savedToken);
       loadSubjects(savedToken);
     } else {
+      console.log('🔐 AdminFlashcards - Pas de token, redirection vers login');
       window.location.href = '/login';
     }
   }, []);
 
   const loadFlashcards = async (authToken: string | null = token) => {
-    if (!authToken) return;
+    if (!authToken) {
+      console.log('🔐 AdminFlashcards - Pas de token pour charger les flashcards');
+      return;
+    }
     setLoading(true);
+    console.log('🔐 AdminFlashcards - Chargement des flashcards avec token:', authToken.substring(0, 50) + '...');
+    
     try {
-      const response = await fetch('http://localhost:8081/api/flashcards', {
+      const response = await fetch('http://localhost:8081/api/admin/flashcards', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
         }
       });
+      
+      console.log('🔐 AdminFlashcards - Réponse API:', response.status, response.statusText);
+      
       if (response.ok) {
         const flashcardsData = await response.json();
-        setFlashcards(flashcardsData);
+        console.log('🔐 AdminFlashcards - Données reçues:', flashcardsData.flashcards ? flashcardsData.flashcards.length : 0, 'flashcards');
+        setFlashcards(flashcardsData.flashcards || flashcardsData);
       } else {
+        const errorData = await response.json();
+        console.error('🔐 AdminFlashcards - Erreur API:', errorData);
         throw new Error('Erreur lors de la récupération des flashcards');
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des flashcards:', error);
+      console.error('🔐 AdminFlashcards - Erreur lors du chargement des flashcards:', error);
       toast({ title: "Erreur", description: "Impossible de charger les flashcards", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -128,8 +143,10 @@ const AdminFlashcards = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          ...flashcardForm,
-          subjectId: parseInt(flashcardForm.subjectId)
+          question: flashcardForm.question,
+          answer: flashcardForm.answer,
+          subjectId: parseInt(flashcardForm.subjectId),
+          difficulty: flashcardForm.difficulty
         })
       });
 
@@ -158,8 +175,10 @@ const AdminFlashcards = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          ...flashcardForm,
-          subjectId: parseInt(flashcardForm.subjectId)
+          question: flashcardForm.question,
+          answer: flashcardForm.answer,
+          subjectId: parseInt(flashcardForm.subjectId),
+          difficulty: flashcardForm.difficulty
         })
       });
 

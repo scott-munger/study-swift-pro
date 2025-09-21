@@ -32,6 +32,7 @@ interface AuthContextType {
   deleteAccount: () => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   refreshUser: () => Promise<void>;
+  clearStorage: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -51,8 +52,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Vérifier si l'utilisateur est connecté au chargement
     const savedUser = localStorage.getItem('user');
+    console.log('🔍 AuthContext - Utilisateur sauvegardé dans localStorage:', savedUser);
+    
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        console.log('🔍 AuthContext - Utilisateur parsé:', parsedUser);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('🔍 AuthContext - Erreur parsing utilisateur:', error);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+      }
+    } else {
+      console.log('🔍 AuthContext - Aucun utilisateur sauvegardé');
     }
     setLoading(false);
   }, []);
@@ -61,8 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Appel à l'API réelle (avec fallback démo)
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/auth/login', {
+      // Appel à l'API locale
+      const response = await fetch('http://localhost:8081/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Fallback vers le mode démo si l'API normale échoue
       console.log('Tentative de connexion en mode démo...');
-      const demoResponse = await fetch('https://study-swift-pro-production.up.railway.app/api/demo/login', {
+      const demoResponse = await fetch('http://localhost:8081/api/demo/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       
       // Appel à l'API d'inscription
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/auth/register', {
+      const response = await fetch('http://localhost:8081/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,9 +164,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    console.log('🔍 AuthContext - Déconnexion en cours...');
     setUser(null);
+    clearStorage();
+    console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
+    // La redirection sera gérée par les composants qui utilisent logout
+  };
+
+  const clearStorage = () => {
+    // Nettoyer complètement le localStorage
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('adminUser');
+    localStorage.removeItem('adminToken');
+    
+    // Nettoyer aussi sessionStorage
+    sessionStorage.clear();
+    
+    console.log('🔍 AuthContext - Stockage nettoyé');
   };
 
   const getAuthHeaders = () => {
@@ -172,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
+      const response = await fetch('http://localhost:8081/api/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -199,7 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteAccount = async (): Promise<boolean> => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
+      const response = await fetch('http://localhost:8081/api/profile', {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -217,7 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile/password', {
+      const response = await fetch('http://localhost:8081/api/profile/password', {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ currentPassword, newPassword })
@@ -232,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async (): Promise<void> => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
+      const response = await fetch('http://localhost:8081/api/profile', {
         headers: getAuthHeaders()
       });
 
@@ -274,7 +302,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     deleteAccount,
     changePassword,
-    refreshUser
+    refreshUser,
+    clearStorage
   };
 
   return (

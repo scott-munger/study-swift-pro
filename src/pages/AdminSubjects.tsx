@@ -48,32 +48,47 @@ const AdminSubjects = () => {
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
+    console.log('🔐 AdminSubjects - Token trouvé:', savedToken ? 'Oui' : 'Non');
+    console.log('🔐 AdminSubjects - Token:', savedToken);
+    
     if (savedToken) {
       setToken(savedToken);
       loadSubjects(savedToken);
     } else {
+      console.log('🔐 AdminSubjects - Pas de token, redirection vers login');
       window.location.href = '/login';
     }
   }, []);
 
   const loadSubjects = async (authToken: string | null = token) => {
-    if (!authToken) return;
+    if (!authToken) {
+      console.log('🔐 AdminSubjects - Pas de token pour charger les matières');
+      return;
+    }
     setLoading(true);
+    console.log('🔐 AdminSubjects - Chargement des matières avec token:', authToken.substring(0, 50) + '...');
+    
     try {
-      const response = await fetch('http://localhost:8081/api/subjects', {
+      const response = await fetch('http://localhost:8081/api/admin/subjects', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
         }
       });
+      
+      console.log('🔐 AdminSubjects - Réponse API:', response.status, response.statusText);
+      
       if (response.ok) {
         const subjectsData = await response.json();
+        console.log('🔐 AdminSubjects - Données reçues:', subjectsData.length, 'matières');
         setSubjects(subjectsData);
       } else {
+        const errorData = await response.json();
+        console.error('🔐 AdminSubjects - Erreur API:', errorData);
         throw new Error('Erreur lors de la récupération des matières');
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des matières:', error);
+      console.error('🔐 AdminSubjects - Erreur lors du chargement des matières:', error);
       toast({ title: "Erreur", description: "Impossible de charger les matières", variant: "destructive" });
     } finally {
       setLoading(false);

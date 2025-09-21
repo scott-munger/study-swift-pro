@@ -38,7 +38,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_relativeSplatPath: true }}>
             <Navbar />
             <Routes>
               <Route path="/" element={<Index />} />

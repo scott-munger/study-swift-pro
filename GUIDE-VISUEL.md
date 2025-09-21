@@ -27,7 +27,7 @@ GitHub Dashboard
     ↓
 [New] (bouton vert en haut)
     ↓
-Repository name: study-swift-pro
+Repository name: tyala-platform
     ↓
 [Create repository]
 ```
@@ -62,7 +62,7 @@ Railway Dashboard
     ↓
 [Deploy from GitHub repo]
     ↓
-Sélectionner: study-swift-pro
+Sélectionner: tyala-platform
 ```
 
 ### 2.3 Configuration automatique
@@ -92,7 +92,7 @@ Netlify Dashboard
     ↓
 [GitHub]
     ↓
-Sélectionner: study-swift-pro
+Sélectionner: tyala-platform
 ```
 
 ### 3.3 Configuration du build

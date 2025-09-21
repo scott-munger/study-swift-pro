@@ -22,7 +22,7 @@ Votre site a **2 parties** :
 
 1. **Aller sur GitHub.com**
 2. **Cliquer sur "New repository"** (bouton vert)
-3. **Nommer votre repository** : `study-swift-pro`
+3. **Nommer votre repository** : `tyala-platform`
 4. **Cocher "Public"** (pour que ce soit gratuit)
 5. **Cliquer "Create repository"**
 
@@ -34,7 +34,7 @@ git init
 git add .
 git commit -m "Premier commit"
 git branch -M main
-git remote add origin https://github.com/VOTRE-USERNAME/study-swift-pro.git
+git remote add origin https://github.com/VOTRE-USERNAME/tyala-platform.git
 git push -u origin main
 ```
 

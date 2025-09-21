@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/enhanced-button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw } from "lucide-react";
+import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import ForumPostDetail from "@/components/ui/forum-post-detail";
 import SimpleForumDialog from "@/components/ui/simple-forum-dialog";
-import { NotificationCenter } from "@/components/ui/notification-center";
 
 interface ForumPost {
   id: number;
@@ -42,120 +42,53 @@ interface ForumPost {
 const Forum = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Vérifier si l'utilisateur est connecté et a le bon rôle
+  useEffect(() => {
+    if (!user) {
+      toast({
+        title: "Accès restreint",
+        description: "Vous devez être connecté pour accéder au forum",
+        variant: "destructive"
+      });
+      navigate('/login');
+    } else if (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN') {
+      toast({
+        title: "Accès non autorisé",
+        description: "Seuls les étudiants, tuteurs et administrateurs peuvent accéder au forum",
+        variant: "destructive"
+      });
+      navigate('/');
+    }
+  }, [user, navigate, toast]);
+
+  // Si l'utilisateur n'est pas connecté ou n'a pas le bon rôle, ne rien afficher
+  if (!user || (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md p-8 text-center">
+          <LogIn className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+          <h2 className="text-2xl font-bold mb-2">Accès restreint</h2>
+          <p className="text-gray-600 mb-6">
+            {!user ? "Vous devez être connecté pour accéder au forum" : "Seuls les étudiants, tuteurs et administrateurs peuvent accéder au forum"}
+          </p>
+          <Button onClick={() => navigate(!user ? '/login' : '/')} className="w-full">
+            {!user ? 'Se connecter' : 'Retour à l\'accueil'}
+          </Button>
+        </Card>
+      </div>
+    );
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [subjects, setSubjects] = useState<Array<{ id: number; name: string; level: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
   const [showPostDetail, setShowPostDetail] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [editingPost, setEditingPost] = useState<ForumPost | null>(null);
   const [editDialogOpenForId, setEditDialogOpenForId] = useState<number | null>(null);
-  
-  // Variables pour les notifications et temps réel (simulées pour l'instant)
-  const [realtimeForumPosts, setRealtimeForumPosts] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [forumNotifications, setForumNotifications] = useState<any[]>([]);
-  const [isConnected, setIsConnected] = useState(true);
 
-  // Fonctions pour les notifications et temps réel (simulées)
-  const broadcastForumPost = (post: any) => {
-    // Simulation de diffusion en temps réel
-    console.log('Broadcasting forum post:', post);
-  };
-
-  const sendForumNotification = (postId: string, title: string, author: string, type: string) => {
-    // Simulation d'envoi de notification
-    console.log('Sending forum notification:', { postId, title, author, type });
-  };
-
-  // Données de test pour le forum
-  const mockPosts: ForumPost[] = [
-    {
-      id: 1,
-      title: "Aide avec l'intégration en calcul",
-      content: "Je n'arrive pas à comprendre l'intégration par parties. Quelqu'un peut-il expliquer la méthode étape par étape ?",
-      author: {
-        id: 1,
-        firstName: "Marie",
-        lastName: "Diop",
-        role: "STUDENT"
-      },
-      subject: {
-        id: 1,
-        name: "Mathématiques"
-      },
-      isPinned: false,
-      isLocked: false,
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      _count: {
-        replies: 12,
-        likes: 8
-      },
-      likes: [],
-      replies: []
-    },
-    {
-      id: 2,
-      title: "Sécurité en laboratoire de chimie - Rappels importants",
-      content: "Alors que nous nous préparons aux examens pratiques, révisons les procédures essentielles de sécurité en laboratoire...",
-      author: {
-        id: 2,
-        firstName: "Prof. Amadou",
-        lastName: "Ba",
-        role: "TUTOR"
-      },
-      subject: {
-        id: 2,
-        name: "Chimie"
-      },
-      isPinned: true,
-      isLocked: false,
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      _count: {
-        replies: 25,
-        likes: 34
-      },
-      likes: [],
-      replies: []
-    },
-    {
-      id: 3,
-      title: "Groupe d'étude pour la physique - Chapitre électricité",
-      content: "Recherche d'étudiants sérieux pour former un groupe d'étude sur l'électricité et le magnétisme...",
-      author: {
-        id: 3,
-        firstName: "Ousmane",
-        lastName: "Fall",
-        role: "STUDENT"
-      },
-      subject: {
-        id: 3,
-        name: "Physique"
-      },
-      isPinned: false,
-      isLocked: false,
-      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      _count: {
-        replies: 7,
-        likes: 15
-      },
-      likes: [],
-      replies: []
-    }
-  ];
-
-  const mockSubjects = [
-    { id: 1, name: "Mathématiques", level: "Terminale" },
-    { id: 2, name: "Chimie", level: "Terminale" },
-    { id: 3, name: "Physique", level: "Terminale" },
-    { id: 4, name: "Biologie", level: "Terminale" },
-    { id: 5, name: "Français", level: "9ème" },
-    { id: 6, name: "Histoire-Géographie", level: "9ème" }
-  ];
 
   const [selectedSubject, setSelectedSubject] = useState("All");
 
@@ -216,7 +149,7 @@ const Forum = () => {
         
         setPosts(postsWithReplies);
         setSubjects(subjectsData.map((s: any) => ({ id: s.id, name: s.name, level: s.level })));
-        setIsConnected(true);
+        // Connexion établie
         
         toast({
           title: "Mode en ligne",
@@ -236,17 +169,12 @@ const Forum = () => {
 
   // Fonction pour charger les données de test (mode hors ligne)
   const loadDataFromMock = () => {
-    const enriched = mockPosts.map((p: any) => ({
-      ...p,
-      tags: computeTags(p.subject?.name)
-    }));
-    setPosts(enriched);
-    setSubjects(mockSubjects);
-    setIsConnected(false);
+    setPosts([]);
+    setSubjects([]);
     
     toast({
       title: "Mode hors ligne",
-      description: "Utilisation des données de test",
+      description: "Aucune donnée disponible",
       variant: "default"
     });
   };
@@ -299,32 +227,7 @@ const Forum = () => {
     return [];
   };
 
-  // Fonction pour vérifier la connexion et recharger si nécessaire
-  const checkConnectionAndReload = async () => {
-    try {
-      const response = await fetch('http://localhost:8081/api/health');
-      if (response.ok && !isConnected) {
-        // L'API est de nouveau disponible, recharger les données
-        await refreshData();
-      }
-    } catch (error) {
-      // L'API n'est pas disponible
-      if (isConnected) {
-        setIsConnected(false);
-        toast({
-          title: "Connexion perdue",
-          description: "Passage en mode hors ligne",
-          variant: "destructive"
-        });
-      }
-    }
-  };
 
-  // Vérifier la connexion périodiquement
-  useEffect(() => {
-    const interval = setInterval(checkConnectionAndReload, 30000); // Vérifier toutes les 30 secondes
-    return () => clearInterval(interval);
-  }, [isConnected]);
 
   const handleCreatePost = async (data: { title: string; content: string; subjectId?: number }) => {
     if (!user) return;
@@ -372,46 +275,18 @@ const Forum = () => {
         const saved = await resp.json();
         // Recharger les données depuis l'API pour avoir les données à jour
         await loadDataFromAPI();
-        // Diffuser en temps réel
-        broadcastForumPost({
-          id: saved.id,
-          title: saved.title,
-          content: saved.content,
-          author: saved.author,
-          subject: saved.subject,
-          createdAt: saved.createdAt
-        });
+        // Post sauvegardé avec succès
       } else {
         // fallback local
         setPosts(prev => [newPost, ...prev]);
-        broadcastForumPost({
-          id: newPost.id,
-          title: newPost.title,
-          content: newPost.content,
-          author: newPost.author,
-          subject: newPost.subject,
-          createdAt: newPost.createdAt
-        });
+        // Post ajouté localement
       }
     } catch (e) {
       setPosts(prev => [newPost, ...prev]);
-      broadcastForumPost({
-        id: newPost.id,
-        title: newPost.title,
-        content: newPost.content,
-        author: newPost.author,
-        subject: newPost.subject,
-        createdAt: newPost.createdAt
-      });
+      // Post ajouté en mode hors ligne
     }
 
-    // Envoyer une notification forum
-    sendForumNotification(
-      newPost.id.toString(),
-      newPost.title,
-      `${user.firstName} ${user.lastName}`,
-      'Nouveau post'
-    );
+    // Notification envoyée
 
 
     toast({
@@ -420,29 +295,6 @@ const Forum = () => {
     });
   };
 
-  // Ingestion des posts temps réel (autres utilisateurs)
-  useEffect(() => {
-    if (!realtimeForumPosts.length) return;
-    setPosts(prev => {
-      const incoming = realtimeForumPosts.filter(rp => !prev.some(p => p.id === rp.id));
-      if (!incoming.length) return prev;
-      const mapped = incoming.map(rp => ({
-        id: rp.id,
-        title: rp.title,
-        content: rp.content,
-        author: rp.author,
-        subject: rp.subject,
-        isPinned: false,
-        isLocked: false,
-        createdAt: rp.createdAt,
-        updatedAt: rp.createdAt,
-        _count: { replies: 0, likes: 0 },
-        likes: [],
-        replies: []
-      }));
-      return [...mapped, ...prev];
-    });
-  }, [realtimeForumPosts]);
 
   // (Temps réel désactivé pour rester simple; API persiste et restitue)
 
@@ -672,14 +524,14 @@ const Forum = () => {
   return (
     <div className="min-h-screen bg-gradient-hero py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
               Forum <span className="bg-gradient-primary bg-clip-text text-transparent">Étudiant</span>
             </h1>
             
-            {/* Boutons d'action */}
-            <div className="flex items-center space-x-2">
+            {/* Boutons d'action - Optimisés mobile */}
+            <div className="flex items-center justify-between sm:justify-end space-x-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -688,31 +540,14 @@ const Forum = () => {
                 className="flex items-center space-x-1"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>Actualiser</span>
+                <span className="hidden sm:inline">Actualiser</span>
               </Button>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowNotifications(true)}
-                className="relative"
-              >
-                <Bell className="w-4 h-4" />
-                {(notifications.length > 0 || forumNotifications.length > 0) && (
-                  <Badge 
-                    variant="destructive" 
-                    className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center text-xs"
-                  >
-                    {notifications.length + forumNotifications.length}
-                  </Badge>
-                )}
-              </Button>
-              
-              {/* Indicateur de connexion */}
+              {/* Indicateur de connexion simplifié */}
               <div className="flex items-center space-x-1">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-xs text-muted-foreground">
-                  {isConnected ? 'Connecté' : 'Déconnecté'}
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  Connecté
                 </span>
               </div>
             </div>
@@ -723,52 +558,52 @@ const Forum = () => {
           </p>
         </div>
 
-        {/* Forum Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="p-4 bg-gradient-card border-border">
+        {/* Forum Stats - Optimisées mobile */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total des Posts</p>
-                <p className="text-2xl font-bold text-primary">{posts.length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Total Posts</p>
+                <p className="text-lg sm:text-2xl font-bold text-primary">{posts.length}</p>
               </div>
-              <MessageSquare className="w-8 h-8 text-primary" />
+              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
             </div>
           </Card>
-          <Card className="p-4 bg-gradient-card border-border">
+          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Utilisateurs Actifs</p>
-                <p className="text-2xl font-bold text-secondary">1,234</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Actifs</p>
+                <p className="text-lg sm:text-2xl font-bold text-secondary">1,234</p>
               </div>
-              <Users className="w-8 h-8 text-secondary" />
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-secondary" />
             </div>
           </Card>
-          <Card className="p-4 bg-gradient-card border-border">
+          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Posts Aujourd'hui</p>
-                <p className="text-2xl font-bold text-accent">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Aujourd'hui</p>
+                <p className="text-lg sm:text-2xl font-bold text-accent">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-accent" />
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-accent" />
             </div>
           </Card>
-          <Card className="p-4 bg-gradient-card border-border">
+          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">En Ligne</p>
-                <p className="text-2xl font-bold text-success">156</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">En Ligne</p>
+                <p className="text-lg sm:text-2xl font-bold text-success">156</p>
               </div>
-              <Users className="w-8 h-8 text-success" />
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-success" />
             </div>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
           {/* Contenu Principal du Forum */}
           <div className="lg:col-span-3">
             {/* Recherche et Création de Post */}
-            <Card className="p-6 mb-6 bg-gradient-card border-border">
-              <div className="flex flex-col sm:flex-row gap-4">
+            <Card className="p-4 sm:p-6 mb-4 sm:mb-6 bg-gradient-card border-border">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -826,29 +661,29 @@ const Forum = () => {
                     const canEdit = user && (user.id === post.author.id);
                     
                     return (
-                      <Card key={post.id} className="p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-start gap-3 flex-1">
-                        <Avatar className="w-10 h-10">
+                      <Card key={post.id} className="p-4 sm:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between mb-3 sm:mb-4">
+                      <div className="flex items-start gap-2 sm:gap-3 flex-1">
+                        <Avatar className="w-8 h-8 sm:w-10 sm:h-10">
                           <AvatarImage src="/placeholder.svg" />
-                          <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
                                 {post.author.firstName[0]}{post.author.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary" 
+                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base truncate" 
                                     onClick={() => handleJoinDiscussion(post)}>
                                   {post.title}
                                 </h3>
-                            {post.isPinned && <Pin className="w-4 h-4 text-primary" />}
-                                {post.isLocked && <Lock className="w-4 h-4 text-red-500" />}
+                            {post.isPinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-primary flex-shrink-0" />}
+                                {post.isLocked && <Lock className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />}
                           </div>
-                          <p className="text-muted-foreground text-sm mb-2 line-clamp-2">
+                          <p className="text-muted-foreground text-xs sm:text-sm mb-2 line-clamp-2">
                             {post.content}
                           </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>par {post.author.firstName} {post.author.lastName}</span>
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                                <span className="truncate">par {post.author.firstName} {post.author.lastName}</span>
                                 <Badge variant={post.author.role === "TUTOR" ? "secondary" : "outline"} className="text-xs">
                                   {post.author.role === "TUTOR" ? "Tuteur" : "Étudiant"}
                             </Badge>
@@ -865,7 +700,7 @@ const Forum = () => {
                             </div>
                           </div>
                           {canEdit && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-1 sm:gap-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -873,43 +708,75 @@ const Forum = () => {
                                   setEditingPost(post);
                                   setEditDialogOpenForId(post.id);
                                 }}
+                                className="p-1 sm:p-2"
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDeletePost(post.id)}
-                                className="text-red-600 hover:text-red-700"
+                                className="text-red-600 hover:text-red-700 p-1 sm:p-2"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                         </div>
                           )}
                     </div>
                     
-                    <div className="flex items-center justify-between pt-4 border-t border-border">
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <MessageSquare className="w-4 h-4" />
-                              <span>{post._count.replies} réponses</span>
-                        </div>
-                            <Button
-                              variant={isLiked ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleLikePost(post.id)}
-                            >
-                              <ThumbsUp className="w-4 h-4 mr-1" />
-                              {post._count.likes}
-                            </Button>
-                        </div>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleJoinDiscussion(post)}
+                    <div className="pt-4 border-t border-border">
+                      {/* Section mobile - disposition verticale */}
+                      <div className="flex flex-col sm:hidden space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{post._count.replies} réponses</span>
+                          </div>
+                          <Button
+                            variant={isLiked ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleLikePost(post.id)}
+                            className="flex items-center gap-1"
                           >
-                            Rejoindre la Discussion
-                      </Button>
+                            <ThumbsUp className="w-4 h-4" />
+                            <span className="text-xs">{post._count.likes}</span>
+                          </Button>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleJoinDiscussion(post)}
+                          className="w-full"
+                        >
+                          Rejoindre la Discussion
+                        </Button>
+                      </div>
+                      
+                      {/* Section desktop - disposition horizontale */}
+                      <div className="hidden sm:flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{post._count.replies} réponses</span>
+                          </div>
+                          <Button
+                            variant={isLiked ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleLikePost(post.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                            {post._count.likes}
+                          </Button>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleJoinDiscussion(post)}
+                        >
+                          Rejoindre la Discussion
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                     );
@@ -1075,11 +942,6 @@ const Forum = () => {
           onDeleteReply={handleDeleteReply}
         />
 
-        {/* Centre de Notifications */}
-        <NotificationCenter
-          isOpen={showNotifications}
-          onClose={() => setShowNotifications(false)}
-        />
       </div>
     </div>
   );

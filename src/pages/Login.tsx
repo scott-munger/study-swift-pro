@@ -42,48 +42,62 @@ const Login = () => {
     const success = await login(formData.email, formData.password);
     
     if (success) {
-      // Récupérer les informations utilisateur pour déterminer la redirection
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          const userRole = payload.role;
-          
-          // Rediriger selon le rôle
-          if (userRole === 'ADMIN') {
-            // Stocker les données admin et rediriger vers le dashboard admin
-            const response = await fetch('http://localhost:8081/api/auth/me', {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            if (response.ok) {
-              const userData = await response.json();
-              localStorage.setItem('adminUser', JSON.stringify(userData));
+        // Récupérer les informations utilisateur pour déterminer la redirection
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            let userRole = payload.role;
+            
+            console.log('🔐 Token payload:', payload);
+            console.log('🔐 Rôle détecté:', userRole);
+            
+            // Si le rôle n'est pas présent, récupérer depuis le user object
+            if (!userRole && user && user.role) {
+              console.log('🔐 Utilisation du rôle depuis AuthContext:', user.role);
+              userRole = user.role;
             }
-            navigate('/simple-admin/dashboard');
-          } else if (userRole === 'STUDENT') {
-            // Rediriger les étudiants vers leur tableau de bord
-            navigate('/student/dashboard');
-          } else if (userRole === 'TUTOR') {
-            // Rediriger les tuteurs vers leur profil
-            navigate('/profile');
-          } else {
-            // Pour les autres rôles, rediriger vers la page d'accueil
+            
+            // Rediriger selon le rôle
+            if (userRole === 'ADMIN') {
+              // Stocker les données admin et rediriger vers le dashboard admin
+              const response = await fetch('http://localhost:8081/api/auth/me', {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              if (response.ok) {
+                const userData = await response.json();
+                localStorage.setItem('adminUser', JSON.stringify(userData));
+              }
+              console.log('🔐 Redirection admin vers /simple-admin/dashboard');
+              navigate('/simple-admin/dashboard');
+            } else if (userRole === 'STUDENT') {
+              // Rediriger les étudiants vers leur tableau de bord
+              console.log('🔐 Redirection étudiant vers /student/dashboard');
+              navigate('/student/dashboard');
+            } else if (userRole === 'TUTOR') {
+              // Rediriger les tuteurs vers leur profil
+              console.log('🔐 Redirection tuteur vers /profile');
+              navigate('/profile');
+            } else {
+              // Pour les autres rôles, rediriger vers la page d'accueil
+              console.log('🔐 Redirection par défaut vers /');
+              navigate('/');
+            }
+            
+            toast({
+              title: "Connexion réussie",
+              description: `Bienvenue ${userRole === 'ADMIN' ? 'Administrateur' : userRole === 'TUTOR' ? 'Tuteur' : 'Étudiant'} !`,
+            });
+          } catch (error) {
+            console.error('Erreur de décodage du token:', error);
             navigate('/');
           }
-          
-          toast({
-            title: "Connexion réussie",
-            description: `Bienvenue ${userRole === 'ADMIN' ? 'Administrateur' : userRole === 'TUTOR' ? 'Tuteur' : 'Étudiant'} !`,
-          });
-        } catch (error) {
-          console.error('Erreur de décodage du token:', error);
+        } else {
+          console.log('🔐 Aucun token trouvé');
           navigate('/');
         }
-      } else {
-        navigate('/');
-      }
     } else {
       toast({
         title: "Erreur de connexion",
@@ -101,7 +115,7 @@ const Login = () => {
           <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
             <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
             <span className="font-bold text-xl sm:text-2xl bg-gradient-primary bg-clip-text text-transparent">
-              EduPrep
+              TYALA
             </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">

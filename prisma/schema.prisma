@@ -55,6 +55,7 @@ model Subject {
   id          Int            @id @default(autoincrement())
   name        String         @unique
   level       String
+  section     String?        // Section spécifique (SMP, SVT, LLA, SES, etc.)
   description String?
   createdAt   DateTime       @default(now())
   flashcards  Flashcard[]

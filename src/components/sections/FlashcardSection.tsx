@@ -50,7 +50,7 @@ const FlashcardSection = () => {
                 </div>
                 <div>
                   <h4 className="text-sm sm:text-base font-semibold text-foreground mb-1">Contenu Interactif</h4>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Contenu multimédia riche avec images, diagrammes et vidéos</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Contenu interactif avec exercices pratiques et quiz</p>
                 </div>
               </div>
             </div>

@@ -57,17 +57,26 @@ const AdminUsers = () => {
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
+    console.log('🔐 AdminUsers - Token trouvé:', savedToken ? 'Oui' : 'Non');
+    console.log('🔐 AdminUsers - Token:', savedToken);
+    
     if (savedToken) {
       setToken(savedToken);
       loadUsers(savedToken);
     } else {
+      console.log('🔐 AdminUsers - Pas de token, redirection vers login');
       window.location.href = '/login';
     }
   }, []);
 
   const loadUsers = async (authToken: string | null = token) => {
-    if (!authToken) return;
+    if (!authToken) {
+      console.log('🔐 AdminUsers - Pas de token pour charger les utilisateurs');
+      return;
+    }
     setLoading(true);
+    console.log('🔐 AdminUsers - Chargement des utilisateurs avec token:', authToken.substring(0, 50) + '...');
+    
     try {
       const response = await fetch('http://localhost:8081/api/admin/users', {
         headers: {
@@ -75,14 +84,20 @@ const AdminUsers = () => {
           'Content-Type': 'application/json'
         }
       });
+      
+      console.log('🔐 AdminUsers - Réponse API:', response.status, response.statusText);
+      
       if (response.ok) {
         const usersData = await response.json();
+        console.log('🔐 AdminUsers - Données reçues:', usersData.length, 'utilisateurs');
         setUsers(usersData);
       } else {
+        const errorData = await response.json();
+        console.error('🔐 AdminUsers - Erreur API:', errorData);
         throw new Error('Erreur lors de la récupération des utilisateurs');
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des utilisateurs:', error);
+      console.error('🔐 AdminUsers - Erreur lors du chargement des utilisateurs:', error);
       toast({ title: "Erreur", description: "Impossible de charger les utilisateurs", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -91,13 +106,34 @@ const AdminUsers = () => {
 
   const handleAddUser = async () => {
     try {
+      // Validation des champs requis
+      if (!userForm.email || !userForm.password || !userForm.firstName || !userForm.lastName) {
+        toast({ 
+          title: "Erreur", 
+          description: "Veuillez remplir tous les champs requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(userForm)
+        body: JSON.stringify({
+          email: userForm.email,
+          password: userForm.password,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          role: userForm.role,
+          userClass: userForm.userClass || null,
+          section: userForm.section || null,
+          department: userForm.department || null,
+          phone: userForm.phone || null,
+          address: userForm.address || null
+        })
       });
 
       if (response.ok) {
@@ -118,13 +154,33 @@ const AdminUsers = () => {
     if (!editingUser) return;
 
     try {
+      // Validation des champs requis
+      if (!userForm.firstName || !userForm.lastName) {
+        toast({ 
+          title: "Erreur", 
+          description: "Prénom et nom sont requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(userForm)
+        body: JSON.stringify({
+          email: userForm.email,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          role: userForm.role,
+          userClass: userForm.userClass || null,
+          section: userForm.section || null,
+          department: userForm.department || null,
+          phone: userForm.phone || null,
+          address: userForm.address || null
+        })
       });
 
       if (response.ok) {
@@ -286,95 +342,228 @@ const AdminUsers = () => {
                   {editingUser ? 'Modifiez les informations de l\'utilisateur.' : 'Ajoutez un nouvel utilisateur à la plateforme.'}
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-6">
+                {/* Informations personnelles */}
                 <div>
-                  <Label htmlFor="firstName">Prénom</Label>
-                  <Input
-                    id="firstName"
-                    value={userForm.firstName}
-                    onChange={(e) => setUserForm({...userForm, firstName: e.target.value})}
-                  />
+                  <h4 className="text-lg font-semibold mb-3 text-gray-900">Informations Personnelles</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="firstName">Prénom *</Label>
+                      <Input
+                        id="firstName"
+                        value={userForm.firstName}
+                        onChange={(e) => setUserForm({...userForm, firstName: e.target.value})}
+                        placeholder="Ex: Jean"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="lastName">Nom *</Label>
+                      <Input
+                        id="lastName"
+                        value={userForm.lastName}
+                        onChange={(e) => setUserForm({...userForm, lastName: e.target.value})}
+                        placeholder="Ex: Mballa"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="email">Email *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm({...userForm, email: e.target.value})}
+                        placeholder="Ex: jean.mballa@email.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="password">Mot de passe *</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={userForm.password}
+                        onChange={(e) => setUserForm({...userForm, password: e.target.value})}
+                        placeholder={editingUser ? "Laisser vide pour ne pas changer" : "Mot de passe sécurisé"}
+                        required={!editingUser}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="phone">Téléphone</Label>
+                      <Input
+                        id="phone"
+                        value={userForm.phone}
+                        onChange={(e) => setUserForm({...userForm, phone: e.target.value})}
+                        placeholder="Ex: +237 6XX XXX XXX"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="address">Adresse</Label>
+                      <Input
+                        id="address"
+                        value={userForm.address}
+                        onChange={(e) => setUserForm({...userForm, address: e.target.value})}
+                        placeholder="Ex: Yaoundé, Cameroun"
+                      />
+                    </div>
+                  </div>
                 </div>
+
+                {/* Type d'utilisateur */}
                 <div>
-                  <Label htmlFor="lastName">Nom</Label>
-                  <Input
-                    id="lastName"
-                    value={userForm.lastName}
-                    onChange={(e) => setUserForm({...userForm, lastName: e.target.value})}
-                  />
+                  <h4 className="text-lg font-semibold mb-3 text-gray-900">Type d'Utilisateur *</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div 
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                        userForm.role === 'STUDENT' 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setUserForm({...userForm, role: 'STUDENT', userClass: '', section: '', department: ''})}
+                    >
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                          <span className="text-blue-600 font-bold">🎓</span>
+                        </div>
+                        <h5 className="font-semibold text-gray-900">Étudiant</h5>
+                        <p className="text-sm text-gray-600">Accès aux cours et exercices</p>
+                      </div>
+                    </div>
+                    <div 
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                        userForm.role === 'TUTOR' 
+                          ? 'border-green-500 bg-green-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setUserForm({...userForm, role: 'TUTOR', userClass: '', section: '', department: 'Sciences'})}
+                    >
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                          <span className="text-green-600 font-bold">👨‍🏫</span>
+                        </div>
+                        <h5 className="font-semibold text-gray-900">Tuteur</h5>
+                        <p className="text-sm text-gray-600">Enseignement et accompagnement</p>
+                      </div>
+                    </div>
+                    <div 
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                        userForm.role === 'ADMIN' 
+                          ? 'border-purple-500 bg-purple-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setUserForm({...userForm, role: 'ADMIN', userClass: '', section: '', department: 'Administration'})}
+                    >
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                          <span className="text-purple-600 font-bold">👑</span>
+                        </div>
+                        <h5 className="font-semibold text-gray-900">Administrateur</h5>
+                        <p className="text-sm text-gray-600">Gestion de la plateforme</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm({...userForm, email: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="password">Mot de passe</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({...userForm, password: e.target.value})}
-                    placeholder={editingUser ? "Laisser vide pour ne pas changer" : ""}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="role">Rôle</Label>
-                  <Select value={userForm.role} onValueChange={(value) => setUserForm({...userForm, role: value})}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="STUDENT">Étudiant</SelectItem>
-                      <SelectItem value="TUTOR">Tuteur</SelectItem>
-                      <SelectItem value="ADMIN">Administrateur</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="phone">Téléphone</Label>
-                  <Input
-                    id="phone"
-                    value={userForm.phone}
-                    onChange={(e) => setUserForm({...userForm, phone: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="userClass">Classe</Label>
-                  <Input
-                    id="userClass"
-                    value={userForm.userClass}
-                    onChange={(e) => setUserForm({...userForm, userClass: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="section">Section</Label>
-                  <Input
-                    id="section"
-                    value={userForm.section}
-                    onChange={(e) => setUserForm({...userForm, section: e.target.value})}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="department">Département</Label>
-                  <Input
-                    id="department"
-                    value={userForm.department}
-                    onChange={(e) => setUserForm({...userForm, department: e.target.value})}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="address">Adresse</Label>
-                  <Input
-                    id="address"
-                    value={userForm.address}
-                    onChange={(e) => setUserForm({...userForm, address: e.target.value})}
-                  />
-                </div>
+
+                {/* Informations académiques (pour étudiants) */}
+                {userForm.role === 'STUDENT' && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3 text-gray-900">Informations Académiques</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="userClass">Classe *</Label>
+                        <Select value={userForm.userClass} onValueChange={(value) => setUserForm({...userForm, userClass: value, section: ''})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner une classe" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="9ème">9ème Fondamentale</SelectItem>
+                            <SelectItem value="Terminale">Terminale</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="section">Section</Label>
+                        {userForm.userClass === 'Terminale' ? (
+                          <Select value={userForm.section} onValueChange={(value) => setUserForm({...userForm, section: value})}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner une section" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SMP">SMP (Sciences Mathématiques et Physiques)</SelectItem>
+                              <SelectItem value="SVT">SVT (Sciences de la Vie et de la Terre)</SelectItem>
+                              <SelectItem value="SES">SES (Sciences Économiques et Sociales)</SelectItem>
+                              <SelectItem value="LLA">LLA (Lettres et Langues Africaines)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            id="section"
+                            value={userForm.section}
+                            onChange={(e) => setUserForm({...userForm, section: e.target.value})}
+                            placeholder="Ex: A, B, C..."
+                          />
+                        )}
+                      </div>
+                      <div className="col-span-2">
+                        <Label htmlFor="department">Département</Label>
+                        <Input
+                          id="department"
+                          value={userForm.department}
+                          onChange={(e) => setUserForm({...userForm, department: e.target.value})}
+                          placeholder="Ex: Sciences, Lettres, etc."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Informations professionnelles (pour tuteurs) */}
+                {userForm.role === 'TUTOR' && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3 text-gray-900">Informations Professionnelles</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <Label htmlFor="department">Département/Spécialité *</Label>
+                        <Select value={userForm.department} onValueChange={(value) => setUserForm({...userForm, department: value})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner une spécialité" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Sciences">Sciences</SelectItem>
+                            <SelectItem value="Mathématiques">Mathématiques</SelectItem>
+                            <SelectItem value="Physique">Physique</SelectItem>
+                            <SelectItem value="Chimie">Chimie</SelectItem>
+                            <SelectItem value="Biologie">Biologie</SelectItem>
+                            <SelectItem value="Lettres">Lettres</SelectItem>
+                            <SelectItem value="Histoire-Géographie">Histoire-Géographie</SelectItem>
+                            <SelectItem value="Langues">Langues</SelectItem>
+                            <SelectItem value="Philosophie">Philosophie</SelectItem>
+                            <SelectItem value="Économie">Économie</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Informations administratives (pour admins) */}
+                {userForm.role === 'ADMIN' && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3 text-gray-900">Informations Administratives</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <Label htmlFor="department">Département</Label>
+                        <Input
+                          id="department"
+                          value={userForm.department}
+                          onChange={(e) => setUserForm({...userForm, department: e.target.value})}
+                          placeholder="Ex: Administration, IT, etc."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setShowUserModal(false)}>

@@ -160,11 +160,26 @@ const Register = () => {
     );
     
     if (success) {
-      toast({
-        title: "Inscription réussie",
-        description: "Bienvenue sur EduPrep ! Votre compte a été créé avec succès",
-      });
-      navigate('/');
+      // Redirection basée sur le rôle
+      if (formData.accountType === "student") {
+        toast({
+          title: "Inscription réussie",
+          description: "Bienvenue étudiant ! Votre compte a été créé avec succès",
+        });
+        navigate('/student/dashboard');
+      } else if (formData.accountType === "tutor") {
+        toast({
+          title: "Inscription réussie",
+          description: "Bienvenue tuteur ! Votre compte a été créé avec succès",
+        });
+        navigate('/profile');
+      } else {
+        toast({
+          title: "Inscription réussie",
+          description: "Bienvenue sur TYALA ! Votre compte a été créé avec succès",
+        });
+        navigate('/');
+      }
     } else {
       toast({
         title: "Erreur d'inscription",
@@ -182,7 +197,7 @@ const Register = () => {
           <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
             <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
             <span className="font-bold text-xl sm:text-2xl bg-gradient-primary bg-clip-text text-transparent">
-              EduPrep
+              TYALA
             </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">

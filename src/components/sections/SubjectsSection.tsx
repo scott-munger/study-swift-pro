@@ -149,7 +149,7 @@ const SubjectsSection = () => {
             Couverture Complète des Disciplines
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl sm:max-w-3xl mx-auto px-4 sm:px-0">
-            Contenus adaptés pour les filières de Terminale (SMP, SVT, SES, LLA) et la 3ème fondamentale
+            Contenus adaptés pour les filières de Terminale (SMP, SVT, SES, LLA) et la 9ème fondamentale
           </p>
         </div>
 
@@ -198,7 +198,7 @@ const SubjectsSection = () => {
         <div>
           <div className="text-center mb-8 sm:mb-12">
             <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mb-3 sm:mb-4">
-              3ème — Classe Fondamentale
+              9ème — Classe Fondamentale
             </h3>
             <p className="text-sm sm:text-base text-muted-foreground px-4 sm:px-0">
               Matières essentielles pour construire des bases académiques solides
@@ -246,7 +246,7 @@ const SubjectsSection = () => {
                 Terminale
               </button>
               <button className="bg-white border border-border text-foreground px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-semibold shadow-soft hover:shadow-primary hover:scale-105 transition-spring text-sm sm:text-base">
-                3ème
+                9ème
               </button>
             </div>
           </div>

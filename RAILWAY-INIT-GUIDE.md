@@ -40,17 +40,17 @@ Créer un endpoint d'initialisation temporaire dans votre API.
 # Test de connexion admin
 curl -X POST -H "Content-Type: application/json" \
   -d '{"email":"admin@test.com","password":"admin123"}' \
-  https://study-swift-pro-production.up.railway.app/api/auth/login
+  https://tyala-platform-production.up.railway.app/api/auth/login
 
 # Test de connexion étudiant
 curl -X POST -H "Content-Type: application/json" \
   -d '{"email":"etudiant@test.com","password":"etudiant123"}' \
-  https://study-swift-pro-production.up.railway.app/api/auth/login
+  https://tyala-platform-production.up.railway.app/api/auth/login
 
 # Test de connexion tuteur
 curl -X POST -H "Content-Type: application/json" \
   -d '{"email":"tuteur@test.com","password":"tuteur123"}' \
-  https://study-swift-pro-production.up.railway.app/api/auth/login
+  https://tyala-platform-production.up.railway.app/api/auth/login
 ```
 
 ## 📝 Comptes de test créés

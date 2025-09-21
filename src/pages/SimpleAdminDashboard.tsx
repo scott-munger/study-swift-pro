@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -90,6 +91,7 @@ interface Stats {
 }
 
 const SimpleAdminDashboard = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats>({
@@ -163,22 +165,37 @@ const SimpleAdminDashboard = () => {
   useEffect(() => {
     console.log('🔐 Vérification de l\'authentification...');
     const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
     const savedAdmin = localStorage.getItem('adminUser');
     
     console.log('🔐 Token trouvé:', savedToken ? 'Oui' : 'Non');
+    console.log('🔐 User trouvé:', savedUser ? 'Oui' : 'Non');
     console.log('🔐 Admin trouvé:', savedAdmin ? 'Oui' : 'Non');
     
-    if (savedToken) {
-      console.log('🔐 Token valide, chargement des données...');
-      setToken(savedToken);
-      // Délai pour s'assurer que le token est bien défini
-      setTimeout(() => {
-        loadData();
-      }, 100);
+    if (savedToken && savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        console.log('🔐 Utilisateur connecté:', userData);
+        
+        if (userData.role === 'ADMIN') {
+          console.log('🔐 Utilisateur admin confirmé, chargement des données...');
+          setToken(savedToken);
+          // Délai pour s'assurer que le token est bien défini
+          setTimeout(() => {
+            loadData();
+          }, 100);
+        } else {
+          console.log('🔐 Utilisateur non-admin, redirection...');
+          navigate('/');
+        }
+      } catch (error) {
+        console.error('🔐 Erreur parsing user data:', error);
+        navigate('/admin/login');
+      }
     } else {
-      console.log('🔐 Aucun token, redirection vers la connexion...');
+      console.log('🔐 Aucun token ou utilisateur, redirection vers la connexion...');
       // Rediriger vers la page de connexion admin
-      window.location.href = '/admin/login';
+      navigate('/admin/login');
     }
   }, []);
 
@@ -221,7 +238,7 @@ const SimpleAdminDashboard = () => {
 
   const loadStats = async (currentToken = token) => {
     console.log('🔍 Chargement des statistiques avec token:', currentToken ? 'présent' : 'absent');
-    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/stats', {
+    const response = await fetch('http://localhost:8081/api/admin/stats', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -242,7 +259,7 @@ const SimpleAdminDashboard = () => {
 
   const loadUsers = async (currentToken = token) => {
     console.log('👥 Chargement des utilisateurs...');
-    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/users', {
+    const response = await fetch('http://localhost:8081/api/admin/users', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -263,7 +280,7 @@ const SimpleAdminDashboard = () => {
 
   const loadSubjects = async (currentToken = token) => {
     console.log('📚 Chargement des matières...');
-    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/subjects', {
+    const response = await fetch('http://localhost:8081/api/admin/subjects', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -284,28 +301,34 @@ const SimpleAdminDashboard = () => {
 
   const loadFlashcards = async (currentToken = token) => {
     console.log('🃏 Chargement des flashcards...');
-    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/flashcards', {
-      headers: {
-        'Authorization': `Bearer ${currentToken}`,
-        'Content-Type': 'application/json'
+    
+    try {
+      // Récupérer toutes les flashcards en une seule requête avec une limite élevée
+      const response = await fetch('http://localhost:8081/api/admin/flashcards?limit=1000', {
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('🃏 Réponse flashcards:', response.status, response.statusText);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🃏 Données flashcards reçues:', data.flashcards?.length || 0, 'flashcards sur', data.pagination?.total || 0, 'total');
+        setFlashcards(data.flashcards || []);
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Erreur flashcards:', errorData);
       }
-    });
-    
-    console.log('🃏 Réponse flashcards:', response.status, response.statusText);
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log('🃏 Données flashcards reçues:', data.flashcards?.length || 0, 'flashcards');
-      setFlashcards(data.flashcards || []);
-    } else {
-      const errorData = await response.json();
-      console.error('❌ Erreur flashcards:', errorData);
+    } catch (error) {
+      console.error('❌ Erreur lors du chargement des flashcards:', error);
     }
   };
 
   const handleCreateUser = async () => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/users', {
+      const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -344,7 +367,7 @@ const SimpleAdminDashboard = () => {
     if (!editingUser) return;
 
     try {
-      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/users/${editingUser.id}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -383,7 +406,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
 
     try {
-      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/users/${userId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -416,7 +439,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateSubject = async () => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/subjects', {
+      const response = await fetch('http://localhost:8081/api/admin/subjects', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -454,7 +477,7 @@ const SimpleAdminDashboard = () => {
     if (!editingSubject) return;
 
     try {
-      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/subjects/${editingSubject.id}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/subjects/${editingSubject.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -493,7 +516,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) return;
 
     try {
-      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -527,7 +550,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
 
     try {
-      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/flashcards/${flashcardId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -591,7 +614,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateFlashcard = async () => {
     try {
-      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/flashcards', {
+      const response = await fetch('http://localhost:8081/api/flashcards', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -658,15 +681,51 @@ const SimpleAdminDashboard = () => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('adminUser');
-    window.location.href = '/admin/login';
+    localStorage.removeItem('user'); // Nettoyer aussi les données utilisateur
+    navigate('/'); // Rediriger vers la page d'accueil générale
   };
 
+  // Vérification du token et affichage de chargement
   if (!token) {
+    console.log('🔐 Aucun token disponible, affichage de chargement...');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-4">Chargement...</h1>
-          <p>Redirection vers la page de connexion...</p>
+          <p>Vérification de l'authentification...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Affichage de chargement des données
+  if (loading && (!stats || !users.length)) {
+    console.log('📊 Chargement des données en cours...');
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Chargement des données...</h2>
+          <p className="text-gray-600">Récupération des statistiques et données administratives...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Affichage d'erreur si pas de données après chargement
+  if (!loading && (!stats || !users.length)) {
+    console.log('❌ Aucune donnée disponible après chargement');
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Erreur de chargement</h2>
+          <p className="text-gray-600 mb-4">Impossible de charger les données administratives.</p>
+          <Button onClick={() => window.location.reload()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Recharger la page
+          </Button>
         </div>
       </div>
     );

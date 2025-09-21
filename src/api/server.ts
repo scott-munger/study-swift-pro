@@ -13,6 +13,7 @@ app.use(cors({
     process.env.CORS_ORIGIN || '*',
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://localhost:8080',
     'https://*.netlify.app',
     'https://*.railway.app'
   ],
@@ -114,7 +115,7 @@ app.post('/api/init', async (req, res) => {
             password: hashedPassword,
             firstName: account.firstName,
             lastName: account.lastName,
-            role: account.role,
+            role: account.role as any,
             userClass: account.userClass || null,
             section: account.section || null,
             department: account.department || null
@@ -167,7 +168,7 @@ app.post('/api/demo/login', async (req, res) => {
       { 
         userId: email, 
         email: email, 
-        role: account.role 
+        role: account.role as any 
       }, 
       JWT_SECRET, 
       { expiresIn: '24h' }
@@ -180,7 +181,7 @@ app.post('/api/demo/login', async (req, res) => {
         email: email,
         firstName: account.firstName,
         lastName: account.lastName,
-        role: account.role,
+        role: account.role as any,
         userClass: account.userClass || null,
         section: account.section || null,
         department: account.department || null,
@@ -265,7 +266,7 @@ app.post('/api/auth/register', async (req, res) => {
         password: hashedPassword,
         firstName,
         lastName,
-        role: userRole,
+        role: userRole as Role,
         userClass: userClass || null,
         section: section || null,
         department: department || null,
@@ -290,7 +291,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -328,7 +329,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -574,22 +575,183 @@ app.get('/api/flashcards/:subjectId', async (req, res) => {
 });
 
 // Create a new flashcard
-app.post('/api/flashcards', async (req, res) => {
+app.post('/api/flashcards', authenticateToken, async (req: any, res) => {
   try {
-    const { question, answer, subjectId, userId, difficulty } = req.body;
+    const { question, answer, subjectId, difficulty } = req.body;
+    const userId = req.user.userId;
+
+    console.log('Données reçues:', { question, answer, subjectId, difficulty, userId });
+
+    if (!question || !answer || !subjectId) {
+      return res.status(400).json({ error: 'Question, réponse et matière sont requis' });
+    }
+
+    // Vérifier que la matière existe
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) }
+    });
+
+    if (!subject) {
+      return res.status(400).json({ error: 'Matière non trouvée' });
+    }
+
+    console.log('Matière trouvée:', subject);
+
     const flashcard = await prisma.flashcard.create({
       data: {
         question,
         answer,
         subjectId: parseInt(subjectId),
-        userId: parseInt(userId),
-        difficulty: difficulty || 'medium'
+        userId: userId,
+        difficulty: difficulty || 'MEDIUM'
+      },
+      include: {
+        subject: {
+          select: { name: true, level: true, section: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+    
+    console.log('Flashcard créée avec succès:', flashcard);
+    res.status(201).json(flashcard);
+  } catch (error) {
+    console.error('Erreur lors de la création de la flashcard:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ error: 'Échec de la création de la flashcard', details: error.message });
+  }
+});
+
+// Update a flashcard
+app.put('/api/flashcards/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { question, answer, subjectId, difficulty } = req.body;
+    const userId = req.user.userId;
+
+    // Vérifier que la flashcard existe et appartient à l'utilisateur
+    const existingFlashcard = await prisma.flashcard.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!existingFlashcard) {
+      return res.status(404).json({ error: 'Flashcard non trouvée' });
+    }
+
+    // Vérifier les permissions (propriétaire ou admin)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+
+    if (existingFlashcard.userId !== userId && user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Non autorisé à modifier cette flashcard' });
+    }
+
+    const flashcard = await prisma.flashcard.update({
+      where: { id: parseInt(id) },
+      data: {
+        question: question || existingFlashcard.question,
+        answer: answer || existingFlashcard.answer,
+        subjectId: subjectId ? parseInt(subjectId) : existingFlashcard.subjectId,
+        difficulty: difficulty || existingFlashcard.difficulty
+      },
+      include: {
+        subject: {
+          select: { name: true, level: true, section: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
       }
     });
     res.json(flashcard);
   } catch (error) {
-    console.error('Erreur lors de la création de la flashcard:', error);
-    res.status(500).json({ error: 'Échec de la création de la flashcard' });
+    console.error('Erreur lors de la mise à jour de la flashcard:', error);
+    res.status(500).json({ error: 'Échec de la mise à jour de la flashcard' });
+  }
+});
+
+// Delete a flashcard
+app.delete('/api/flashcards/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Vérifier que la flashcard existe et appartient à l'utilisateur
+    const existingFlashcard = await prisma.flashcard.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!existingFlashcard) {
+      return res.status(404).json({ error: 'Flashcard non trouvée' });
+    }
+
+    // Vérifier les permissions (propriétaire ou admin)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+
+    if (existingFlashcard.userId !== userId && user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Non autorisé à supprimer cette flashcard' });
+    }
+
+    await prisma.flashcard.delete({
+      where: { id: parseInt(id) }
+    });
+
+    res.json({ message: 'Flashcard supprimée avec succès' });
+  } catch (error) {
+    console.error('Erreur lors de la suppression de la flashcard:', error);
+    res.status(500).json({ error: 'Échec de la suppression de la flashcard' });
+  }
+});
+
+// Get user's flashcards
+app.get('/api/user/flashcards', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.userId;
+    const { subjectId, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where: any = { userId: userId };
+    if (subjectId) {
+      where.subjectId = parseInt(subjectId);
+    }
+
+    const [flashcards, total] = await Promise.all([
+      prisma.flashcard.findMany({
+        where,
+        include: {
+          subject: {
+            select: { name: true, level: true }
+          },
+          _count: {
+            select: { attempts: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit)
+      }),
+      prisma.flashcard.count({ where })
+    ]);
+
+    res.json({
+      flashcards,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des flashcards utilisateur:', error);
+    res.status(500).json({ error: 'Échec de la récupération des flashcards' });
   }
 });
 
@@ -741,7 +903,7 @@ app.put('/api/users/:userId', async (req, res) => {
     const { userId } = req.params;
     const { firstName, lastName, userClass, section } = req.body;
     const user = await prisma.user.update({
-      where: { id: parseInt(userId) },
+        where: { id: parseInt(userId) },
       data: { firstName, lastName, userClass, section },
       select: {
         id: true,
@@ -1307,21 +1469,26 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
-    // Si c'est un tuteur, donner accès à toutes les matières
+    // Si c'est un tuteur ou admin, donner accès à toutes les matières
     let subjects;
     
-    if (user.role === 'TUTOR') {
-      // Tuteurs : accès à toutes les matières
+    if (user.role === 'TUTOR' || user.role === 'ADMIN') {
+      // Tuteurs et admins : accès à toutes les matières
       subjects = await prisma.subject.findMany();
     } else {
-      // Étudiants : accès limité à leur niveau
+      // Étudiants : accès limité à leur niveau et section
       if (!user.userClass) {
         return res.json([]); // Retourner un tableau vide si pas de classe définie
       }
 
+      // Filtrer selon le niveau ET la section
       subjects = await prisma.subject.findMany({
         where: {
-          level: user.userClass
+          level: user.userClass,
+          OR: [
+            { section: null }, // Matières générales (accessibles à tous)
+            { section: user.section } // Matières spécifiques à la section de l'étudiant
+          ]
         }
       });
     }
@@ -1741,7 +1908,7 @@ app.put('/api/admin/users/:userId/role', authenticateToken, requireAdmin, async 
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: parseInt(userId) },
+        where: { id: parseInt(userId) },
       data: { role },
       select: {
         id: true,
@@ -1871,7 +2038,7 @@ app.put('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req:
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: parseInt(userId) },
+        where: { id: parseInt(userId) },
       data: {
         email: email || undefined,
         firstName,
@@ -1923,7 +2090,7 @@ app.put('/api/admin/users/:userId/password', authenticateToken, requireAdmin, as
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await prisma.user.update({
-      where: { id: parseInt(userId) },
+        where: { id: parseInt(userId) },
       data: {
         password: hashedPassword,
         updatedAt: new Date()
@@ -1934,6 +2101,189 @@ app.put('/api/admin/users/:userId/password', authenticateToken, requireAdmin, as
   } catch (error) {
     console.error('Erreur lors du changement de mot de passe:', error);
     res.status(500).json({ error: 'Échec du changement de mot de passe' });
+  }
+});
+
+// ===== ROUTES CRUD UTILISATEURS (pour les utilisateurs connectés) =====
+
+// GET - Récupérer les flashcards de l'utilisateur connecté
+app.get('/api/user/flashcards', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.userId;
+    const { subjectId, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where: any = { userId: userId };
+    if (subjectId) {
+      where.subjectId = parseInt(subjectId);
+    }
+
+    const [flashcards, total] = await Promise.all([
+      prisma.flashcard.findMany({
+        where,
+        include: {
+          subject: {
+            select: { name: true, level: true }
+          },
+          _count: {
+            select: { attempts: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit)
+      }),
+      prisma.flashcard.count({ where })
+    ]);
+
+    res.json({
+      flashcards,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des flashcards utilisateur:', error);
+    res.status(500).json({ error: 'Échec de la récupération des flashcards' });
+  }
+});
+
+// GET - Récupérer les statistiques de l'utilisateur connecté
+app.get('/api/user/stats', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Récupérer l'utilisateur pour connaître sa classe et son rôle
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { userClass: true, section: true, role: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    // Récupérer les statistiques des flashcards
+    const [totalFlashcards, totalAttempts, correctAttempts] = await Promise.all([
+      prisma.flashcard.count({ where: { userId: userId } }),
+      prisma.flashcardAttempt.count({ where: { userId: userId } }),
+      prisma.flashcardAttempt.count({ 
+        where: { 
+          userId: userId,
+          isCorrect: true 
+        } 
+      })
+    ]);
+
+    const accuracy = totalAttempts > 0 ? (correctAttempts / totalAttempts) * 100 : 0;
+
+    // Récupérer les statistiques par matière
+    const subjectStats = await prisma.flashcard.groupBy({
+      by: ['subjectId'],
+      where: { userId: userId },
+      _count: { id: true }
+    });
+
+    const enrichedSubjectStats = await Promise.all(
+      subjectStats.map(async (stat) => {
+        const subject = await prisma.subject.findUnique({
+          where: { id: stat.subjectId },
+          select: { name: true, level: true }
+        });
+
+        const attempts = await prisma.flashcardAttempt.findMany({
+          where: {
+            userId: userId,
+            flashcard: {
+              subjectId: stat.subjectId
+            }
+          }
+        });
+
+        const correctAttempts = attempts.filter(a => a.isCorrect).length;
+        const accuracy = attempts.length > 0 ? (correctAttempts / attempts.length) * 100 : 0;
+
+        return {
+          subjectId: stat.subjectId,
+          subjectName: subject?.name || 'Inconnu',
+          level: subject?.level || 'Inconnu',
+          totalFlashcards: stat._count.id,
+          totalAttempts: attempts.length,
+          correctAttempts: correctAttempts,
+          accuracy: Math.round(accuracy * 100) / 100
+        };
+      })
+    );
+
+    res.json({
+      user: {
+        id: userId,
+        userClass: user.userClass,
+        section: user.section,
+        role: user.role
+      },
+      stats: {
+        totalFlashcards,
+        totalAttempts,
+        correctAttempts,
+        accuracy: Math.round(accuracy * 100) / 100
+      },
+      subjectStats: enrichedSubjectStats
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des statistiques utilisateur:', error);
+    res.status(500).json({ error: 'Échec de la récupération des statistiques' });
+  }
+});
+
+// GET - Récupérer les tentatives de flashcards de l'utilisateur
+app.get('/api/user/attempts', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.userId;
+    const { subjectId, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where: any = { userId: userId };
+    if (subjectId) {
+      where.flashcard = {
+        subjectId: parseInt(subjectId)
+      };
+    }
+
+    const [attempts, total] = await Promise.all([
+      prisma.flashcardAttempt.findMany({
+        where,
+        include: {
+          flashcard: {
+            include: {
+              subject: {
+                select: { name: true, level: true }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit)
+      }),
+      prisma.flashcardAttempt.count({ where })
+    ]);
+
+    res.json({
+      attempts,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des tentatives:', error);
+    res.status(500).json({ error: 'Échec de la récupération des tentatives' });
   }
 });
 
@@ -1950,7 +2300,7 @@ app.post('/api/admin/tutors', authenticateToken, requireAdmin, async (req: any, 
 
     // Vérifier que l'utilisateur existe et est un tuteur
     const user = await prisma.user.findUnique({
-      where: { id: parseInt(userId) },
+        where: { id: parseInt(userId) },
       select: { role: true }
     });
 
@@ -2171,6 +2521,67 @@ app.get('/api/admin/subjects', authenticateToken, requireAdmin, async (req: any,
   } catch (error) {
     console.error('Erreur lors de la récupération des matières:', error);
     res.status(500).json({ error: 'Échec de la récupération des matières' });
+  }
+});
+
+// POST - Créer une nouvelle flashcard (admin)
+app.post('/api/admin/flashcards', authenticateToken, requireAdmin, async (req: any, res) => {
+  try {
+    const { question, answer, subjectId, difficulty, userId } = req.body;
+
+    if (!question || !answer || !subjectId) {
+      return res.status(400).json({ error: 'Question, réponse et matière sont requis' });
+    }
+
+    // Vérifier que la matière existe
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) }
+    });
+
+    if (!subject) {
+      return res.status(400).json({ error: 'Matière non trouvée' });
+    }
+
+    // Vérifier que l'utilisateur existe si spécifié
+    let targetUserId = userId;
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: parseInt(userId) }
+      });
+      if (!user) {
+        return res.status(400).json({ error: 'Utilisateur non trouvé' });
+      }
+      targetUserId = parseInt(userId);
+    } else {
+      // Si aucun utilisateur spécifié, utiliser l'admin connecté
+      targetUserId = req.user.userId;
+    }
+
+    const flashcard = await prisma.flashcard.create({
+      data: {
+        question,
+        answer,
+        subjectId: parseInt(subjectId),
+        userId: targetUserId,
+        difficulty: difficulty || 'MEDIUM'
+      },
+      include: {
+        subject: {
+          select: { name: true, level: true, section: true }
+        },
+        user: {
+          select: { firstName: true, lastName: true }
+        }
+      }
+    });
+
+    res.status(201).json({
+      message: 'Flashcard créée avec succès',
+      flashcard
+    });
+  } catch (error) {
+    console.error('Erreur lors de la création de la flashcard:', error);
+    res.status(500).json({ error: 'Échec de la création de la flashcard' });
   }
 });
 

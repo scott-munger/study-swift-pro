@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editedFirstName, setEditedFirstName] = useState(user?.firstName || "");
@@ -33,13 +33,41 @@ const Profile = () => {
     );
   }
 
-  const handleSave = () => {
-    // Ici on pourrait sauvegarder les modifications
-    setIsEditing(false);
-    toast({
-      title: "Profil mis à jour",
-      description: "Vos informations ont été sauvegardées avec succès",
-    });
+  const handleSave = async () => {
+    try {
+      const profileData = {
+        firstName: editedFirstName,
+        lastName: editedLastName,
+        userClass: editedClass,
+        section: editedSection,
+        department: editedDepartment,
+        phone: editedPhone,
+        address: editedAddress
+      };
+
+      const success = await updateProfile(profileData);
+      
+      if (success) {
+        setIsEditing(false);
+        toast({
+          title: "Profil mis à jour",
+          description: "Vos informations ont été sauvegardées avec succès",
+        });
+      } else {
+        toast({
+          title: "Erreur",
+          description: "Impossible de sauvegarder les modifications",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors de la sauvegarde",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleCancel = () => {

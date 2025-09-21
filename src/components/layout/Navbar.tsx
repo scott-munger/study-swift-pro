@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/enhanced-button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye } from "lucide-react";
@@ -10,7 +10,8 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(0);
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout, clearStorage } = useAuth();
   const { isAdmin: contextIsAdmin } = useAdmin();
   const isLoggedIn = !!user;
 
@@ -18,9 +19,24 @@ const Navbar = () => {
   React.useEffect(() => {
     setForceUpdate(prev => prev + 1);
   }, [location.pathname]);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  const handleClearStorage = () => {
+    clearStorage();
+    navigate('/login');
+    window.location.reload(); // Forcer le rechargement complet
+  };
   
   // Vérifier si l'utilisateur est admin - logique simplifiée et robuste
   const isAdmin = (() => {
+    // Sur les pages publiques, toujours afficher le menu général
+    const publicPages = ['/', '/login', '/register'];
+    if (publicPages.includes(location.pathname)) return false;
+    
     // 1. Vérifier via le contexte admin
     if (contextIsAdmin) return true;
     
@@ -73,12 +89,17 @@ const Navbar = () => {
         { name: "Mon Profil", href: "/profile" },
         { name: "Forum", href: "/forum" },
       ];
-    } else {
+    } else if (user?.role === 'STUDENT') {
       return [
         { name: "Accueil", href: "/" },
         { name: "Mon Tableau de Bord", href: "/student/dashboard" },
         { name: "Flashcards", href: "/flashcards" },
         { name: "Forum", href: "/forum" },
+      ];
+    } else {
+      // Menu général du site pour les utilisateurs non connectés
+      return [
+        { name: "Accueil", href: "/" },
       ];
     }
   };
@@ -214,9 +235,13 @@ const Navbar = () => {
                     Profil
                   </Button>
                 </Link>
-                <Button variant="outline" size="sm" onClick={logout}>
+                <Button variant="outline" size="sm" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Déconnexion
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleClearStorage}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Nettoyer Cache
                 </Button>
               </>
             ) : (
@@ -281,9 +306,13 @@ const Navbar = () => {
                             Profil
                           </Button>
                         </Link>
-                        <Button variant="outline" className="w-full" onClick={logout}>
+                        <Button variant="outline" className="w-full" onClick={handleLogout}>
                           <LogOut className="w-4 h-4 mr-2" />
                           Déconnexion
+                        </Button>
+                        <Button variant="destructive" className="w-full" onClick={handleClearStorage}>
+                          <Settings className="w-4 h-4 mr-2" />
+                          Nettoyer Cache
                         </Button>
                       </>
                     ) : (

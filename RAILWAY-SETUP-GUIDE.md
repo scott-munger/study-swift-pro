@@ -60,7 +60,7 @@ Une fois configuré, testez avec :
 ```bash
 curl -X POST -H "Content-Type: application/json" \
   -d '{"email":"admin@test.com","password":"admin123"}' \
-  https://study-swift-pro-production.up.railway.app/api/auth/login
+  https://tyala-platform-production.up.railway.app/api/auth/login
 ```
 
 ## 🆘 Si problème persiste

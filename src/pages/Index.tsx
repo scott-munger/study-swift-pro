@@ -12,12 +12,13 @@ const Index = () => {
   const { isAdmin } = useAdmin();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Si l'utilisateur est connecté et est admin, rediriger vers l'administration
-    if (user && (user.role === 'ADMIN' || isAdmin)) {
-      navigate('/simple-admin/dashboard');
-    }
-  }, [user, isAdmin, navigate]);
+  // Commenté pour permettre l'affichage de la page d'accueil même pour les admins
+  // useEffect(() => {
+  //   // Si l'utilisateur est connecté et est admin, rediriger vers l'administration
+  //   if (user && (user.role === 'ADMIN' || isAdmin)) {
+  //     navigate('/simple-admin/dashboard');
+  //   }
+  // }, [user, isAdmin, navigate]);
 
   return (
     <main className="min-h-screen">
