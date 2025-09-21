@@ -48,6 +48,100 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Serveur en cours d\'exécution' });
 });
 
+// Endpoint d'initialisation des tables et comptes de test
+app.post('/api/init', async (req, res) => {
+  try {
+    console.log('🚀 Initialisation des tables et comptes de test...');
+    
+    if (!prisma) {
+      return res.status(503).json({ 
+        error: 'Base de données non connectée' 
+      });
+    }
+
+    // Créer les comptes de test
+    const testAccounts = [
+      {
+        email: 'admin@test.com',
+        password: 'admin123',
+        firstName: 'Admin',
+        lastName: 'Test',
+        role: 'ADMIN'
+      },
+      {
+        email: 'etudiant@test.com',
+        password: 'etudiant123',
+        firstName: 'Étudiant',
+        lastName: 'Test',
+        role: 'STUDENT',
+        userClass: 'Terminale A',
+        section: 'A'
+      },
+      {
+        email: 'tuteur@test.com',
+        password: 'tuteur123',
+        firstName: 'Tuteur',
+        lastName: 'Test',
+        role: 'TUTOR',
+        department: 'Mathématiques'
+      }
+    ];
+
+    const createdUsers = [];
+
+    for (const account of testAccounts) {
+      try {
+        // Vérifier si l'utilisateur existe déjà
+        const existingUser = await prisma.user.findUnique({
+          where: { email: account.email }
+        });
+
+        if (existingUser) {
+          console.log(`⚠️ Utilisateur ${account.email} existe déjà`);
+          createdUsers.push({ email: account.email, status: 'exists' });
+          continue;
+        }
+
+        // Hasher le mot de passe
+        const hashedPassword = await bcrypt.hash(account.password, 10);
+
+        // Créer l'utilisateur
+        const user = await prisma.user.create({
+          data: {
+            email: account.email,
+            password: hashedPassword,
+            firstName: account.firstName,
+            lastName: account.lastName,
+            role: account.role,
+            userClass: account.userClass || null,
+            section: account.section || null,
+            department: account.department || null
+          }
+        });
+
+        console.log(`✅ Utilisateur créé : ${account.email} (${account.role})`);
+        createdUsers.push({ email: account.email, status: 'created', role: account.role });
+      } catch (error) {
+        console.error(`❌ Erreur lors de la création de ${account.email}:`, error);
+        createdUsers.push({ email: account.email, status: 'error', error: error.message });
+      }
+    }
+
+    res.json({
+      status: 'OK',
+      message: 'Initialisation terminée',
+      users: createdUsers
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de l\'initialisation:', error);
+    res.status(500).json({
+      error: 'Erreur lors de l\'initialisation',
+      details: error.message
+    });
+  }
+});
+
 // Endpoint de santé simple pour Railway
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Serveur en cours d\'exécution' });

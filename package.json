@@ -19,7 +19,9 @@
     "db:init": "node init-database.cjs",
     "db:reset": "npx prisma db push --force-reset && npm run db:seed",
     "db:flashcards": "node seed-flashcards.cjs",
-    "cleanup": "node cleanup-system.cjs"
+    "cleanup": "node cleanup-system.cjs",
+    "railway:init": "node init-railway-database.js",
+    "railway:tables": "node init-railway-tables.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
