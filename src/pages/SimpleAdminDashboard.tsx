@@ -221,7 +221,7 @@ const SimpleAdminDashboard = () => {
 
   const loadStats = async (currentToken = token) => {
     console.log('🔍 Chargement des statistiques avec token:', currentToken ? 'présent' : 'absent');
-    const response = await fetch('http://localhost:8081/api/admin/stats', {
+    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/stats', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -242,7 +242,7 @@ const SimpleAdminDashboard = () => {
 
   const loadUsers = async (currentToken = token) => {
     console.log('👥 Chargement des utilisateurs...');
-    const response = await fetch('http://localhost:8081/api/admin/users', {
+    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/users', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -263,7 +263,7 @@ const SimpleAdminDashboard = () => {
 
   const loadSubjects = async (currentToken = token) => {
     console.log('📚 Chargement des matières...');
-    const response = await fetch('http://localhost:8081/api/admin/subjects', {
+    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/subjects', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -284,7 +284,7 @@ const SimpleAdminDashboard = () => {
 
   const loadFlashcards = async (currentToken = token) => {
     console.log('🃏 Chargement des flashcards...');
-    const response = await fetch('http://localhost:8081/api/admin/flashcards', {
+    const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/flashcards', {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -305,7 +305,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateUser = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/users', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -344,7 +344,7 @@ const SimpleAdminDashboard = () => {
     if (!editingUser) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
+      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -383,7 +383,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
+      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -416,7 +416,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateSubject = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/admin/subjects', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/admin/subjects', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -454,7 +454,7 @@ const SimpleAdminDashboard = () => {
     if (!editingSubject) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${editingSubject.id}`, {
+      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/subjects/${editingSubject.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -493,7 +493,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -527,7 +527,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
+      const response = await fetch(`https://study-swift-pro-production.up.railway.app/api/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -591,7 +591,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateFlashcard = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/flashcards', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/flashcards', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       
       // Appel à l'API réelle
-      const response = await fetch('http://localhost:8081/api/auth/login', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       
       // Appel à l'API d'inscription
-      const response = await fetch('http://localhost:8081/api/auth/register', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -154,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      const response = await fetch('http://localhost:8081/api/profile', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -181,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteAccount = async (): Promise<boolean> => {
     try {
-      const response = await fetch('http://localhost:8081/api/profile', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -199,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
     try {
-      const response = await fetch('http://localhost:8081/api/profile/password', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile/password', {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ currentPassword, newPassword })
@@ -214,7 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async (): Promise<void> => {
     try {
-      const response = await fetch('http://localhost:8081/api/profile', {
+      const response = await fetch('https://study-swift-pro-production.up.railway.app/api/profile', {
         headers: getAuthHeaders()
       });
 
