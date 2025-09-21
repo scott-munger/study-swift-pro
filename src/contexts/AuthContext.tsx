@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Appel à l'API réelle
+      // Appel à l'API réelle (avec fallback démo)
       const response = await fetch('https://study-swift-pro-production.up.railway.app/api/auth/login', {
         method: 'POST',
         headers: {
@@ -75,6 +75,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('token', data.token);
+        return true;
+      }
+
+      // Fallback vers le mode démo si l'API normale échoue
+      console.log('Tentative de connexion en mode démo...');
+      const demoResponse = await fetch('https://study-swift-pro-production.up.railway.app/api/demo/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (demoResponse.ok) {
+        const demoData = await demoResponse.json();
+        setUser(demoData.user);
+        localStorage.setItem('user', JSON.stringify(demoData.user));
+        localStorage.setItem('token', demoData.token);
         return true;
       }
 

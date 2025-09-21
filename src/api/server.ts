@@ -55,7 +55,9 @@ app.post('/api/init', async (req, res) => {
     
     if (!prisma) {
       return res.status(503).json({ 
-        error: 'Base de données non connectée' 
+        error: 'Base de données non connectée - Mode démo activé',
+        demo: true,
+        message: 'Utilisez les comptes de démonstration'
       });
     }
 
@@ -139,6 +141,57 @@ app.post('/api/init', async (req, res) => {
       error: 'Erreur lors de l\'initialisation',
       details: error.message
     });
+  }
+});
+
+// Endpoint de démonstration qui fonctionne sans base de données
+app.post('/api/demo/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Comptes de démonstration
+    const demoAccounts = {
+      'admin@test.com': { password: 'admin123', role: 'ADMIN', firstName: 'Admin', lastName: 'Test' },
+      'etudiant@test.com': { password: 'etudiant123', role: 'STUDENT', firstName: 'Étudiant', lastName: 'Test', userClass: 'Terminale A' },
+      'tuteur@test.com': { password: 'tuteur123', role: 'TUTOR', firstName: 'Tuteur', lastName: 'Test', department: 'Mathématiques' }
+    };
+    
+    const account = demoAccounts[email];
+    
+    if (!account || account.password !== password) {
+      return res.status(401).json({ error: 'Identifiants invalides' });
+    }
+    
+    // Créer un token JWT
+    const token = jwt.sign(
+      { 
+        userId: email, 
+        email: email, 
+        role: account.role 
+      }, 
+      JWT_SECRET, 
+      { expiresIn: '24h' }
+    );
+    
+    res.json({
+      token,
+      user: {
+        id: 1,
+        email: email,
+        firstName: account.firstName,
+        lastName: account.lastName,
+        role: account.role,
+        userClass: account.userClass || null,
+        section: account.section || null,
+        department: account.department || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erreur de connexion démo:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
