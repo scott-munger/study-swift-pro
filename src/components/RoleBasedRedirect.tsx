@@ -7,33 +7,65 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Shield, BookOpen, GraduationCap } from 'lucide-react';
 
 const RoleBasedRedirect: React.FC = () => {
+  // TEMPORAIREMENT DÉSACTIVÉ POUR DÉBOGUER
+  console.log('🔍 RoleBasedRedirect - COMPOSANT DÉSACTIVÉ');
+  console.log('🔍 RoleBasedRedirect - Current path:', window.location.pathname);
+  
+  // Ne jamais rediriger - juste afficher un message
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+        <p className="text-gray-600">Vous êtes sur la page dashboard</p>
+        <p className="text-sm text-gray-500 mt-2">Path: {window.location.pathname}</p>
+        <p className="text-sm text-gray-500 mt-2">Ce composant ne redirige plus</p>
+        <p className="text-sm text-gray-500 mt-2">Si vous voyez ce message, le problème ne vient pas d'ici</p>
+        <p className="text-sm text-gray-500 mt-2">Si vous êtes redirigé vers /profile, le problème vient d'ailleurs</p>
+        <p className="text-sm text-gray-500 mt-2">Vérifiez App.tsx pour les redirections par défaut</p>
+        <p className="text-sm text-gray-500 mt-2">Si le problème persiste, vérifiez AuthContext.tsx</p>
+        <p className="text-sm text-gray-500 mt-2">Si le problème persiste encore, vérifiez ProtectedRoute.tsx</p>
+      </div>
+    </div>
+  );
+  
+  // Code original commenté
+  /*
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const navigate = useNavigate();
 
+  // Vérifier si on est sur /dashboard
+  const currentPath = window.location.pathname;
+  console.log('🔍 RoleBasedRedirect - Current path:', currentPath);
+  
+  if (currentPath !== '/dashboard') {
+    console.log('🔍 RoleBasedRedirect - Pas sur /dashboard, retour null');
+    return null;
+  }
+
   useEffect(() => {
+    console.log('🔍 RoleBasedRedirect - useEffect déclenché');
     if (!authLoading && !adminLoading) {
       if (!user) {
+        console.log('🔍 RoleBasedRedirect - Pas d\'utilisateur, redirection vers login');
         navigate('/login');
         return;
       }
 
+      console.log('🔍 RoleBasedRedirect - Redirection depuis /dashboard pour:', user.role);
       // Déterminer le rôle et rediriger
       if (user.role === 'ADMIN' || isAdmin) {
-        // Seuls les administrateurs sont redirigés vers leur dashboard
         navigate('/simple-admin/dashboard');
       } else if (user.role === 'STUDENT') {
-        // Rediriger les étudiants vers leur tableau de bord
         navigate('/student/dashboard');
       } else if (user.role === 'TUTOR') {
-        // Rediriger les tuteurs vers leur profil
         navigate('/profile');
       } else {
-        // Pour les autres rôles, rester sur la page d'accueil
         navigate('/');
       }
     }
   }, [user, isAdmin, authLoading, adminLoading, navigate]);
+  */
 
   if (authLoading || adminLoading) {
     return (

@@ -61,8 +61,25 @@ model Subject {
   flashcards  Flashcard[]
   forumPosts  ForumPost[]
   tutors      TutorSubject[]
+  chapters    Chapter[]
 
   @@map("subjects")
+}
+
+model Chapter {
+  id          Int            @id @default(autoincrement())
+  name        String
+  subjectId   Int
+  description String?
+  order       Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  subject     Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  flashcards  Flashcard[]
+
+  @@unique([name, subjectId])
+  @@index([subjectId])
+  @@map("chapters")
 }
 
 model TutorSubject {
@@ -82,15 +99,18 @@ model Flashcard {
   question   String
   answer     String
   subjectId  Int
+  chapterId  Int?
   userId     Int
   difficulty String             @default("medium")
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   attempts   FlashcardAttempt[]
   subject    Subject            @relation(fields: [subjectId], references: [id])
+  chapter    Chapter?           @relation(fields: [chapterId], references: [id])
   user       User               @relation(fields: [userId], references: [id])
 
   @@index([subjectId], map: "flashcards_subjectId_fkey")
+  @@index([chapterId], map: "flashcards_chapterId_fkey")
   @@index([userId], map: "flashcards_userId_fkey")
   @@map("flashcards")
 }

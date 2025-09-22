@@ -11,7 +11,7 @@ const Navbar = () => {
   const [forceUpdate, setForceUpdate] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, clearStorage } = useAuth();
+  const { user, logout } = useAuth();
   const { isAdmin: contextIsAdmin } = useAdmin();
   const isLoggedIn = !!user;
 
@@ -25,11 +25,6 @@ const Navbar = () => {
     navigate('/');
   };
 
-  const handleClearStorage = () => {
-    clearStorage();
-    navigate('/login');
-    window.location.reload(); // Forcer le rechargement complet
-  };
   
   // Vérifier si l'utilisateur est admin - logique simplifiée et robuste
   const isAdmin = (() => {
@@ -239,10 +234,6 @@ const Navbar = () => {
                   <LogOut className="w-4 h-4 mr-2" />
                   Déconnexion
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleClearStorage}>
-                  <Settings className="w-4 h-4 mr-2" />
-                  Nettoyer Cache
-                </Button>
               </>
             ) : (
               <>
@@ -309,10 +300,6 @@ const Navbar = () => {
                         <Button variant="outline" className="w-full" onClick={handleLogout}>
                           <LogOut className="w-4 h-4 mr-2" />
                           Déconnexion
-                        </Button>
-                        <Button variant="destructive" className="w-full" onClick={handleClearStorage}>
-                          <Settings className="w-4 h-4 mr-2" />
-                          Nettoyer Cache
                         </Button>
                       </>
                     ) : (

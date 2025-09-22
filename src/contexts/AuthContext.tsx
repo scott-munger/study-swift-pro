@@ -32,7 +32,6 @@ interface AuthContextType {
   deleteAccount: () => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   refreshUser: () => Promise<void>;
-  clearStorage: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,22 +51,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Vérifier si l'utilisateur est connecté au chargement
     const savedUser = localStorage.getItem('user');
-    console.log('🔍 AuthContext - Utilisateur sauvegardé dans localStorage:', savedUser);
+    const savedToken = localStorage.getItem('token');
     
-    if (savedUser) {
+    if (savedUser && savedToken) {
       try {
         const parsedUser = JSON.parse(savedUser);
-        console.log('🔍 AuthContext - Utilisateur parsé:', parsedUser);
         setUser(parsedUser);
       } catch (error) {
-        console.error('🔍 AuthContext - Erreur parsing utilisateur:', error);
+        console.error('Erreur parsing utilisateur:', error);
         localStorage.removeItem('user');
         localStorage.removeItem('token');
       }
-    } else {
-      console.log('🔍 AuthContext - Aucun utilisateur sauvegardé');
     }
-    setLoading(false);
+    
+    // Délai minimal pour éviter les redirections flash
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 50);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -166,23 +168,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     console.log('🔍 AuthContext - Déconnexion en cours...');
     setUser(null);
-    clearStorage();
-    console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
-    // La redirection sera gérée par les composants qui utilisent logout
-  };
-
-  const clearStorage = () => {
-    // Nettoyer complètement le localStorage
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     localStorage.removeItem('adminUser');
     localStorage.removeItem('adminToken');
-    
-    // Nettoyer aussi sessionStorage
     sessionStorage.clear();
-    
-    console.log('🔍 AuthContext - Stockage nettoyé');
+    console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
+    // La redirection sera gérée par les composants qui utilisent logout
   };
+
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
@@ -303,7 +297,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     changePassword,
     refreshUser,
-    clearStorage
   };
 
   return (

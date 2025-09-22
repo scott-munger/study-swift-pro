@@ -349,7 +349,16 @@ app.post('/api/auth/login', async (req, res) => {
 // Get all subjects
 app.get('/api/subjects', async (req, res) => {
   try {
-    const subjects = await prisma.subject.findMany();
+    const subjects = await prisma.subject.findMany({
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        section: true,
+        description: true,
+        createdAt: true
+      }
+    });
     res.json(subjects);
   } catch (error) {
     console.error('Erreur lors de la récupération des matières:', error);
@@ -1465,6 +1474,9 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
       select: { userClass: true, section: true, role: true }
     });
 
+    console.log('🔍 API subjects-flashcards - UserID:', userId);
+    console.log('🔍 API subjects-flashcards - Utilisateur:', user);
+
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
@@ -1474,7 +1486,27 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
     
     if (user.role === 'TUTOR' || user.role === 'ADMIN') {
       // Tuteurs et admins : accès à toutes les matières
-      subjects = await prisma.subject.findMany();
+      subjects = await prisma.subject.findMany({
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          section: true,
+          description: true,
+          createdAt: true,
+          chapters: {
+            select: {
+              id: true,
+              name: true,
+              order: true,
+              description: true
+            },
+            orderBy: {
+              order: 'asc'
+            }
+          }
+        }
+      });
     } else {
       // Étudiants : accès limité à leur niveau et section
       if (!user.userClass) {
@@ -1489,8 +1521,30 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
             { section: null }, // Matières générales (accessibles à tous)
             { section: user.section } // Matières spécifiques à la section de l'étudiant
           ]
+        },
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          section: true,
+          description: true,
+          createdAt: true,
+          chapters: {
+            select: {
+              id: true,
+              name: true,
+              order: true,
+              description: true
+            },
+            orderBy: {
+              order: 'asc'
+            }
+          }
         }
       });
+      
+      console.log('🔍 API subjects-flashcards - Matières filtrées:', subjects.length);
+      console.log('🔍 API subjects-flashcards - Détail des matières:', subjects.map(s => `${s.name} (${s.section || 'Générale'})`));
     }
 
     // Récupérer les tentatives de l'utilisateur
@@ -1522,7 +1576,9 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
           id: subject.id,
           name: subject.name,
           level: subject.level,
+          section: subject.section,
           description: subject.description,
+          chapters: subject.chapters,
           totalFlashcards: totalFlashcards,
           completedFlashcards: completedFlashcards,
           accuracy: Math.round(accuracy * 100) / 100,
@@ -1535,6 +1591,37 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
   } catch (error) {
     console.error('Erreur lors de la récupération des matières:', error);
     res.status(500).json({ error: 'Échec de la récupération des matières', details: error.message });
+  }
+});
+
+// Get chapters for a specific subject
+app.get('/api/subject-chapters/:subjectId', authenticateToken, async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+
+    // Vérifier que la matière existe
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) },
+      select: { id: true, name: true, level: true, section: true }
+    });
+
+    if (!subject) {
+      return res.status(404).json({ error: 'Matière non trouvée' });
+    }
+
+    // Récupérer les chapitres de la matière
+    const chapters = await prisma.chapter.findMany({
+      where: { subjectId: parseInt(subjectId) },
+      orderBy: { order: 'asc' }
+    });
+
+    res.json({
+      subject,
+      chapters
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des chapitres:', error);
+    res.status(500).json({ error: 'Échec de la récupération des chapitres', details: error.message });
   }
 });
 
@@ -1554,7 +1641,14 @@ app.get('/api/subject-flashcards/:subjectId', authenticateToken, async (req: any
           select: {
             id: true,
             name: true,
-            level: true
+            level: true,
+            section: true
+          }
+        },
+        chapter: {
+          select: {
+            id: true,
+            name: true
           }
         },
         attempts: {

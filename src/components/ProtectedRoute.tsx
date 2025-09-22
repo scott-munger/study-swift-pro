@@ -26,10 +26,17 @@ const ProtectedRoute = ({
     );
   }
 
+  // Vérifier si l'utilisateur est connecté
   if (!user) {
-    return <Navigate to="/login" replace />;
+    // Rediriger vers login seulement si on n'y est pas déjà
+    const currentPath = window.location.pathname;
+    if (currentPath !== '/login' && currentPath !== '/register') {
+      return <Navigate to="/login" replace />;
+    }
+    return null; // Éviter la double redirection
   }
 
+  // Vérifier les rôles autorisés
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return <Navigate to={redirectTo} replace />;
   }

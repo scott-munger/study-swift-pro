@@ -65,6 +65,7 @@ const Flashcards = () => {
   const [selectedSection, setSelectedSection] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedChapter, setSelectedChapter] = useState("");
+  const [availableChapters, setAvailableChapters] = useState([]);
   const [showDemo, setShowDemo] = useState(false);
   const [currentCard, setCurrentCard] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -1146,12 +1147,35 @@ const Flashcards = () => {
                   </div>
         </div>
 
-            <Select value={selectedSubject} onValueChange={(value) => {
+            <Select value={selectedSubject} onValueChange={async (value) => {
               setSelectedSubject(value);
+              setSelectedChapter("");
+              setAvailableChapters([]);
+              
               // Charger les flashcards de la matière sélectionnée
               const subject = availableSubjects.find(s => s.name === value);
               if (subject) {
                 loadSubjectFlashcards(subject.id);
+                
+                // Charger les chapitres pour cette matière
+                if (subject.chapters && subject.chapters.length > 0) {
+                  setAvailableChapters(subject.chapters);
+                } else {
+                  // Fallback: charger depuis l'API
+                  try {
+                    const response = await fetch(`/api/subject-chapters/${subject.id}`, {
+                      headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                      }
+                    });
+                    if (response.ok) {
+                      const data = await response.json();
+                      setAvailableChapters(data.chapters);
+                    }
+                  } catch (error) {
+                    console.error('Erreur lors du chargement des chapitres:', error);
+                  }
+                }
               }
             }}>
               <SelectTrigger className="h-10 md:h-12 text-base md:text-lg">
@@ -1240,26 +1264,20 @@ const Flashcards = () => {
           })()}
           </Card>
 
-              {/* Create Flashcard Section */}
+              {/* Add Flashcard Button */}
               {selectedSubject && (
-                <Card className="p-4 md:p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                        <Plus className="w-5 h-5 md:w-6 md:h-6 text-purple-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg md:text-xl font-bold text-gray-900">Créer une Flashcard</h3>
-                        <p className="text-sm md:text-base text-gray-600">Ajoutez votre propre flashcard</p>
-                      </div>
-                    </div>
-                    <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-                      <DialogTrigger asChild>
-                        <Button onClick={resetCreateForm} className="bg-purple-600 hover:bg-purple-700">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Nouvelle Flashcard
-                        </Button>
-                      </DialogTrigger>
+                <div className="flex justify-center mb-6 mt-4">
+                  <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+                    <DialogTrigger asChild>
+                      <Button 
+                        onClick={resetCreateForm} 
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl"
+                        size="lg"
+                      >
+                        <Plus className="h-5 w-5 mr-2" />
+                        Ajouter une Flashcard
+                      </Button>
+                    </DialogTrigger>
                       <DialogContent className="max-w-2xl">
                         <DialogHeader>
                           <DialogTitle>Créer une nouvelle flashcard</DialogTitle>
@@ -1312,11 +1330,7 @@ const Flashcards = () => {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    💡 Créez vos propres flashcards pour personnaliser votre apprentissage
-                  </div>
-                </Card>
+                </div>
               )}
 
               {/* Chapter Selection */}
@@ -1337,12 +1351,11 @@ const Flashcards = () => {
                   <SelectValue placeholder="Choisissez un chapitre" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(() => {
-                    const subject = Object.values(subjects).find(s => s.name === selectedSubject);
-                    return subject ? subject.chapters.map((chapter) => (
-                    <SelectItem key={chapter} value={chapter}>{chapter}</SelectItem>
-                    )) : null;
-                  })()}
+                  {availableChapters.map((chapter) => (
+                    <SelectItem key={chapter.id} value={chapter.name}>
+                      {chapter.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
                 ) : (
