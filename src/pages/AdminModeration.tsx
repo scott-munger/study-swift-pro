@@ -81,7 +81,7 @@ const AdminModeration = () => {
       }
 
       const data = await response.json();
-      setForumPosts(data.posts || []);
+      setForumPosts(data || []);
     } catch (error) {
       console.error('Erreur lors du chargement des posts:', error);
       toast({
@@ -96,10 +96,24 @@ const AdminModeration = () => {
 
   const handleModeratePost = async (postId: number, action: string) => {
     try {
-      await moderatePost(postId, { action });
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/moderate-post/${postId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la modération');
+      }
+
+      const result = await response.json();
       toast({
         title: "Succès",
-        description: `Post ${action === 'approve' ? 'approuvé' : action === 'reject' ? 'rejeté' : 'modéré'} avec succès`,
+        description: result.message,
       });
       loadForumPosts(); // Recharger les posts
     } catch (error) {

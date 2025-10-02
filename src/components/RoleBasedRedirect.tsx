@@ -7,29 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Shield, BookOpen, GraduationCap } from 'lucide-react';
 
 const RoleBasedRedirect: React.FC = () => {
-  // TEMPORAIREMENT DÉSACTIVÉ POUR DÉBOGUER
-  console.log('🔍 RoleBasedRedirect - COMPOSANT DÉSACTIVÉ');
-  console.log('🔍 RoleBasedRedirect - Current path:', window.location.pathname);
-  
-  // Ne jamais rediriger - juste afficher un message
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
-        <p className="text-gray-600">Vous êtes sur la page dashboard</p>
-        <p className="text-sm text-gray-500 mt-2">Path: {window.location.pathname}</p>
-        <p className="text-sm text-gray-500 mt-2">Ce composant ne redirige plus</p>
-        <p className="text-sm text-gray-500 mt-2">Si vous voyez ce message, le problème ne vient pas d'ici</p>
-        <p className="text-sm text-gray-500 mt-2">Si vous êtes redirigé vers /profile, le problème vient d'ailleurs</p>
-        <p className="text-sm text-gray-500 mt-2">Vérifiez App.tsx pour les redirections par défaut</p>
-        <p className="text-sm text-gray-500 mt-2">Si le problème persiste, vérifiez AuthContext.tsx</p>
-        <p className="text-sm text-gray-500 mt-2">Si le problème persiste encore, vérifiez ProtectedRoute.tsx</p>
-      </div>
-    </div>
-  );
-  
-  // Code original commenté
-  /*
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const navigate = useNavigate();
@@ -65,7 +42,6 @@ const RoleBasedRedirect: React.FC = () => {
       }
     }
   }, [user, isAdmin, authLoading, adminLoading, navigate]);
-  */
 
   if (authLoading || adminLoading) {
     return (
@@ -175,7 +151,3 @@ const RoleBasedRedirect: React.FC = () => {
 };
 
 export default RoleBasedRedirect;
-
-
-
-

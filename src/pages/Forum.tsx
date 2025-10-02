@@ -92,6 +92,20 @@ const Forum = () => {
 
   const [selectedSubject, setSelectedSubject] = useState("All");
 
+  // États pour les statistiques dynamiques
+  const [forumStats, setForumStats] = useState({
+    activeUsers: 0,
+    onlineUsers: 0,
+    todayPosts: 0,
+    totalPosts: 0
+  });
+  const [onlineUsers, setOnlineUsers] = useState<Array<{
+    id: number;
+    name: string;
+    initials: string;
+    role: string;
+  }>>([]);
+
   // Groupes de filtres souhaités
   const FILIERE_SUBJECTS: Record<string, string[]> = {
     SMP: ["Mathématiques", "Physique", "Chimie", "Informatique"],
@@ -179,6 +193,32 @@ const Forum = () => {
     });
   };
 
+  // Fonction pour charger les statistiques du forum
+  const loadForumStats = async () => {
+    try {
+      const response = await fetch('http://localhost:8081/api/forum/stats');
+      if (response.ok) {
+        const stats = await response.json();
+        setForumStats(stats);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques du forum:', error);
+    }
+  };
+
+  // Fonction pour charger les utilisateurs en ligne
+  const loadOnlineUsers = async () => {
+    try {
+      const response = await fetch('http://localhost:8081/api/forum/online-users');
+      if (response.ok) {
+        const users = await response.json();
+        setOnlineUsers(users);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des utilisateurs en ligne:', error);
+    }
+  };
+
   // Charger les données au montage du composant
   useEffect(() => {
     const loadData = async () => {
@@ -192,11 +232,25 @@ const Forum = () => {
         loadDataFromMock();
       }
       
+      // Charger les statistiques du forum
+      await loadForumStats();
+      await loadOnlineUsers();
+      
       setLoading(false);
     };
 
     loadData();
   }, [toast]);
+
+  // Charger les statistiques périodiquement
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadForumStats();
+      loadOnlineUsers();
+    }, 30000); // Rafraîchir toutes les 30 secondes
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Fonction pour rafraîchir les données
   const refreshData = async () => {
@@ -296,11 +350,65 @@ const Forum = () => {
   };
 
 
-  // (Temps réel désactivé pour rester simple; API persiste et restitue)
+  // Fonction pour éditer un post
+  const handleEditPost = async (postId: number, data: { title: string; content: string; subjectId?: number }) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: data.title,
+          content: data.content,
+          subjectId: data.subjectId
+        })
+      });
 
-  // const handleEditPost = async (data: { title: string; content: string; subjectId?: number }) => {
-  //   // L'édition sera implémentée plus tard
-  // };
+      if (response.ok) {
+        const updatedPost = await response.json();
+        
+        // Mettre à jour l'état local
+        setPosts(prev => prev.map(post => 
+          post.id === postId 
+            ? { 
+                ...post, 
+                title: updatedPost.title,
+                content: updatedPost.content,
+                subject: updatedPost.subject,
+                updatedAt: updatedPost.updatedAt,
+                tags: computeTags(updatedPost.subject?.name)
+              }
+            : post
+        ));
+        
+        toast({
+          title: "Post modifié",
+          description: "Le post a été modifié avec succès",
+        });
+        
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Impossible de modifier le post",
+          variant: "destructive"
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors de la modification",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
 
   const handleDeletePost = async (postId: number) => {
     try {
@@ -465,15 +573,111 @@ const Forum = () => {
     })));
   };
 
-  const handleDeleteReply = async (replyId: number) => {
-    setPosts(prev => prev.map(post => ({
-      ...post,
-      replies: post.replies.filter(reply => reply.id !== replyId),
-      _count: {
-        ...post._count,
-        replies: post._count.replies - 1
+  const handleEditReply = async (postId: number, replyId: number, content: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/forum/replies/${replyId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content })
+      });
+
+      if (response.ok) {
+        const updatedReply = await response.json();
+        
+        // Mettre à jour l'état local
+        setPosts(prev => prev.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                replies: post.replies.map(reply => 
+                  reply.id === replyId 
+                    ? { ...reply, content: updatedReply.content, updatedAt: updatedReply.updatedAt }
+                    : reply
+                )
+              }
+            : post
+        ));
+        
+        toast({
+          title: "Réponse modifiée",
+          description: "La réponse a été modifiée avec succès",
+        });
+        
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Impossible de modifier la réponse",
+          variant: "destructive"
+        });
+        return false;
       }
-    })));
+    } catch (error) {
+      console.error('Erreur lors de la modification de la réponse:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors de la modification",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
+
+  const handleDeleteReply = async (postId: number, replyId: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/forum/replies/${replyId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        // Mettre à jour l'état local
+        setPosts(prev => prev.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                replies: post.replies.filter(reply => reply.id !== replyId),
+                _count: {
+                  ...post._count,
+                  replies: post._count.replies - 1
+                }
+              }
+            : post
+        ));
+        
+        toast({
+          title: "Réponse supprimée",
+          description: "La réponse a été supprimée avec succès",
+        });
+        
+        return true;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Impossible de supprimer la réponse",
+          variant: "destructive"
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la réponse:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors de la suppression",
+        variant: "destructive"
+      });
+      return false;
+    }
   };
 
   const handleJoinDiscussion = (post: ForumPost) => {
@@ -573,7 +777,7 @@ const Forum = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Actifs</p>
-                <p className="text-lg sm:text-2xl font-bold text-secondary">1,234</p>
+                <p className="text-lg sm:text-2xl font-bold text-secondary">{forumStats.activeUsers}</p>
               </div>
               <Users className="w-6 h-6 sm:w-8 sm:h-8 text-secondary" />
             </div>
@@ -591,7 +795,7 @@ const Forum = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">En Ligne</p>
-                <p className="text-lg sm:text-2xl font-bold text-success">156</p>
+                <p className="text-lg sm:text-2xl font-bold text-success">{forumStats.onlineUsers}</p>
               </div>
               <Users className="w-6 h-6 sm:w-8 sm:h-8 text-success" />
             </div>
@@ -800,25 +1004,13 @@ const Forum = () => {
                   }
                 }}
                 onSave={async (data) => {
-                  try {
-                    const resp = await fetch(`http://localhost:8081/api/forum/posts/${editingPost.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        title: data.title,
-                        content: data.content,
-                        subjectId: editingPost.subject?.id
-                      })
-                    });
-                    if (resp.ok) {
-                      const updated = await resp.json();
-                      setPosts(prev => prev.map(p => p.id === editingPost.id ? { ...p, ...updated, tags: computeTags(updated.subject?.name) } : p));
-                    } else {
-                      alert('Échec de la mise à jour du post');
-                    }
-                  } catch (e) {
-                    alert('Erreur lors de la mise à jour du post');
-                  } finally {
+                  const success = await handleEditPost(editingPost.id, {
+                    title: data.title,
+                    content: data.content,
+                    subjectId: editingPost.subject?.id
+                  });
+                  
+                  if (success) {
                     setEditingPost(null);
                     setEditDialogOpenForId(null);
                   }
@@ -890,29 +1082,23 @@ const Forum = () => {
             <Card className="p-4 bg-gradient-card border-border">
               <h3 className="font-semibold text-foreground mb-4">Qui est en Ligne</h3>
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <Avatar className="w-6 h-6">
-                    <AvatarFallback className="text-xs">MD</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-muted-foreground">Marie Diop</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <Avatar className="w-6 h-6">
-                    <AvatarFallback className="text-xs">AB</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-muted-foreground">Prof. Ba</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <Avatar className="w-6 h-6">
-                    <AvatarFallback className="text-xs">OF</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-muted-foreground">Ousmane F.</span>
-                </div>
+                {onlineUsers.length > 0 ? (
+                  onlineUsers.map((user) => (
+                    <div key={user.id} className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <Avatar className="w-6 h-6">
+                        <AvatarFallback className="text-xs">{user.initials}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-muted-foreground">{user.name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    Aucun utilisateur en ligne
+                  </div>
+                )}
                 <Button variant="outline" size="sm" className="w-full mt-2">
-                  Voir Tous (156 en ligne)
+                  Voir Tous ({forumStats.onlineUsers} en ligne)
                 </Button>
               </div>
             </Card>
@@ -939,6 +1125,7 @@ const Forum = () => {
           onLike={handleLikePost}
           onReply={handleReply}
           onLikeReply={handleLikeReply}
+          onEditReply={handleEditReply}
           onDeleteReply={handleDeleteReply}
         />
 

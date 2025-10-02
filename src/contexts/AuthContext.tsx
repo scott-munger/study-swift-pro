@@ -24,7 +24,7 @@ interface TutorData {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   register: (email: string, password: string, firstName: string, lastName: string, userClass?: string, section?: string, department?: string, phone?: string, address?: string, role?: string, tutorData?: TutorData) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
@@ -49,19 +49,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Vérifier si l'utilisateur est connecté au chargement
+    // Vérifier si l'utilisateur a explicitement demandé à rester connecté
+    const rememberMe = localStorage.getItem('rememberMe');
     const savedUser = localStorage.getItem('user');
     const savedToken = localStorage.getItem('token');
     
-    if (savedUser && savedToken) {
+    // Ne restaurer l'utilisateur que si "Se souvenir de moi" est activé
+    if (rememberMe === 'true' && savedUser && savedToken) {
       try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
+        // Vérifier que le token est valide et non expiré
+        const payload = JSON.parse(atob(savedToken.split('.')[1]));
+        const currentTime = Date.now() / 1000;
+        
+        if (payload.exp && payload.exp < currentTime) {
+          // Token expiré, nettoyer le localStorage
+          console.log('Token expiré, déconnexion automatique');
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('adminUser');
+          localStorage.removeItem('rememberMe');
+        } else {
+          // Token valide, charger l'utilisateur
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
+        }
       } catch (error) {
-        console.error('Erreur parsing utilisateur:', error);
+        console.error('Erreur parsing utilisateur ou token:', error);
+        // Nettoyer le localStorage en cas d'erreur
         localStorage.removeItem('user');
         localStorage.removeItem('token');
+        localStorage.removeItem('adminUser');
+        localStorage.removeItem('rememberMe');
       }
+    } else if (rememberMe !== 'true' && savedUser && savedToken) {
+      // Si "Se souvenir de moi" n'est pas activé mais qu'il y a des données,
+      // les nettoyer pour éviter l'affichage persistant
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('adminUser');
+      localStorage.removeItem('rememberMe');
     }
     
     // Délai minimal pour éviter les redirections flash
@@ -72,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearTimeout(timer);
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string, rememberMe: boolean = false): Promise<boolean> => {
     try {
       setLoading(true);
       
@@ -88,8 +114,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('token', data.token);
+        
+        // Sauvegarder les données selon le choix de l'utilisateur
+        if (rememberMe) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          // Ne pas sauvegarder si l'utilisateur ne veut pas rester connecté
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('rememberMe');
+        }
         return true;
       }
 
@@ -106,8 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (demoResponse.ok) {
         const demoData = await demoResponse.json();
         setUser(demoData.user);
-        localStorage.setItem('user', JSON.stringify(demoData.user));
-        localStorage.setItem('token', demoData.token);
+        
+        // Sauvegarder les données selon le choix de l'utilisateur
+        if (rememberMe) {
+          localStorage.setItem('user', JSON.stringify(demoData.user));
+          localStorage.setItem('token', demoData.token);
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          // Ne pas sauvegarder si l'utilisateur ne veut pas rester connecté
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('rememberMe');
+        }
         return true;
       }
 
@@ -172,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('token');
     localStorage.removeItem('adminUser');
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('rememberMe');
     sessionStorage.clear();
     console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
     // La redirection sera gérée par les composants qui utilisent logout

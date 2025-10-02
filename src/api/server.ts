@@ -14,6 +14,7 @@ app.use(cors({
     'http://localhost:5173',
     'http://localhost:3000',
     'http://localhost:8080',
+    'http://localhost:8082',
     'https://*.netlify.app',
     'https://*.railway.app'
   ],
@@ -414,6 +415,88 @@ app.get('/api/tutors', async (req, res) => {
   }
 });
 
+// Forum: update reply (doit être avant les routes posts pour éviter les conflits)
+app.put('/api/forum/replies/:replyId', authenticateToken, async (req: any, res) => {
+  try {
+    const { replyId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.userId;
+
+    // Vérifier que la réponse existe et que l'utilisateur est l'auteur
+    const existingReply = await prisma.forumReply.findUnique({
+      where: { id: parseInt(replyId) },
+      include: { author: true }
+    });
+
+    if (!existingReply) {
+      return res.status(404).json({ error: 'Réponse non trouvée' });
+    }
+
+    if (existingReply.authorId !== userId) {
+      return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres réponses' });
+    }
+
+    const updatedReply = await prisma.forumReply.update({
+      where: { id: parseInt(replyId) },
+      data: { 
+        content,
+        updatedAt: new Date()
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, role: true } },
+        _count: { select: { likes: true } },
+        likes: { select: { id: true, userId: true } }
+      }
+    });
+
+    const mappedReply = {
+      id: updatedReply.id,
+      content: updatedReply.content,
+      author: updatedReply.author,
+      createdAt: updatedReply.createdAt.toISOString(),
+      updatedAt: updatedReply.updatedAt.toISOString(),
+      _count: { likes: updatedReply._count.likes },
+      likes: updatedReply.likes
+    };
+
+    res.json(mappedReply);
+  } catch (error) {
+    console.error('Erreur lors de la modification de la réponse:', error);
+    res.status(500).json({ error: 'Échec de la modification de la réponse' });
+  }
+});
+
+// Forum: delete reply (doit être avant les routes posts pour éviter les conflits)
+app.delete('/api/forum/replies/:replyId', authenticateToken, async (req: any, res) => {
+  try {
+    const { replyId } = req.params;
+    const userId = req.user.userId;
+
+    // Vérifier que la réponse existe et que l'utilisateur est l'auteur
+    const existingReply = await prisma.forumReply.findUnique({
+      where: { id: parseInt(replyId) },
+      include: { author: true }
+    });
+
+    if (!existingReply) {
+      return res.status(404).json({ error: 'Réponse non trouvée' });
+    }
+
+    if (existingReply.authorId !== userId) {
+      return res.status(403).json({ error: 'Vous ne pouvez supprimer que vos propres réponses' });
+    }
+
+    await prisma.forumReply.delete({
+      where: { id: parseInt(replyId) }
+    });
+
+    res.json({ message: 'Réponse supprimée avec succès' });
+  } catch (error) {
+    console.error('Erreur lors de la suppression de la réponse:', error);
+    res.status(500).json({ error: 'Échec de la suppression de la réponse' });
+  }
+});
+
 // Forum: list posts
 app.get('/api/forum/posts', async (req, res) => {
   try {
@@ -630,6 +713,93 @@ app.post('/api/flashcards', authenticateToken, async (req: any, res) => {
     console.error('Erreur lors de la création de la flashcard:', error);
     console.error('Stack trace:', error.stack);
     res.status(500).json({ error: 'Échec de la création de la flashcard', details: error.message });
+  }
+});
+
+// GET - Lire une flashcard individuelle
+app.get('/api/flashcards/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Récupérer l'utilisateur pour connaître son rôle
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+
+    // Pour les admins, accès complet
+    if (user?.role === 'ADMIN') {
+      const flashcard = await prisma.flashcard.findUnique({
+        where: { id: parseInt(id) },
+        include: {
+          subject: {
+            select: {
+              name: true,
+              level: true,
+              section: true
+            }
+          },
+          user: {
+            select: {
+              firstName: true,
+              lastName: true
+            }
+          },
+          _count: {
+            select: {
+              attempts: true
+            }
+          }
+        }
+      });
+
+      if (!flashcard) {
+        return res.status(404).json({ error: 'Flashcard non trouvée' });
+      }
+
+      return res.json(flashcard);
+    }
+
+    // Pour les autres utilisateurs, vérifier l'accès
+    const flashcard = await prisma.flashcard.findFirst({
+      where: {
+        id: parseInt(id),
+        OR: [
+          { userId: userId }, // L'utilisateur peut voir ses propres flashcards
+          { subject: { level: { in: ['9ème', 'Terminale'] } } } // Ou les flashcards publiques
+        ]
+      },
+      include: {
+        subject: {
+          select: {
+            name: true,
+            level: true,
+            section: true
+          }
+        },
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        },
+        _count: {
+          select: {
+            attempts: true
+          }
+        }
+      }
+    });
+
+    if (!flashcard) {
+      return res.status(404).json({ error: 'Flashcard non trouvée ou accès non autorisé' });
+    }
+
+    res.json(flashcard);
+  } catch (error) {
+    console.error('Erreur lors de la récupération de la flashcard:', error);
+    res.status(500).json({ error: 'Échec de la récupération de la flashcard' });
   }
 });
 
@@ -1351,6 +1521,11 @@ app.get('/api/forum/posts/:id/replies', async (req: any, res) => {
   }
 });
 
+// Forum: test endpoint simple
+app.get('/api/forum/test', async (req, res) => {
+  res.json({ message: 'Test endpoint works', timestamp: new Date().toISOString() });
+});
+
 // Flashcards: get user statistics
 app.get('/api/stats-flashcards', authenticateToken, async (req: any, res) => {
   try {
@@ -1801,6 +1976,105 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req: any, re
   }
 });
 
+// GET - Posts du forum pour admin (modération)
+app.get('/api/admin/forum-posts', authenticateToken, requireAdmin, async (req: any, res) => {
+  try {
+    const posts = await prisma.forumPost.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        author: {
+          select: { id: true, firstName: true, lastName: true, role: true }
+        },
+        subject: {
+          select: { id: true, name: true }
+        },
+        _count: {
+          select: { replies: true, likes: true }
+        },
+        likes: { select: { id: true, userId: true } }
+      }
+    });
+
+    const mappedPosts = posts.map(post => ({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      author: {
+        id: post.author.id,
+        name: `${post.author.firstName} ${post.author.lastName}`,
+        email: `${post.author.firstName.toLowerCase()}.${post.author.lastName.toLowerCase()}@test.com`,
+        role: post.author.role
+      },
+      subject: post.subject?.name || 'Général',
+      createdAt: post.createdAt.toISOString(),
+      status: post.isLocked ? 'rejected' : 'approved', // Simplification pour la démo
+      likes: post._count.likes,
+      replies: post._count.replies,
+      reports: 0, // Pas encore implémenté
+      isPinned: post.isPinned
+    }));
+
+    res.json(mappedPosts);
+  } catch (error) {
+    console.error('Erreur lors de la récupération des posts du forum:', error);
+    res.status(500).json({ error: 'Échec de la récupération des posts' });
+  }
+});
+
+// POST - Modération de post (admin)
+app.post('/api/admin/moderate-post/:postId', authenticateToken, requireAdmin, async (req: any, res) => {
+  try {
+    const { postId } = req.params;
+    const { action } = req.body;
+    const userId = req.user.userId;
+
+    const post = await prisma.forumPost.findUnique({
+      where: { id: parseInt(postId) }
+    });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post non trouvé' });
+    }
+
+    let updatedPost;
+    switch (action) {
+      case 'approve':
+        updatedPost = await prisma.forumPost.update({
+          where: { id: parseInt(postId) },
+          data: { isLocked: false, isPinned: false }
+        });
+        break;
+      case 'reject':
+        updatedPost = await prisma.forumPost.update({
+          where: { id: parseInt(postId) },
+          data: { isLocked: true }
+        });
+        break;
+      case 'delete':
+        await prisma.forumPost.delete({
+          where: { id: parseInt(postId) }
+        });
+        return res.json({ message: 'Post supprimé avec succès' });
+      case 'pin':
+        updatedPost = await prisma.forumPost.update({
+          where: { id: parseInt(postId) },
+          data: { isPinned: true }
+        });
+        break;
+      default:
+        return res.status(400).json({ error: 'Action non valide' });
+    }
+
+    res.json({ 
+      message: `Post ${action === 'approve' ? 'approuvé' : action === 'reject' ? 'rejeté' : 'épinglé'} avec succès`,
+      post: updatedPost
+    });
+  } catch (error) {
+    console.error('Erreur lors de la modération du post:', error);
+    res.status(500).json({ error: 'Échec de la modération du post' });
+  }
+});
+
 // GET - Activités récentes admin
 app.get('/api/admin/activities', authenticateToken, requireAdmin, async (req: any, res) => {
   try {
@@ -1919,6 +2193,40 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: any, re
   } catch (error) {
     console.error('Erreur lors de la récupération des utilisateurs admin:', error);
     res.status(500).json({ error: 'Échec de la récupération des utilisateurs' });
+  }
+});
+
+// GET - Utilisateur individuel (admin)
+app.get('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req: any, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        userClass: true,
+        section: true,
+        department: true,
+        phone: true,
+        address: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Erreur lors de la récupération de l\'utilisateur:', error);
+    res.status(500).json({ error: 'Échec de la récupération de l\'utilisateur' });
   }
 });
 
@@ -2789,7 +3097,7 @@ app.delete('/api/admin/subjects/:subjectId', authenticateToken, requireAdmin, as
 // GET - Toutes les flashcards (admin)
 app.get('/api/admin/flashcards', authenticateToken, requireAdmin, async (req: any, res) => {
   try {
-    const { subjectId, page = 1, limit = 50 } = req.query;
+    const { subjectId, page = 1, limit = 1000 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const where = subjectId ? { subjectId: parseInt(subjectId) } : {};
@@ -2835,6 +3143,12 @@ app.delete('/api/admin/flashcards/:flashcardId', authenticateToken, requireAdmin
   try {
     const { flashcardId } = req.params;
 
+    // Supprimer d'abord les tentatives associées
+    await prisma.flashcardAttempt.deleteMany({
+      where: { flashcardId: parseInt(flashcardId) }
+    });
+
+    // Puis supprimer la flashcard
     await prisma.flashcard.delete({
       where: { id: parseInt(flashcardId) }
     });
@@ -2842,7 +3156,7 @@ app.delete('/api/admin/flashcards/:flashcardId', authenticateToken, requireAdmin
     res.json({ message: 'Flashcard supprimée avec succès' });
   } catch (error) {
     console.error('Erreur lors de la suppression de la flashcard:', error);
-    res.status(500).json({ error: 'Échec de la suppression de la flashcard' });
+    res.status(500).json({ error: 'Échec de la suppression de la flashcard', details: error.message });
   }
 });
 

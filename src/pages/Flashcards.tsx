@@ -1,66 +1,27 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/enhanced-button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { 
   BookOpen, Clock, Trophy, RotateCcw, ChevronRight, Play, Eye, EyeOff, 
   CheckCircle, XCircle, User, Brain, Target, Zap, Star, TrendingUp,
-  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn,
-  Plus, Edit, Trash2
+  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import Timer from "@/components/ui/timer";
+import { API_CONFIG } from "@/config/api";
 
 const Flashcards = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Vérifier si l'utilisateur est connecté et a le bon rôle
-  useEffect(() => {
-    if (!user) {
-      toast({
-        title: "Accès restreint",
-        description: "Vous devez être connecté pour accéder aux flashcards",
-        variant: "destructive"
-      });
-      navigate('/login');
-    } else if (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN') {
-      toast({
-        title: "Accès non autorisé",
-        description: "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards",
-        variant: "destructive"
-      });
-      navigate('/');
-    }
-  }, [user, navigate, toast]);
-
-  // Si l'utilisateur n'est pas connecté ou n'a pas le bon rôle, ne rien afficher
-  if (!user || (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md p-8 text-center">
-          <LogIn className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-          <h2 className="text-2xl font-bold mb-2">Accès restreint</h2>
-          <p className="text-gray-600 mb-6">
-            {!user ? "Vous devez être connecté pour accéder aux flashcards" : "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards"}
-          </p>
-          <Button onClick={() => navigate(!user ? '/login' : '/')} className="w-full">
-            {!user ? 'Se connecter' : 'Retour à l\'accueil'}
-          </Button>
-        </Card>
-      </div>
-    );
-  }
+  // États déclarés en premier
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
@@ -88,14 +49,54 @@ const Flashcards = () => {
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [subjectFlashcards, setSubjectFlashcards] = useState<any[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // États pour la création de flashcards
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    question: '',
-    answer: '',
-    difficulty: 'medium'
-  });
+  // Vérification d'authentification
+  useEffect(() => {
+    if (!user) {
+      toast({
+        title: "Accès restreint",
+        description: "Vous devez être connecté pour accéder aux flashcards",
+        variant: "destructive"
+      });
+      navigate('/login');
+    } else if (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN') {
+      toast({
+        title: "Accès non autorisé",
+        description: "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards",
+        variant: "destructive"
+      });
+      navigate('/');
+    }
+  }, [user, navigate, toast]);
+
+  // Restaurer l'état depuis localStorage au chargement
+  useEffect(() => {
+    const savedState = localStorage.getItem('flashcards-state');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        setSelectedClass(state.selectedClass || "");
+        setSelectedSection(state.selectedSection || "");
+        setSelectedSubject(state.selectedSubject || "");
+        setSelectedChapter(state.selectedChapter || "");
+      } catch (error) {
+        console.error('Erreur lors de la restauration de l\'état:', error);
+      }
+    }
+  }, []);
+
+  // Sauvegarder l'état dans localStorage
+  useEffect(() => {
+    const state = {
+      selectedClass,
+      selectedSection,
+      selectedSubject,
+      selectedChapter
+    };
+    localStorage.setItem('flashcards-state', JSON.stringify(state));
+  }, [selectedClass, selectedSection, selectedSubject, selectedChapter]);
+
 
   // Fonction pour charger les statistiques utilisateur
   const loadUserStats = async () => {
@@ -103,7 +104,7 @@ const Flashcards = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch('http://localhost:8081/api/stats-flashcards', {
+      const response = await fetch(API_CONFIG.ENDPOINTS.STATS_FLASHCARDS, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -128,7 +129,7 @@ const Flashcards = () => {
       }
 
       console.log('🔍 Chargement des matières...');
-      const response = await fetch('http://localhost:8081/api/subjects-flashcards', {
+      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -234,7 +235,7 @@ const Flashcards = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(`http://localhost:8081/api/subject-flashcards/${subjectId}`, {
+      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_FLASHCARDS(subjectId), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -250,52 +251,6 @@ const Flashcards = () => {
   };
 
   // Fonction pour créer une nouvelle flashcard
-  const createFlashcard = async (question: string, answer: string, subjectId: number, difficulty: string = 'medium') => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return false;
-
-      const response = await fetch('http://localhost:8081/api/flashcards', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          question,
-          answer,
-          subjectId,
-          difficulty
-        })
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Succès",
-          description: "Flashcard créée avec succès",
-        });
-        // Recharger les flashcards de la matière
-        await loadSubjectFlashcards(subjectId);
-        return true;
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Erreur",
-          description: error.error || "Erreur lors de la création",
-          variant: "destructive"
-        });
-        return false;
-      }
-    } catch (error) {
-      console.error('Erreur lors de la création de la flashcard:', error);
-      toast({
-        title: "Erreur",
-        description: "Erreur de connexion",
-        variant: "destructive"
-      });
-      return false;
-    }
-  };
 
   // Fonction pour mettre à jour une flashcard
   const updateFlashcard = async (flashcardId: number, question: string, answer: string, subjectId: number, difficulty: string) => {
@@ -303,7 +258,7 @@ const Flashcards = () => {
       const token = localStorage.getItem('token');
       if (!token) return false;
 
-      const response = await fetch(`http://localhost:8081/api/flashcards/${flashcardId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/flashcards/${flashcardId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -351,7 +306,7 @@ const Flashcards = () => {
       const token = localStorage.getItem('token');
       if (!token) return false;
 
-      const response = await fetch(`http://localhost:8081/api/flashcards/${flashcardId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -387,45 +342,6 @@ const Flashcards = () => {
   };
 
   // Fonction pour gérer la création d'une flashcard
-  const handleCreateFlashcard = async () => {
-    if (!selectedSubject || !createForm.question || !createForm.answer) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez remplir tous les champs requis",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
-    if (!subject) {
-      toast({
-        title: "Erreur",
-        description: "Matière non trouvée",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const success = await createFlashcard(
-      createForm.question,
-      createForm.answer,
-      subject.id,
-      createForm.difficulty
-    );
-
-    if (success) {
-      setShowCreateModal(false);
-      setCreateForm({ question: '', answer: '', difficulty: 'medium' });
-      // Recharger les statistiques
-      await loadUserStats();
-    }
-  };
-
-  // Fonction pour réinitialiser le formulaire de création
-  const resetCreateForm = () => {
-    setCreateForm({ question: '', answer: '', difficulty: 'medium' });
-  };
 
   // Fonction pour enregistrer une tentative de flashcard
   const saveFlashcardAttempt = async (flashcardId: number, isCorrect: boolean, timeSpent: number) => {
@@ -433,7 +349,7 @@ const Flashcards = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      await fetch('http://localhost:8081/api/flashcard-attempt', {
+      await fetch(API_CONFIG.ENDPOINTS.FLASHCARD_ATTEMPT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -455,23 +371,26 @@ const Flashcards = () => {
 
   // Charger les données au montage du composant
   useEffect(() => {
-    // Vérifier si l'utilisateur est connecté (via user ou localStorage)
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    
-    if (user || (token && savedUser)) {
-      // Utiliser les données du contexte ou du localStorage
-      const currentUser = user || JSON.parse(savedUser);
+    const initializeComponent = async () => {
+      // Vérifier si l'utilisateur est connecté (via user ou localStorage)
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
       
-      console.log('🔍 useEffect - Utilisateur chargé:', currentUser);
-      
-      setSelectedClass(currentUser.userClass);
-      if (currentUser.section) {
-        setSelectedSection(currentUser.section);
-      }
-      
-      // Charger les données depuis l'API
-      const loadData = async () => {
+      if (user || (token && savedUser)) {
+        // Utiliser les données du contexte ou du localStorage
+        const currentUser = user || JSON.parse(savedUser);
+        
+        console.log('🔍 useEffect - Utilisateur chargé:', currentUser);
+        
+        // Définir les valeurs par défaut seulement si pas déjà définies
+        if (!selectedClass && currentUser.userClass) {
+          setSelectedClass(currentUser.userClass);
+        }
+        if (!selectedSection && currentUser.section) {
+          setSelectedSection(currentUser.section);
+        }
+        
+        // Charger les données depuis l'API
         setLoadingStats(true);
         console.log('🔍 useEffect - Chargement des données...');
         await Promise.all([
@@ -479,26 +398,14 @@ const Flashcards = () => {
           loadAvailableSubjects()
         ]);
         setLoadingStats(false);
+        setIsInitialized(true);
         console.log('🔍 useEffect - Données chargées');
-      };
-
-      loadData();
-    }
+      }
+    };
+    
+    initializeComponent();
   }, [user]);
 
-  // Charger les matières même si l'utilisateur n'est pas encore chargé dans le contexte
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    
-    // Seulement si on a un token et un utilisateur mais pas encore de matières
-    if (token && savedUser && availableSubjects.length === 0 && !loadingStats) {
-      console.log('🔍 useEffect secondaire - Tentative de chargement des matières...');
-      const currentUser = JSON.parse(savedUser);
-      console.log('🔍 useEffect secondaire - Utilisateur du localStorage:', currentUser);
-      loadAvailableSubjects();
-    }
-  }, [availableSubjects.length, loadingStats]);
 
   // Fonction pour gérer le temps écoulé
   const handleTimeUp = () => {
@@ -518,28 +425,44 @@ const Flashcards = () => {
     setUserAnswer("");
   };
 
-  // Vérifier que l'utilisateur est connecté
-  if (!user) {
+  // Rendu conditionnel consolidé
+  if (!user || (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
     return (
-      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
-        <div className="text-center">
-          <User className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-foreground mb-4">Connexion requise</h1>
-          <p className="text-muted-foreground mb-6">Veuillez vous connecter pour accéder aux flashcards</p>
-          <Button onClick={() => navigate('/login')}>Se connecter</Button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md p-8 text-center">
+          <LogIn className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+          <h2 className="text-2xl font-bold mb-2">Accès restreint</h2>
+          <p className="text-gray-600 mb-6">
+            {!user ? "Vous devez être connecté pour accéder aux flashcards" : "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards"}
+          </p>
+          <Button onClick={(e) => { e.preventDefault(); navigate(!user ? '/login' : '/'); }} className="w-full">
+            {!user ? 'Se connecter' : 'Retour à l\'accueil'}
+          </Button>
+        </Card>
       </div>
     );
   }
 
-  // Gestion d'erreur simple
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Erreur Flashcards</h1>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => setError(null)}>Réessayer</Button>
+          <Button onClick={(e) => { e.preventDefault(); setError(null); }}>Réessayer</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Affichage de chargement pendant l'initialisation
+  if (!isInitialized || loadingStats) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Chargement...</h2>
+          <p className="text-gray-500">Préparation de votre centre d'apprentissage</p>
         </div>
       </div>
     );
@@ -1264,74 +1187,6 @@ const Flashcards = () => {
           })()}
           </Card>
 
-              {/* Add Flashcard Button */}
-              {selectedSubject && (
-                <div className="flex justify-center mb-6 mt-4">
-                  <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-                    <DialogTrigger asChild>
-                      <Button 
-                        onClick={resetCreateForm} 
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl"
-                        size="lg"
-                      >
-                        <Plus className="h-5 w-5 mr-2" />
-                        Ajouter une Flashcard
-                      </Button>
-                    </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>Créer une nouvelle flashcard</DialogTitle>
-                          <DialogDescription>
-                            Ajoutez une nouvelle flashcard pour {selectedSubject}
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="question">Question *</Label>
-                            <Textarea
-                              id="question"
-                              value={createForm.question}
-                              onChange={(e) => setCreateForm({...createForm, question: e.target.value})}
-                              placeholder="Posez votre question..."
-                              rows={3}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="answer">Réponse *</Label>
-                            <Textarea
-                              id="answer"
-                              value={createForm.answer}
-                              onChange={(e) => setCreateForm({...createForm, answer: e.target.value})}
-                              placeholder="Donnez la réponse..."
-                              rows={3}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="difficulty">Difficulté</Label>
-                            <Select value={createForm.difficulty} onValueChange={(value) => setCreateForm({...createForm, difficulty: value})}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="easy">Facile</SelectItem>
-                                <SelectItem value="medium">Moyen</SelectItem>
-                                <SelectItem value="hard">Difficile</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setShowCreateModal(false)}>
-                            Annuler
-                          </Button>
-                          <Button onClick={handleCreateFlashcard} className="bg-purple-600 hover:bg-purple-700">
-                            Créer la flashcard
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                </div>
-              )}
 
               {/* Chapter Selection */}
               <Card className="p-4 md:p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl">
@@ -1394,7 +1249,7 @@ const Flashcards = () => {
                 areAllFlashcardsCompleted() 
                   ? 'bg-gradient-to-br from-gray-50 to-gray-100 cursor-not-allowed opacity-60' 
                   : 'bg-gradient-to-br from-blue-50 to-blue-100 hover:shadow-2xl cursor-pointer'
-              }`} onClick={areAllFlashcardsCompleted() ? undefined : handleStartFlashcards}>
+              }`} onClick={areAllFlashcardsCompleted() ? undefined : (e) => { e.preventDefault(); handleStartFlashcards(); }}>
                 <div className="text-center">
                   <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
                     <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-white" />
@@ -1437,7 +1292,7 @@ const Flashcards = () => {
                 areAllFlashcardsCompleted() 
                   ? 'bg-gradient-to-br from-gray-50 to-gray-100 cursor-not-allowed opacity-60' 
                   : 'bg-gradient-to-br from-green-50 to-green-100 hover:shadow-2xl cursor-pointer'
-              }`} onClick={areAllFlashcardsCompleted() ? undefined : handleStartFlashcards}>
+              }`} onClick={areAllFlashcardsCompleted() ? undefined : (e) => { e.preventDefault(); handleStartFlashcards(); }}>
                 <div className="text-center">
                   <div className="w-12 h-12 md:w-16 md:h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
                     <RotateCcw className="w-6 h-6 md:w-8 md:h-8 text-white" />
@@ -1516,7 +1371,7 @@ const Flashcards = () => {
             <div className="text-center mb-6">
               <div className="flex items-center justify-between mb-4">
                 <Button 
-                  onClick={() => setShowDemo(false)} 
+                  onClick={(e) => { e.preventDefault(); setShowDemo(false); }} 
                   variant="outline" 
                   className="flex items-center gap-2"
                 >
@@ -1646,7 +1501,7 @@ const Flashcards = () => {
                             </Button>
                             <Button 
                               variant="outline" 
-                              onClick={() => setShowDemo(false)}
+                              onClick={(e) => { e.preventDefault(); setShowDemo(false); }}
                               className="flex-1 h-10 md:h-12 text-base md:text-lg border-2"
                             >
                               <XCircle className="w-4 h-4 md:w-5 md:h-5 mr-2" />
@@ -1759,7 +1614,7 @@ const Flashcards = () => {
                           {currentQuestion.options.map((option, index) => (
                             <button
                               key={index}
-                              onClick={() => handleExamAnswer(index)}
+                              onClick={(e) => { e.preventDefault(); handleExamAnswer(index); }}
                               className={`w-full p-3 md:p-4 text-left rounded-lg md:rounded-xl border-2 transition-all duration-200 ${
                                 examAnswers[currentExamQuestion] === index
                                   ? 'border-purple-500 bg-purple-50 text-purple-900'
@@ -1855,10 +1710,10 @@ const Flashcards = () => {
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center">
-                    <Button onClick={resetExam} variant="outline" className="px-4 md:px-6 h-10 md:h-12">
+                    <Button onClick={(e) => { e.preventDefault(); resetExam(); }} variant="outline" className="px-4 md:px-6 h-10 md:h-12">
                       Nouvel Examen
                     </Button>
-                    <Button onClick={() => setShowExam(false)} className="px-4 md:px-6 bg-purple-600 hover:bg-purple-700 h-10 md:h-12">
+                    <Button onClick={(e) => { e.preventDefault(); setShowExam(false); }} className="px-4 md:px-6 bg-purple-600 hover:bg-purple-700 h-10 md:h-12">
                       Retour aux Flashcards
                     </Button>
                   </div>
@@ -1867,6 +1722,7 @@ const Flashcards = () => {
             )}
           </div>
         )}
+
 
       </div>
     </div>

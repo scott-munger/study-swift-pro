@@ -13,7 +13,16 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isAdmin: contextIsAdmin } = useAdmin();
-  const isLoggedIn = !!user;
+  
+  // Vérification de l'état de connexion
+  const isLoggedIn = (() => {
+    // Si pas d'utilisateur dans le contexte, pas connecté
+    if (!user) return false;
+    
+    // Si l'utilisateur est dans le contexte React, il est connecté
+    // (même si pas persisté dans localStorage)
+    return true;
+  })();
 
   // Forcer la mise à jour du menu quand on change de page
   React.useEffect(() => {
@@ -25,18 +34,20 @@ const Navbar = () => {
     navigate('/');
   };
 
-  
-  // Vérifier si l'utilisateur est admin - logique simplifiée et robuste
+  // Vérifier si l'utilisateur est admin - logique stricte
   const isAdmin = (() => {
     // Sur les pages publiques, toujours afficher le menu général
     const publicPages = ['/', '/login', '/register'];
     if (publicPages.includes(location.pathname)) return false;
     
-    // 1. Vérifier via le contexte admin
+    // Si pas d'utilisateur connecté, pas d'admin
+    if (!user) return false;
+    
+    // 1. Vérifier via le contexte admin (priorité)
     if (contextIsAdmin) return true;
     
     // 2. Vérifier via le rôle de l'utilisateur connecté
-    if (user?.role === 'ADMIN') return true;
+    if (user.role === 'ADMIN') return true;
     
     // 3. Vérifier via les données adminUser stockées (SimpleAdminLogin)
     const adminUser = localStorage.getItem('adminUser');
@@ -49,9 +60,12 @@ const Navbar = () => {
       }
     }
     
-    // 4. Vérifier via le token JWT
+    // 4. Vérifier si on est sur une page admin ET qu'on a un token valide
     const token = localStorage.getItem('token');
-    if (token) {
+    const isOnAdminPage = location.pathname.startsWith('/simple-admin') || 
+                         location.pathname.startsWith('/admin');
+    
+    if (isOnAdminPage && token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         if (payload.role === 'ADMIN') return true;
@@ -60,12 +74,21 @@ const Navbar = () => {
       }
     }
     
-    // 5. Vérifier si on est sur une page admin
-    const isOnAdminPage = location.pathname.startsWith('/simple-admin') || 
-                         location.pathname.startsWith('/admin');
-    
-    return isOnAdminPage;
+    return false;
   })();
+
+  // Fonction pour obtenir la route d'accueil selon le rôle
+  const getHomeRoute = () => {
+    if (isAdmin) {
+      return "/simple-admin/dashboard";
+    } else if (user?.role === 'TUTOR') {
+      return "/";
+    } else if (user?.role === 'STUDENT') {
+      return "/student/dashboard";
+    } else {
+      return "/";
+    }
+  };
 
   // Navigation basée sur le rôle
   const getNavigation = () => {
@@ -172,7 +195,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <Link to="/" className="flex items-center gap-2">
+            <Link to={getHomeRoute()} className="flex items-center gap-2">
               <div className="flex items-center gap-2">
                 <span className={`text-2xl font-bold ${isAdmin ? 'text-white' : 'text-[#00aaff]'}`}>Tyala</span>
                 {isAdmin && (
@@ -263,14 +286,14 @@ const Navbar = () => {
                 <div className="flex flex-col space-y-4 mt-8">
                   {/* Logo mobile */}
                   <div className="flex items-center gap-2 mb-8 pb-4 border-b border-border">
-                    <div className="flex items-center gap-2">
+                    <Link to={getHomeRoute()} onClick={() => setIsOpen(false)} className="flex items-center gap-2">
                       <span className={`text-xl font-bold ${isAdmin ? 'text-white' : 'text-[#00aaff]'}`}>Tyala</span>
                       {isAdmin && (
                         <span className="text-xs bg-yellow-400 text-purple-900 px-2 py-1 rounded font-bold">
                           ADMIN
                         </span>
                       )}
-                    </div>
+                    </Link>
                   </div>
                   
                   {/* Navigation mobile */}

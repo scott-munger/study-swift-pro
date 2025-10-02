@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Login = () => {
   const { toast } = useToast();
-  const { login, loading } = useAuth();
+  const { login, loading, user } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -61,14 +61,8 @@ const Login = () => {
             // Rediriger selon le rôle
             if (userRole === 'ADMIN') {
               // Stocker les données admin et rediriger vers le dashboard admin
-              const response = await fetch('http://localhost:8081/api/auth/me', {
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              });
-              if (response.ok) {
-                const userData = await response.json();
-                localStorage.setItem('adminUser', JSON.stringify(userData));
+              if (user) {
+                localStorage.setItem('adminUser', JSON.stringify(user));
               }
               console.log('🔐 Redirection admin vers /simple-admin/dashboard');
               navigate('/simple-admin/dashboard');
