@@ -18,6 +18,7 @@ interface ForumPost {
     firstName: string;
     lastName: string;
     role: string;
+    profilePhoto?: string;
   };
   subject?: {
     id: number;
@@ -43,6 +44,7 @@ interface ForumReply {
     firstName: string;
     lastName: string;
     role: string;
+    profilePhoto?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -133,6 +135,9 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Avatar className="w-6 h-6">
+                    <AvatarImage 
+                      src={post.author.profilePhoto ? `http://localhost:8081/api/profile/photos/${post.author.profilePhoto}` : undefined} 
+                    />
                     <AvatarFallback className="text-xs">
                       {post.author.firstName[0]}{post.author.lastName[0]}
                     </AvatarFallback>
@@ -251,6 +256,9 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Avatar className="w-6 h-6">
+                          <AvatarImage 
+                            src={reply.author.profilePhoto ? `http://localhost:8081/api/profile/photos/${reply.author.profilePhoto}` : undefined} 
+                          />
                           <AvatarFallback className="text-xs">
                             {reply.author.firstName[0]}{reply.author.lastName[0]}
                           </AvatarFallback>

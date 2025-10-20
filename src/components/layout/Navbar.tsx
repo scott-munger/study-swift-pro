@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/enhanced-button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye, ClipboardCheck, Image } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
 
@@ -34,44 +34,34 @@ const Navbar = () => {
     navigate('/');
   };
 
-  // Vérifier si l'utilisateur est admin - logique stricte
+  // Vérifier si l'utilisateur est admin - logique simplifiée
   const isAdmin = (() => {
-    // Sur les pages publiques, toujours afficher le menu général
-    const publicPages = ['/', '/login', '/register'];
-    if (publicPages.includes(location.pathname)) return false;
-    
-    // Si pas d'utilisateur connecté, pas d'admin
-    if (!user) return false;
-    
-    // 1. Vérifier via le contexte admin (priorité)
-    if (contextIsAdmin) return true;
-    
-    // 2. Vérifier via le rôle de l'utilisateur connecté
-    if (user.role === 'ADMIN') return true;
-    
-    // 3. Vérifier via les données adminUser stockées (SimpleAdminLogin)
-    const adminUser = localStorage.getItem('adminUser');
-    if (adminUser) {
+    // Vérifier via le token d'abord
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (token) {
       try {
-        const parsedAdminUser = JSON.parse(adminUser);
-        if (parsedAdminUser.role === 'ADMIN') return true;
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.role === 'ADMIN') {
+          return true;
+        }
       } catch (e) {
         // Ignore parsing errors
       }
     }
     
-    // 4. Vérifier si on est sur une page admin ET qu'on a un token valide
-    const token = localStorage.getItem('token');
-    const isOnAdminPage = location.pathname.startsWith('/simple-admin') || 
-                         location.pathname.startsWith('/admin');
+    // Si pas d'utilisateur connecté, pas d'admin
+    if (!user) {
+      return false;
+    }
     
-    if (isOnAdminPage && token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.role === 'ADMIN') return true;
-      } catch (e) {
-        // Ignore parsing errors
-      }
+    // Vérifier via le rôle de l'utilisateur connecté (priorité)
+    if (user.role === 'ADMIN') {
+      return true;
+    }
+    
+    // Vérifier via le contexte admin
+    if (contextIsAdmin) {
+      return true;
     }
     
     return false;
@@ -80,7 +70,7 @@ const Navbar = () => {
   // Fonction pour obtenir la route d'accueil selon le rôle
   const getHomeRoute = () => {
     if (isAdmin) {
-      return "/simple-admin/dashboard";
+      return "/admin/dashboard-modern";
     } else if (user?.role === 'TUTOR') {
       return "/";
     } else if (user?.role === 'STUDENT') {
@@ -95,10 +85,11 @@ const Navbar = () => {
     if (isAdmin) {
       // Menu admin avec redirection vers les pages d'administration
       return [
-        { name: "Dashboard", href: "/simple-admin/dashboard", icon: "dashboard", admin: true },
+        { name: "Dashboard", href: "/admin/dashboard-modern", icon: "dashboard", admin: true },
         { name: "Utilisateurs", href: "/admin/users", icon: "users", admin: true },
         { name: "Matières", href: "/admin/subjects", icon: "subjects", admin: true },
         { name: "Flashcards", href: "/admin/flashcards", icon: "flashcards", admin: true },
+        { name: "Images", href: "/admin/forum-images", icon: "images", admin: true },
         { name: "Modération", href: "/admin/moderation", icon: "moderation", admin: true },
       ];
     } else if (user?.role === 'TUTOR') {
@@ -112,6 +103,7 @@ const Navbar = () => {
         { name: "Accueil", href: "/" },
         { name: "Mon Tableau de Bord", href: "/student/dashboard" },
         { name: "Flashcards", href: "/flashcards" },
+        { name: "Tests de Connaissances", href: "/knowledge-tests" },
         { name: "Forum", href: "/forum" },
       ];
     } else {
@@ -124,22 +116,22 @@ const Navbar = () => {
 
   const navigation = getNavigation();
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    // Pour les routes exactes
+    if (location.pathname === path) return true;
+    
+    // Pour les routes admin avec des paramètres (comme /admin/dashboard-modern?tab=...)
+    if (path.startsWith('/admin/') && location.pathname.startsWith('/admin/')) {
+      const basePath = path.split('?')[0];
+      const currentBasePath = location.pathname.split('?')[0];
+      return basePath === currentBasePath;
+    }
+    
+    return false;
+  };
 
   // Debug: afficher les informations de debug en mode développement
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 Navbar Debug:', {
-      user,
-      userRole: user?.role,
-      contextIsAdmin,
-      isAdmin,
-      token: localStorage.getItem('token'),
-      adminUser: localStorage.getItem('adminUser'),
-      location: location.pathname,
-      forceUpdate,
-      timestamp: new Date().toISOString()
-    });
-  }
+  // Debug logs supprimés pour production
 
   // Fonction pour obtenir l'icône appropriée
   const getNavIcon = (name: string, iconType?: string) => {
@@ -154,6 +146,10 @@ const Navbar = () => {
           return <BookOpen className="w-4 h-4 mr-2" />;
         case "flashcards":
           return <FileText className="w-4 h-4 mr-2" />;
+        case "images":
+          return <Image className="w-4 h-4 mr-2" />;
+        case "knowledge-tests":
+          return <ClipboardCheck className="w-4 h-4 mr-2" />;
         case "stats":
           return <BarChart3 className="w-4 h-4 mr-2" />;
         case "moderation":
@@ -179,14 +175,14 @@ const Navbar = () => {
     // Si c'est un lien admin, appliquer le style admin simple
     if (item.admin) {
       return isActive 
-        ? "text-white bg-purple-600 shadow-md" 
-        : "text-purple-200 hover:text-white hover:bg-purple-700";
+        ? "text-white bg-purple-600 shadow-md border border-purple-500" 
+        : "text-purple-200 hover:text-white hover:bg-purple-700 hover:border-purple-400 border border-transparent";
     }
     
     // Style normal pour les autres rôles
     return isActive
-      ? "text-white bg-primary shadow-md"
-      : "text-muted-foreground hover:text-foreground hover:bg-gray-100";
+      ? "text-white bg-primary shadow-md border border-primary/20"
+      : "text-muted-foreground hover:text-foreground hover:bg-gray-100 border border-transparent";
   };
 
   return (
@@ -209,12 +205,12 @@ const Navbar = () => {
 
           {/* Desktop Navigation - Centré */}
           <div className="hidden md:flex items-center justify-center flex-1">
-            <div className={`flex items-center ${isAdmin ? 'space-x-4' : 'space-x-6'}`}>
+            <div className={`flex items-center ${isAdmin ? 'space-x-1' : 'space-x-6'}`}>
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`flex items-center px-3 py-2 text-sm font-medium transition-all duration-200 rounded ${getAdminLinkClass(item, isActive(item.href))}`}
+                  className={`flex items-center px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg ${getAdminLinkClass(item, isActive(item.href))}`}
                 >
                   {getNavIcon(item.name, item.icon)}
                   {item.name}
@@ -247,7 +243,7 @@ const Navbar = () => {
                   )}
                 </div>
                 
-                <Link to={isAdmin ? "/simple-admin/dashboard?tab=profile" : "/profile"}>
+                <Link to={isAdmin ? "/admin/dashboard-modern?tab=profile" : "/"}>
                   <Button variant="ghost" size="sm">
                     <User className="w-4 h-4 mr-2" />
                     Profil
@@ -283,6 +279,12 @@ const Navbar = () => {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+                <SheetHeader>
+                  <SheetTitle>Menu de navigation</SheetTitle>
+                  <SheetDescription>
+                    Accédez aux différentes sections de l'application
+                  </SheetDescription>
+                </SheetHeader>
                 <div className="flex flex-col space-y-4 mt-8">
                   {/* Logo mobile */}
                   <div className="flex items-center gap-2 mb-8 pb-4 border-b border-border">
@@ -314,7 +316,7 @@ const Navbar = () => {
                   <div className="pt-6 border-t border-border space-y-3">
                     {isLoggedIn ? (
                       <>
-                        <Link to={isAdmin ? "/simple-admin/dashboard?tab=profile" : "/profile"} onClick={() => setIsOpen(false)}>
+                        <Link to="/profile" onClick={() => setIsOpen(false)}>
                           <Button variant="ghost" className="w-full justify-start">
                             <User className="w-4 h-4 mr-2" />
                             Profil

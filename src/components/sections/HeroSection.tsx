@@ -67,10 +67,10 @@ const HeroSection = () => {
   };
 
   const handleStartNow = () => {
-    navigate('/flashcards');
+    navigate('/login');
     toast({
-      title: "Bienvenue !",
-      description: "Commençons votre préparation aux examens avec les flashcards",
+      title: "Connexion requise",
+      description: "Veuillez vous connecter pour accéder aux fonctionnalités",
     });
   };
 

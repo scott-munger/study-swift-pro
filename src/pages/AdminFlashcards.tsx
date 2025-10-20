@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../hooks/use-toast';
+import { useFlashcards, Flashcard } from '../contexts/FlashcardContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,31 +19,14 @@ import {
   ArrowLeft,
   Shield,
   BookOpen,
-  User
+  User,
+  Upload
 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { importFlashcardsFromCSV, generateFlashcardImportTemplate, ImportFlashcardData, ImportError } from '../lib/csvUtils';
+import { CsvImportDialog } from '../components/ui/CsvImportDialog';
+// useToast et useFlashcards déjà importés plus haut
 
-interface Flashcard {
-  id: number;
-  question: string;
-  answer: string;
-  difficulty: string;
-  createdAt: string;
-  updatedAt: string;
-  subject: {
-    id: number;
-    name: string;
-    level: string;
-  };
-  user: {
-    id: number;
-    firstName: string;
-    lastName: string;
-  };
-  _count?: {
-    attempts: number;
-  };
-}
+// Interface Flashcard est maintenant importée du contexte
 
 interface Subject {
   id: number;
@@ -49,72 +35,97 @@ interface Subject {
 }
 
 const AdminFlashcards = () => {
+  console.log('🔄 AdminFlashcards - Composant rendu');
+  
+  // Vérification de l'authentification d'abord
+  const { user } = useAuth();
   const { toast } = useToast();
+  
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Non connecté</h1>
+          <p className="text-gray-600 mb-4">Veuillez vous connecter pour accéder à cette page</p>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('🔄 AdminFlashcards - Utilisateur connecté:', user.role);
+  
+  // Protection contre les erreurs de contexte
+  let flashcards: Flashcard[] = [];
+  let loading = false;
+  let refreshFlashcards = async () => {};
+  let addFlashcard = (flashcard: Flashcard) => {};
+  let updateFlashcard = (flashcard: Flashcard) => {};
+  let removeFlashcard = (flashcardId: number) => {};
+  
+  try {
+    const flashcardContext = useFlashcards();
+    flashcards = flashcardContext.flashcards || [];
+    loading = flashcardContext.loading || false;
+    refreshFlashcards = flashcardContext.refreshFlashcards || (async () => {});
+    addFlashcard = flashcardContext.addFlashcard || (() => {});
+    updateFlashcard = flashcardContext.updateFlashcard || (() => {});
+    removeFlashcard = flashcardContext.removeFlashcard || (() => {});
+    console.log('🔄 AdminFlashcards - Contexte chargé:', { flashcards: flashcards.length, loading });
+  } catch (error) {
+    console.error('❌ AdminFlashcards - Erreur de contexte:', error);
+    // Fallback simple en cas d'erreur
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Erreur de chargement</h1>
+          <p className="text-gray-600 mb-4">Impossible de charger les flashcards. Veuillez recharger la page.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Recharger la page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   const [token, setToken] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterDifficulty, setFilterDifficulty] = useState('all');
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chapters, setChapters] = useState<any[]>([]);
   const [showFlashcardModal, setShowFlashcardModal] = useState(false);
   const [editingFlashcard, setEditingFlashcard] = useState<Flashcard | null>(null);
+  const [showChapterModal, setShowChapterModal] = useState(false);
+  const [chapterForm, setChapterForm] = useState({
+    title: '',
+    description: '',
+    subjectId: ''
+  });
   const [flashcardForm, setFlashcardForm] = useState({
     question: '',
     answer: '',
     subjectId: '',
+    chapterId: 'none',
     difficulty: 'medium'
   });
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
+    const savedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
     console.log('🔐 AdminFlashcards - Token trouvé:', savedToken ? 'Oui' : 'Non');
-    console.log('🔐 AdminFlashcards - Token:', savedToken);
     
     if (savedToken) {
       setToken(savedToken);
-      loadFlashcards(savedToken);
       loadSubjects(savedToken);
+      loadChapters(savedToken);
+      // Les flashcards sont maintenant gérées par le contexte global
     } else {
-      console.log('🔐 AdminFlashcards - Pas de token, redirection vers login');
-      window.location.href = '/login';
+      console.log('🔐 AdminFlashcards - Pas de token, affichage sans redirection');
     }
   }, []);
 
-  const loadFlashcards = async (authToken: string | null = token) => {
-    if (!authToken) {
-      console.log('🔐 AdminFlashcards - Pas de token pour charger les flashcards');
-      return;
-    }
-    setLoading(true);
-    console.log('🔐 AdminFlashcards - Chargement des flashcards avec token:', authToken.substring(0, 50) + '...');
-    
-    try {
-      const response = await fetch('http://localhost:8081/api/admin/flashcards', {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('🔐 AdminFlashcards - Réponse API:', response.status, response.statusText);
-      
-      if (response.ok) {
-        const flashcardsData = await response.json();
-        console.log('🔐 AdminFlashcards - Données reçues:', flashcardsData.flashcards ? flashcardsData.flashcards.length : 0, 'flashcards');
-        setFlashcards(flashcardsData.flashcards || flashcardsData);
-      } else {
-        const errorData = await response.json();
-        console.error('🔐 AdminFlashcards - Erreur API:', errorData);
-        throw new Error('Erreur lors de la récupération des flashcards');
-      }
-    } catch (error) {
-      console.error('🔐 AdminFlashcards - Erreur lors du chargement des flashcards:', error);
-      toast({ title: "Erreur", description: "Impossible de charger les flashcards", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadSubjects = async (authToken: string | null = token) => {
     if (!authToken) return;
@@ -134,9 +145,37 @@ const AdminFlashcards = () => {
     }
   };
 
+  const loadChapters = async (authToken: string | null = token) => {
+    if (!authToken) return;
+    try {
+      const response = await fetch('http://localhost:8081/api/chapters', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const chaptersData = await response.json();
+        setChapters(chaptersData);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des chapitres:', error);
+    }
+  };
+
   const handleCreateFlashcard = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/flashcards', {
+      // Validation des champs requis
+      if (!flashcardForm.question || !flashcardForm.answer || !flashcardForm.subjectId) {
+        toast({ 
+          title: "Erreur", 
+          description: "Veuillez remplir tous les champs requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      const response = await fetch('http://localhost:8081/api/admin/flashcards', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -146,15 +185,21 @@ const AdminFlashcards = () => {
           question: flashcardForm.question,
           answer: flashcardForm.answer,
           subjectId: parseInt(flashcardForm.subjectId),
-          difficulty: flashcardForm.difficulty
+          chapterId: flashcardForm.chapterId && flashcardForm.chapterId !== 'none' ? parseInt(flashcardForm.chapterId) : null,
+          difficulty: flashcardForm.difficulty.toUpperCase()
         })
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Flashcard créée:', result.flashcard);
+        
+        // Ajouter la flashcard au contexte global
+        addFlashcard(result.flashcard);
+        
         toast({ title: "Succès", description: "Flashcard créée avec succès" });
         setShowFlashcardModal(false);
         resetForm();
-        loadFlashcards();
       } else {
         const error = await response.json();
         toast({ title: "Erreur", description: error.error || "Erreur lors de la création", variant: "destructive" });
@@ -187,7 +232,6 @@ const AdminFlashcards = () => {
         setShowFlashcardModal(false);
         setEditingFlashcard(null);
         resetForm();
-        loadFlashcards();
       } else {
         const error = await response.json();
         toast({ title: "Erreur", description: error.error || "Erreur lors de la mise à jour", variant: "destructive" });
@@ -201,7 +245,7 @@ const AdminFlashcards = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/flashcards/${flashcardId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -210,8 +254,12 @@ const AdminFlashcards = () => {
       });
 
       if (response.ok) {
+        console.log('🗑️ Flashcard supprimée:', flashcardId);
+        
+        // Supprimer la flashcard du contexte global
+        removeFlashcard(flashcardId);
+        
         toast({ title: "Succès", description: "Flashcard supprimée avec succès" });
-        loadFlashcards();
       } else {
         const error = await response.json();
         toast({ title: "Erreur", description: error.error || "Erreur lors de la suppression", variant: "destructive" });
@@ -226,6 +274,7 @@ const AdminFlashcards = () => {
       question: '',
       answer: '',
       subjectId: '',
+      chapterId: 'none',
       difficulty: 'medium'
     });
   };
@@ -236,9 +285,69 @@ const AdminFlashcards = () => {
       question: flashcard.question,
       answer: flashcard.answer,
       subjectId: flashcard.subject.id.toString(),
+      chapterId: flashcard.chapterId ? flashcard.chapterId.toString() : 'none',
       difficulty: flashcard.difficulty
     });
     setShowFlashcardModal(true);
+  };
+
+  // Gestion des chapitres
+  const handleCreateChapter = async () => {
+    if (!chapterForm.title || !chapterForm.subjectId) {
+      toast({ title: "Erreur", description: "Titre et matière sont requis", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8081/api/admin/chapters', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: chapterForm.title,
+          description: chapterForm.description,
+          subjectId: parseInt(chapterForm.subjectId)
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast({ title: "Succès", description: "Chapitre créé avec succès" });
+        
+        // Recharger les chapitres
+        await loadChapters();
+        
+        // Fermer le modal et réinitialiser le formulaire
+        setShowChapterModal(false);
+        setChapterForm({ title: '', description: '', subjectId: '' });
+        
+        // Mettre à jour le formulaire de flashcard si la matière correspond
+        if (chapterForm.subjectId === flashcardForm.subjectId) {
+          setFlashcardForm({...flashcardForm, chapterId: data.chapter.id.toString()});
+        }
+      } else {
+        const errorData = await response.json();
+        toast({ title: "Erreur", description: errorData.error || "Erreur lors de la création du chapitre", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création du chapitre:', error);
+      toast({ title: "Erreur", description: "Erreur de connexion", variant: "destructive" });
+    }
+  };
+
+  const openChapterModal = () => {
+    if (!flashcardForm.subjectId) {
+      toast({ title: "Erreur", description: "Veuillez d'abord sélectionner une matière", variant: "destructive" });
+      return;
+    }
+    setChapterForm({
+      title: '',
+      description: '',
+      subjectId: flashcardForm.subjectId
+    });
+    setShowChapterModal(true);
   };
 
   const filteredFlashcards = flashcards.filter(flashcard => {
@@ -267,6 +376,132 @@ const AdminFlashcards = () => {
     }
   };
 
+
+  const handleImportFlashcards = async (file: File, options?: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const csvContent = e.target?.result as string;
+          const result = importFlashcardsFromCSV(csvContent, subjects, chapters, options);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = () => reject(new Error('Erreur lors de la lecture du fichier'));
+      reader.readAsText(file);
+    });
+  };
+
+  const handleConfirmImportFlashcards = async (data: ImportFlashcardData[]) => {
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      for (const flashcardData of data) {
+        try {
+          const response = await fetch('http://localhost:8081/api/admin/flashcards', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              question: flashcardData.question,
+              answer: flashcardData.answer,
+              subjectId: flashcardData.subjectId,
+              chapterId: flashcardData.chapterId,
+              difficulty: flashcardData.difficulty,
+              userId: user?.id // Ajouter l'ID de l'utilisateur admin
+            })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            addFlashcard(result.flashcard);
+            successCount++;
+          } else {
+            const errorData = await response.json();
+            errors.push(`Flashcard "${flashcardData.question}": ${errorData.error || 'Erreur inconnue'}`);
+            errorCount++;
+          }
+        } catch (error) {
+          console.error('Erreur lors de la création de la flashcard:', error);
+          errors.push(`Flashcard "${flashcardData.question}": Erreur de connexion`);
+          errorCount++;
+        }
+      }
+
+      // Afficher le résultat
+      if (successCount > 0) {
+        toast({ 
+          title: "Import terminé", 
+          description: `${successCount} flashcards importées avec succès${errorCount > 0 ? `, ${errorCount} erreurs` : ''}` 
+        });
+      }
+
+      if (errorCount > 0) {
+        console.error('Erreurs d\'import:', errors);
+        toast({ 
+          title: "Erreurs d'import", 
+          description: `${errorCount} flashcards n'ont pas pu être importées. Vérifiez la console pour plus de détails.`, 
+          variant: "destructive" 
+        });
+      }
+
+      // Recharger les flashcards
+      await refreshFlashcards();
+    } catch (error) {
+      console.error('Erreur lors de l\'import:', error);
+      toast({ 
+        title: "Erreur d'import", 
+        description: "Une erreur est survenue lors de l'import des flashcards", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const renderFlashcardPreview = (data: ImportFlashcardData[], errors: ImportError[]) => {
+    return (
+      <div className="space-y-2 max-h-60 overflow-y-auto">
+        {data.slice(0, 5).map((flashcard, index) => (
+          <div key={index} className="p-3 bg-gray-50 rounded border">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Question:</p>
+                <p className="text-sm text-gray-900">{flashcard.question}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Réponse:</p>
+                <p className="text-sm text-gray-900">{flashcard.answer}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="outline" className="text-xs">
+                {flashcard.difficulty}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {subjects.find(s => s.id === flashcard.subjectId)?.name}
+              </Badge>
+              {flashcard.chapterId && (
+                <Badge variant="outline" className="text-xs">
+                  {chapters.find(c => c.id === flashcard.chapterId)?.name}
+                </Badge>
+              )}
+            </div>
+          </div>
+        ))}
+        {data.length > 5 && (
+          <p className="text-sm text-gray-500 text-center">
+            ... et {data.length - 5} autres flashcards
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -277,7 +512,7 @@ const AdminFlashcards = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.location.href = '/simple-admin/dashboard'}
+                onClick={() => window.location.href = '/admin/dashboard-modern'}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Retour au Dashboard
@@ -335,6 +570,25 @@ const AdminFlashcards = () => {
             </Select>
           </div>
           
+          <div className="flex items-center space-x-2">
+            <CsvImportDialog
+              trigger={
+                <Button variant="outline">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importer CSV
+                </Button>
+              }
+              title="Importer des flashcards"
+              description="Importez des flashcards depuis un fichier CSV. Vous pouvez pré-sélectionner la matière et la difficulté ci-dessous."
+              onImport={handleImportFlashcards}
+              onConfirmImport={handleConfirmImportFlashcards}
+              templateGenerator={generateFlashcardImportTemplate}
+              previewComponent={renderFlashcardPreview}
+              showSubjectSelector={true}
+              showDifficultySelector={true}
+              subjects={subjects}
+            />
+          </div>
           <Dialog open={showFlashcardModal} onOpenChange={setShowFlashcardModal}>
             <DialogTrigger asChild>
               <Button onClick={() => { resetForm(); setEditingFlashcard(null); }}>
@@ -374,7 +628,7 @@ const AdminFlashcards = () => {
                 </div>
                 <div>
                   <Label htmlFor="subject">Matière</Label>
-                  <Select value={flashcardForm.subjectId} onValueChange={(value) => setFlashcardForm({...flashcardForm, subjectId: value})}>
+                  <Select value={flashcardForm.subjectId} onValueChange={(value) => setFlashcardForm({...flashcardForm, subjectId: value, chapterId: 'none'})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionner une matière" />
                     </SelectTrigger>
@@ -382,6 +636,36 @@ const AdminFlashcards = () => {
                       {subjects.map((subject) => (
                         <SelectItem key={subject.id} value={subject.id.toString()}>
                           {subject.name} ({subject.level})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label htmlFor="chapter">Chapitre (optionnel)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={openChapterModal}
+                      disabled={!flashcardForm.subjectId}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Nouveau chapitre
+                    </Button>
+                  </div>
+                  <Select value={flashcardForm.chapterId} onValueChange={(value) => setFlashcardForm({...flashcardForm, chapterId: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un chapitre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucun chapitre</SelectItem>
+                      {chapters
+                        .filter(chapter => !flashcardForm.subjectId || chapter.subjectId === parseInt(flashcardForm.subjectId))
+                        .map((chapter) => (
+                        <SelectItem key={chapter.id} value={chapter.id.toString()}>
+                          {chapter.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -407,6 +691,62 @@ const AdminFlashcards = () => {
                 </Button>
                 <Button onClick={editingFlashcard ? handleUpdateFlashcard : handleCreateFlashcard}>
                   {editingFlashcard ? 'Mettre à jour' : 'Créer'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Modal pour créer un nouveau chapitre */}
+          <Dialog open={showChapterModal} onOpenChange={setShowChapterModal}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Créer un nouveau chapitre</DialogTitle>
+                <DialogDescription>
+                  Ajoutez un nouveau chapitre pour la matière sélectionnée.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="chapterTitle">Titre du chapitre</Label>
+                  <Input
+                    id="chapterTitle"
+                    value={chapterForm.title}
+                    onChange={(e) => setChapterForm({...chapterForm, title: e.target.value})}
+                    placeholder="Ex: Introduction aux fonctions"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="chapterDescription">Description (optionnel)</Label>
+                  <Textarea
+                    id="chapterDescription"
+                    value={chapterForm.description}
+                    onChange={(e) => setChapterForm({...chapterForm, description: e.target.value})}
+                    placeholder="Description du chapitre..."
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="chapterSubject">Matière</Label>
+                  <Select value={chapterForm.subjectId} onValueChange={(value) => setChapterForm({...chapterForm, subjectId: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner une matière" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id.toString()}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowChapterModal(false)}>
+                  Annuler
+                </Button>
+                <Button onClick={handleCreateChapter}>
+                  Créer le chapitre
                 </Button>
               </DialogFooter>
             </DialogContent>

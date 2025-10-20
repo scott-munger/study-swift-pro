@@ -9,24 +9,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   BookOpen, Clock, Trophy, RotateCcw, ChevronRight, Play, Eye, EyeOff, 
   CheckCircle, XCircle, User, Brain, Target, Zap, Star, TrendingUp,
-  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn
+  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn,
+  ClipboardCheck
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFlashcards } from "@/contexts/FlashcardContext";
 import Timer from "@/components/ui/timer";
 import { API_CONFIG } from "@/config/api";
 
 const Flashcards = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { getFlashcardsBySubject, refreshFlashcards } = useFlashcards();
   const navigate = useNavigate();
 
   // États déclarés en premier
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedChapter, setSelectedChapter] = useState("");
-  const [availableChapters, setAvailableChapters] = useState([]);
   const [showDemo, setShowDemo] = useState(false);
   const [currentCard, setCurrentCard] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -35,6 +36,7 @@ const Flashcards = () => {
   const [error, setError] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(null);
 
   // États pour l'examen
   const [showExam, setShowExam] = useState(false);
@@ -48,25 +50,63 @@ const Flashcards = () => {
   const [userStats, setUserStats] = useState<any>(null);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [subjectFlashcards, setSubjectFlashcards] = useState<any[]>([]);
+  const [availableChapters, setAvailableChapters] = useState<any[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<number | string | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Vérification d'authentification
   useEffect(() => {
-    if (!user) {
+    console.log('🔍 Flashcards - Vérification d\'authentification:', { user: user ? 'Présent' : 'Absent' });
+    
+    // Vérifier d'abord le contexte React, puis localStorage comme fallback
+    let currentUser = user;
+    let userRole = null;
+    
+    if (!currentUser) {
+      // Fallback: vérifier localStorage si le contexte React n'a pas l'utilisateur
+      const savedUser = localStorage.getItem('user');
+      const savedToken = localStorage.getItem('token');
+      
+      if (savedUser && savedToken) {
+        try {
+          currentUser = JSON.parse(savedUser);
+          userRole = currentUser.role;
+          console.log('🔍 Flashcards - Utilisateur récupéré depuis localStorage:', {
+            email: currentUser.email,
+            role: currentUser.role
+          });
+        } catch (error) {
+          console.error('🔍 Flashcards - Erreur parsing utilisateur localStorage:', error);
+        }
+      }
+    } else {
+      userRole = currentUser.role;
+    }
+    
+    if (!currentUser) {
+      console.log('🔍 Flashcards - Utilisateur non connecté, redirection vers /login');
       toast({
         title: "Accès restreint",
         description: "Vous devez être connecté pour accéder aux flashcards",
         variant: "destructive"
       });
       navigate('/login');
-    } else if (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN') {
+    } else if (userRole !== 'STUDENT' && userRole !== 'TUTOR' && userRole !== 'ADMIN') {
+      console.log('🔍 Flashcards - Rôle non autorisé:', userRole);
       toast({
         title: "Accès non autorisé",
         description: "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards",
         variant: "destructive"
       });
       navigate('/');
+    } else {
+      console.log('🔍 Flashcards - Utilisateur connecté:', { 
+        email: currentUser.email, 
+        role: userRole, 
+        userClass: currentUser.userClass,
+        section: currentUser.section 
+      });
     }
   }, [user, navigate, toast]);
 
@@ -123,36 +163,115 @@ const Flashcards = () => {
   const loadAvailableSubjects = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        console.log('🔍 Aucun token trouvé pour charger les matières');
-        return;
-      }
-
-      console.log('🔍 Chargement des matières...');
-      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const user = localStorage.getItem('user');
+      console.log('🔍 loadAvailableSubjects - Token:', token ? 'Présent' : 'Absent');
+      console.log('🔍 loadAvailableSubjects - User:', user ? 'Présent' : 'Absent');
+      
+      if (user) {
+        try {
+          const userData = JSON.parse(user);
+          console.log('🔍 loadAvailableSubjects - User data:', {
+            email: userData.email,
+            role: userData.role,
+            firstName: userData.firstName
+          });
+        } catch (e) {
+          console.log('🔍 loadAvailableSubjects - Erreur parsing user:', e);
         }
-      });
+      }
+      
+      // Essayer d'abord l'endpoint avec authentification si un token existe
+      if (token) {
+        console.log('🔍 Tentative avec authentification:', API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS);
+        try {
+          const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
 
+          console.log('🔍 Réponse authentifiée:', response.status, response.statusText);
+          
+          if (response.ok) {
+            const subjects = await response.json();
+            console.log('🔍 Matières reçues (authentifiées):', subjects);
+            console.log('🔍 Nombre de matières reçues:', subjects.length);
+            
+            // Debug: vérifier les propriétés des matières
+            if (subjects.length > 0) {
+              console.log('🔍 Première matière (debug):', {
+                name: subjects[0].name,
+                totalFlashcards: subjects[0].totalFlashcards,
+                completedFlashcards: subjects[0].completedFlashcards,
+                hasTotalFlashcards: 'totalFlashcards' in subjects[0]
+              });
+            }
+            
+            setAvailableSubjects(subjects);
+            console.log('🔍 Matières définies dans le state (authentifiées):', subjects.length);
+            console.log('🔍 Première matière (détail):', subjects[0]);
+            return; // Succès, on sort de la fonction
+          } else {
+            console.log('🔍 Échec de l\'authentification, fallback vers endpoint public');
+          }
+        } catch (authError) {
+          console.log('🔍 Erreur d\'authentification, fallback vers endpoint public:', authError);
+        }
+      }
+      
+      // Fallback vers l'endpoint public
+      console.log('🔍 Chargement des matières depuis endpoint public:', API_CONFIG.ENDPOINTS.SUBJECTS);
+      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS);
+
+      console.log('🔍 Réponse publique reçue:', response.status, response.statusText);
+      
       if (response.ok) {
         const subjects = await response.json();
-        console.log('🔍 Matières reçues:', subjects);
+        console.log('🔍 Matières reçues (publiques):', subjects);
+        console.log('🔍 Nombre de matières reçues:', subjects.length);
         
-        // Attendre que l'utilisateur soit chargé avant de filtrer
-        const currentUser = user || (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null);
-        console.log('🔍 Utilisateur actuel pour filtrage:', currentUser);
-        
-        // Filtrer les matières selon le profil de l'utilisateur
+        // Filtrer les matières côté frontend selon le profil utilisateur
         const filteredSubjects = filterSubjectsByProfile(subjects);
-        console.log('🔍 Matières filtrées:', filteredSubjects);
-        console.log('🔍 Nombre de matières filtrées:', filteredSubjects.length);
-        setAvailableSubjects(filteredSubjects);
+        
+        // Ajouter les statistiques de flashcards pour chaque matière
+        const subjectsWithStats = await Promise.all(
+          filteredSubjects.map(async (subject) => {
+            try {
+              const flashcardsResponse = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_FLASHCARDS(subject.id));
+              if (flashcardsResponse.ok) {
+                const flashcardsData = await flashcardsResponse.json();
+                const flashcards = Array.isArray(flashcardsData) ? flashcardsData : flashcardsData.flashcards || [];
+                return {
+                  ...subject,
+                  totalFlashcards: flashcards.length,
+                  completedFlashcards: 0,
+                  accuracy: 0,
+                  progress: 0
+                };
+              }
+            } catch (error) {
+              console.error(`Erreur lors du chargement des flashcards pour ${subject.name}:`, error);
+            }
+            return {
+              ...subject,
+              totalFlashcards: 0,
+              completedFlashcards: 0,
+              accuracy: 0,
+              progress: 0
+            };
+          })
+        );
+        
+        setAvailableSubjects(subjectsWithStats);
+        console.log('🔍 Matières filtrées avec statistiques et définies dans le state:', subjectsWithStats.length);
+        console.log('🔍 Première matière avec stats (détail):', subjectsWithStats[0]);
       } else {
-        console.error('🔍 Erreur de réponse:', response.status, response.statusText);
+        console.error('🔍 Erreur de réponse publique:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('🔍 Détails de l\'erreur:', errorText);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des matières:', error);
+      console.error('🔍 Erreur lors du chargement des matières:', error);
     }
   };
 
@@ -230,21 +349,38 @@ const Flashcards = () => {
   };
 
   // Fonction pour charger les flashcards d'une matière
-  const loadSubjectFlashcards = async (subjectId: number) => {
+  const loadSubjectFlashcards = async (subjectId: number, chapterId?: number | string | null) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+      console.log('🔍 Chargement des flashcards pour la matière:', subjectId, 'chapitre:', chapterId);
 
-      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_FLASHCARDS(subjectId), {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const flashcards = await response.json();
-        setSubjectFlashcards(flashcards);
+      // Utiliser le contexte global pour obtenir les flashcards
+      const allFlashcards = getFlashcardsBySubject(subjectId);
+      console.log('🔍 Flashcards trouvées dans le contexte:', allFlashcards.length);
+      
+      // Filtrer par chapitre selon l'option sélectionnée
+      let filteredFlashcards = allFlashcards;
+      
+      if (chapterId === null || chapterId === 'all') {
+        // Option "Tous les chapitres" : afficher toutes les flashcards
+        filteredFlashcards = allFlashcards;
+        console.log('🔍 Mode "Tous les chapitres":', filteredFlashcards.length);
+      } else if (chapterId === 'none') {
+        // Option "Sans chapitre" : afficher uniquement les flashcards sans chapitre
+        filteredFlashcards = allFlashcards.filter((card: any) => card.chapterId === null);
+        console.log('🔍 Mode "Sans chapitre":', filteredFlashcards.length);
+      } else if (chapterId) {
+        // Chapitre spécifique : afficher UNIQUEMENT les flashcards de ce chapitre
+        const targetChapterId = typeof chapterId === 'string' ? parseInt(chapterId) : chapterId;
+        filteredFlashcards = allFlashcards.filter((card: any) => {
+          const cardChapterId = card.chapterId;
+          console.log('🔍 Comparaison chapitre:', { cardChapterId, targetChapterId, match: cardChapterId === targetChapterId });
+          return cardChapterId === targetChapterId;
+        });
+        console.log('🔍 Flashcards filtrées par chapitre:', filteredFlashcards.length);
       }
+      
+      setSubjectFlashcards(filteredFlashcards);
+      console.log('🔍 Flashcards définies dans le state:', filteredFlashcards.length);
     } catch (error) {
       console.error('Erreur lors du chargement des flashcards:', error);
     }
@@ -369,12 +505,90 @@ const Flashcards = () => {
     }
   };
 
+  // Fonction pour calculer le nombre de cartes disponibles pour l'étude interactive
+  const getAvailableCardsCount = () => {
+    if (!selectedSubject) return 0;
+    
+    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    if (!subject) return 0;
+    
+    // Utiliser les flashcards du contexte
+    const allFlashcards = getFlashcardsBySubject(subject.id);
+    
+    // Filtrer par chapitre selon l'option sélectionnée (synchronisé avec loadSubjectFlashcards)
+    let filteredCards = allFlashcards;
+    
+    if (selectedChapter === null || selectedChapter === 'all') {
+      // Tous les chapitres
+      filteredCards = allFlashcards;
+    } else if (selectedChapter === 'none') {
+      // Sans chapitre uniquement
+      filteredCards = allFlashcards.filter(card => card.chapterId === null);
+    } else {
+      // Chapitre spécifique uniquement
+      const targetChapterId = typeof selectedChapter === 'string' ? parseInt(selectedChapter) : selectedChapter;
+      filteredCards = allFlashcards.filter(card => card.chapterId === targetChapterId);
+    }
+    
+    return filteredCards.length;
+  };
+
+  // Fonction pour calculer le nombre de cartes à réviser (basé sur les tentatives)
+  const getReviewCardsCount = () => {
+    if (!selectedSubject) return 0;
+    
+    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    if (!subject) return 0;
+    
+    // Pour l'instant, on prend 30% des cartes disponibles comme cartes à réviser
+    const availableCount = getAvailableCardsCount();
+    return Math.floor(availableCount * 0.3);
+  };
+
+  // Fonction pour calculer le nombre de tests disponibles
+  const getAvailableTestsCount = () => {
+    if (!selectedSubject) return 0;
+    
+    // Retourner un nombre de tests basé sur le nombre de cartes disponibles
+    const availableCount = getAvailableCardsCount();
+    return Math.max(1, Math.floor(availableCount / 3)); // 1 test pour 3 flashcards
+  };
+
+  // Fonction pour charger les chapitres d'une matière
+  const loadChapters = async (subjectId: number) => {
+    try {
+      console.log('🔍 Chargement des chapitres pour la matière:', subjectId);
+      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_CHAPTERS(subjectId));
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🔍 Chapitres reçus:', data.chapters);
+        setAvailableChapters(data.chapters || []);
+      } else {
+        console.log('🔍 Aucun chapitre trouvé pour cette matière');
+        setAvailableChapters([]);
+      }
+    } catch (error) {
+      console.error('🔍 Erreur lors du chargement des chapitres:', error);
+      setAvailableChapters([]);
+    }
+  };
+
   // Charger les données au montage du composant
   useEffect(() => {
     const initializeComponent = async () => {
       // Vérifier si l'utilisateur est connecté (via user ou localStorage)
       const token = localStorage.getItem('token');
       const savedUser = localStorage.getItem('user');
+      
+      console.log('🔍 useEffect - Token:', token ? 'Présent' : 'Absent');
+      console.log('🔍 useEffect - User context:', user ? 'Présent' : 'Absent');
+      console.log('🔍 useEffect - Saved user:', savedUser ? 'Présent' : 'Absent');
+      
+      // Charger les données même si l'utilisateur n'est pas connecté
+      setLoadingStats(true);
+      console.log('🔍 useEffect - Chargement des données...');
+      console.log('🔍 useEffect - Appel de loadAvailableSubjects...');
       
       if (user || (token && savedUser)) {
         // Utiliser les données du contexte ou du localStorage
@@ -390,22 +604,67 @@ const Flashcards = () => {
           setSelectedSection(currentUser.section);
         }
         
-        // Charger les données depuis l'API
-        setLoadingStats(true);
-        console.log('🔍 useEffect - Chargement des données...');
+        // Charger les données depuis l'API avec authentification
         await Promise.all([
           loadUserStats(),
           loadAvailableSubjects()
         ]);
-        setLoadingStats(false);
-        setIsInitialized(true);
-        console.log('🔍 useEffect - Données chargées');
+      } else {
+        console.log('🔍 useEffect - Pas d\'utilisateur connecté, chargement des matières publiques');
+        // Charger seulement les matières publiques
+        await loadAvailableSubjects();
       }
+      
+      setLoadingStats(false);
+      setIsInitialized(true);
+      console.log('🔍 useEffect - Données chargées');
     };
     
     initializeComponent();
   }, [user]);
 
+  // Effet pour charger les chapitres quand une matière est sélectionnée
+  useEffect(() => {
+    if (selectedSubject) {
+      const subjectId = parseInt(selectedSubject);
+      if (subjectId) {
+        loadChapters(subjectId);
+      }
+    } else {
+      setAvailableChapters([]);
+      setSelectedChapter(null);
+    }
+  }, [selectedSubject]);
+
+  // Effet pour charger les flashcards quand un chapitre est sélectionné
+  useEffect(() => {
+    console.log('🔍 useEffect flashcards - selectedSubject:', selectedSubject, 'selectedChapter:', selectedChapter);
+    if (selectedSubject && selectedChapter) {
+      const subjectId = parseInt(selectedSubject);
+      console.log('🔍 useEffect flashcards - subjectId parsé:', subjectId);
+      if (subjectId) {
+        console.log('🔍 useEffect flashcards - Appel loadSubjectFlashcards avec:', subjectId, selectedChapter);
+        loadSubjectFlashcards(subjectId, selectedChapter);
+        // Réinitialiser l'état de la session
+        setCurrentCard(0);
+        setShowAnswer(false);
+        setUserAnswer("");
+        setScore(0);
+        setError(null);
+        setTimeUp(false);
+        setShowCorrectAnswer(false);
+      }
+    } else {
+      console.log('🔍 useEffect flashcards - Pas de matière ou chapitre sélectionné, reset flashcards');
+      setSubjectFlashcards([]);
+    }
+  }, [selectedSubject, selectedChapter]);
+
+  // Fonction pour gérer la sélection d'une matière
+  const handleSubjectChange = (subjectId: number) => {
+    setSelectedSubject(subjectId.toString());
+    setSelectedChapter(null); // Réinitialiser le chapitre sélectionné
+  };
 
   // Fonction pour gérer le temps écoulé
   const handleTimeUp = () => {
@@ -413,7 +672,7 @@ const Flashcards = () => {
     setShowCorrectAnswer(true);
     toast({
       title: "Temps écoulé !",
-      description: "Voici la bonne réponse",
+      description: "Le temps imparti est terminé",
       variant: "destructive"
     });
   };
@@ -425,18 +684,18 @@ const Flashcards = () => {
     setUserAnswer("");
   };
 
-  // Rendu conditionnel consolidé
-  if (!user || (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
+  // Rendu conditionnel consolidé - Permettre l'accès aux matières même sans connexion
+  if (user && (user.role !== 'STUDENT' && user.role !== 'TUTOR' && user.role !== 'ADMIN')) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Card className="w-full max-w-md p-8 text-center">
           <LogIn className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <h2 className="text-2xl font-bold mb-2">Accès restreint</h2>
           <p className="text-gray-600 mb-6">
-            {!user ? "Vous devez être connecté pour accéder aux flashcards" : "Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards"}
+            Seuls les étudiants, tuteurs et administrateurs peuvent accéder aux flashcards
           </p>
-          <Button onClick={(e) => { e.preventDefault(); navigate(!user ? '/login' : '/'); }} className="w-full">
-            {!user ? 'Se connecter' : 'Retour à l\'accueil'}
+          <Button onClick={(e) => { e.preventDefault(); navigate('/'); }} className="w-full">
+            Retour à l'accueil
           </Button>
         </Card>
       </div>
@@ -746,7 +1005,7 @@ const Flashcards = () => {
     if (!subject) return subjectFlashcards;
     
     // Si toutes les flashcards sont complétées, retourner un tableau vide
-    if (subject.completedFlashcards >= subject.totalFlashcards) {
+    if ((subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
       return [];
     }
     
@@ -761,7 +1020,7 @@ const Flashcards = () => {
     const subject = availableSubjects.find(s => s.name === selectedSubject);
     if (!subject) return false;
     
-    return subject.completedFlashcards >= subject.totalFlashcards;
+    return (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0);
   };
 
   const handleStartFlashcards = () => {
@@ -787,10 +1046,10 @@ const Flashcards = () => {
 
       // Vérifier si toutes les flashcards sont déjà complétées
       const subject = availableSubjects.find(s => s.name === selectedSubject);
-      if (subject && subject.completedFlashcards >= subject.totalFlashcards) {
+      if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
         toast({
           title: "Toutes les flashcards sont complétées !",
-          description: `Vous avez déjà terminé toutes les ${subject.totalFlashcards} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
+          description: `Vous avez déjà terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
           variant: "default"
         });
         return;
@@ -802,8 +1061,9 @@ const Flashcards = () => {
       setShowAnswer(false);
       setUserAnswer("");
       setScore(0);
+      setLastAnswerCorrect(null); // Réinitialiser le résultat de la réponse
 
-      const availableCount = subject ? subject.totalFlashcards - subject.completedFlashcards : subjectFlashcards.length;
+      const availableCount = subject ? (subject.totalFlashcards || 0) - (subject.completedFlashcards || 0) : subjectFlashcards.length;
       toast({
         title: "Session de flashcards démarrée",
         description: `${availableCount} flashcards restantes pour ${selectedSubject}`,
@@ -817,10 +1077,10 @@ const Flashcards = () => {
   const handleNextCard = () => {
     // Vérifier si toutes les flashcards sont complétées
     const subject = availableSubjects.find(s => s.name === selectedSubject);
-    if (subject && subject.completedFlashcards >= subject.totalFlashcards) {
+    if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
       toast({
         title: "Toutes les flashcards sont complétées !",
-        description: `Vous avez terminé toutes les ${subject.totalFlashcards} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
+          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
         variant: "default"
       });
       setShowDemo(false);
@@ -830,6 +1090,7 @@ const Flashcards = () => {
     if (currentCard < subjectFlashcards.length - 1) {
       setCurrentCard(currentCard + 1);
       setShowAnswer(false);
+      setLastAnswerCorrect(null); // Réinitialiser le résultat de la réponse
       resetTimerStates(); // Réinitialiser les états du timer
     } else {
       toast({
@@ -846,6 +1107,9 @@ const Flashcards = () => {
 
     const isCorrect = userAnswer.toLowerCase().includes(currentCardData.answer.toLowerCase());
     
+    // Stocker le résultat pour l'affichage
+    setLastAnswerCorrect(isCorrect);
+    
     // Enregistrer la tentative dans la base de données
     await saveFlashcardAttempt(currentCardData.id, isCorrect, 30); // 30 secondes par défaut
 
@@ -855,12 +1119,6 @@ const Flashcards = () => {
         title: "Correct !",
         description: "Bonne réponse !",
       });
-    } else {
-      toast({
-        title: "Incorrect",
-        description: `La bonne réponse était : ${currentCardData.answer}`,
-        variant: "destructive"
-      });
     }
     setShowAnswer(true);
 
@@ -868,10 +1126,10 @@ const Flashcards = () => {
     setTimeout(async () => {
       await loadUserStats(); // Recharger les statistiques
       const subject = availableSubjects.find(s => s.name === selectedSubject);
-      if (subject && subject.completedFlashcards >= subject.totalFlashcards) {
+      if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
         toast({
           title: "🎉 Félicitations !",
-          description: `Vous avez terminé toutes les ${subject.totalFlashcards} flashcards de ${selectedSubject} !`,
+          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject} !`,
           variant: "default"
         });
         setShowDemo(false);
@@ -1017,14 +1275,32 @@ const Flashcards = () => {
         </div>
 
 
-        {/* Learning Path Selection - Only show if no mode is selected */}
+        {/* Learning Path Selection - Show when no active session */}
         {!showDemo && !showExam && (
           <div className="mb-8">
             <div className="text-center mb-6">
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Choisissez votre parcours d'apprentissage</h2>
-              <p className="text-base md:text-lg text-gray-600">Sélectionnez une matière et un chapitre pour commencer</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Choisissez votre mode d'apprentissage</h2>
+              <p className="text-base md:text-lg text-gray-600">Flashcards, Tests de Connaissances ou Révision - Sélectionnez votre matière</p>
               
               {/* Message informatif sur les sections */}
+              {!user && (
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center justify-center mb-2">
+                    <BookOpen className="w-5 h-5 text-green-600 mr-2" />
+                    <span className="text-sm font-medium text-green-800">Mode Découverte</span>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    Vous pouvez explorer toutes les matières disponibles. 
+                    <span 
+                      className="text-green-600 underline cursor-pointer"
+                      onClick={() => navigate('/login')}
+                    >
+                      Connectez-vous
+                    </span> pour un accès personnalisé selon votre niveau.
+                  </p>
+                </div>
+              )}
+              
               {user && user.role === 'STUDENT' && user.section && (
                 <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center justify-center mb-2">
@@ -1070,48 +1346,21 @@ const Flashcards = () => {
                   </div>
         </div>
 
-            <Select value={selectedSubject} onValueChange={async (value) => {
-              setSelectedSubject(value);
-              setSelectedChapter("");
-              setAvailableChapters([]);
-              
-              // Charger les flashcards de la matière sélectionnée
-              const subject = availableSubjects.find(s => s.name === value);
-              if (subject) {
-                loadSubjectFlashcards(subject.id);
-                
-                // Charger les chapitres pour cette matière
-                if (subject.chapters && subject.chapters.length > 0) {
-                  setAvailableChapters(subject.chapters);
-                } else {
-                  // Fallback: charger depuis l'API
-                  try {
-                    const response = await fetch(`/api/subject-chapters/${subject.id}`, {
-                      headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                      }
-                    });
-                    if (response.ok) {
-                      const data = await response.json();
-                      setAvailableChapters(data.chapters);
-                    }
-                  } catch (error) {
-                    console.error('Erreur lors du chargement des chapitres:', error);
-                  }
-                }
-              }
+            <Select value={selectedSubject} onValueChange={(value) => {
+              const subjectId = parseInt(value);
+              handleSubjectChange(subjectId);
             }}>
               <SelectTrigger className="h-10 md:h-12 text-base md:text-lg">
                 <SelectValue placeholder={loadingStats ? "Chargement..." : "Choisissez votre matière"} />
               </SelectTrigger>
               <SelectContent>
                 {availableSubjects.map((subject) => (
-                  <SelectItem key={subject.id} value={subject.name}>
+                  <SelectItem key={subject.id} value={subject.id.toString()}>
                     <div className="flex items-center justify-between w-full">
                       <span>{subject.name}</span>
                       <div className="flex items-center space-x-2 ml-4">
                         <Badge variant="outline" className="text-xs">
-                          {subject.totalFlashcards} cartes
+                          {subject.totalFlashcards || 0} cartes
                         </Badge>
                         {subject.accuracy > 0 && (
                           <Badge variant="secondary" className="text-xs">
@@ -1129,17 +1378,10 @@ const Flashcards = () => {
             const subject = availableSubjects.find(s => s.name === selectedSubject);
             return subject ? (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">Matière sélectionnée</p>
-                    <p className="text-sm text-blue-700">{selectedSubject}</p>
-                  </div>
-                  <CheckCircle className="w-5 h-5 text-blue-600" />
-                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Total Flashcards</p>
-                    <p className="text-lg font-bold text-blue-800">{subject.totalFlashcards}</p>
+                    <p className="text-lg font-bold text-blue-800">{subject.totalFlashcards || 0}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Progression</p>
@@ -1147,12 +1389,12 @@ const Flashcards = () => {
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Complétées</p>
-                    <p className="text-lg font-bold text-blue-800">{subject.completedFlashcards}</p>
+                    <p className="text-lg font-bold text-blue-800">{subject.completedFlashcards || 0}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Restantes</p>
-                    <p className={`text-lg font-bold ${subject.totalFlashcards - subject.completedFlashcards === 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                      {subject.totalFlashcards - subject.completedFlashcards}
+                    <p className={`text-lg font-bold ${(subject.totalFlashcards || 0) - (subject.completedFlashcards || 0) === 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                      {(subject.totalFlashcards || 0) - (subject.completedFlashcards || 0)}
                     </p>
                   </div>
                   {subject.accuracy > 0 && (
@@ -1162,7 +1404,7 @@ const Flashcards = () => {
                     </div>
                   )}
                 </div>
-                {subject.totalFlashcards - subject.completedFlashcards === 0 && (
+                {(subject.totalFlashcards || 0) - (subject.completedFlashcards || 0) === 0 && (
                   <div className="mt-3 p-3 bg-green-100 rounded-lg">
                     <div className="flex items-center justify-center">
                       <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
@@ -1173,17 +1415,7 @@ const Flashcards = () => {
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">Matière sélectionnée</p>
-                    <p className="text-sm text-blue-700">{selectedSubject}</p>
-                  </div>
-                  <CheckCircle className="w-5 h-5 text-blue-600" />
-                </div>
-              </div>
-            );
+            ) : null;
           })()}
           </Card>
 
@@ -1201,16 +1433,40 @@ const Flashcards = () => {
                 </div>
                 
                 {selectedSubject ? (
-              <Select value={selectedChapter} onValueChange={setSelectedChapter}>
+              <Select 
+                value={selectedChapter?.toString() || "all"} 
+                onValueChange={(value) => {
+                  if (value === 'all') setSelectedChapter(null);
+                  else if (value === 'none') setSelectedChapter('none');
+                  else setSelectedChapter(parseInt(value));
+                }}
+              >
                     <SelectTrigger className="h-10 md:h-12 text-base md:text-lg">
                   <SelectValue placeholder="Choisissez un chapitre" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableChapters.map((chapter) => (
-                    <SelectItem key={chapter.id} value={chapter.name}>
-                      {chapter.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">
+                    📚 Tous les chapitres ({getFlashcardsBySubject(parseInt(selectedSubject)).length} flashcards)
+                  </SelectItem>
+                  
+                  <SelectItem value="none">
+                    📝 Sans chapitre ({getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === null).length} flashcards)
+                  </SelectItem>
+                  
+                  {availableChapters.length > 0 && (
+                    <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border-t border-b my-1">
+                      CHAPITRES
+                    </div>
+                  )}
+                  
+                  {availableChapters.map((chapter) => {
+                    const chapterFlashcards = getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === chapter.id);
+                    return (
+                      <SelectItem key={chapter.id} value={chapter.id.toString()}>
+                        📖 {chapter.name} ({chapterFlashcards.length} flashcards)
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
                 ) : (
@@ -1219,24 +1475,13 @@ const Flashcards = () => {
                   </div>
                 )}
 
-                {selectedChapter && (
-                  <div className="mt-4 p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-green-900">Chapitre sélectionné</p>
-                        <p className="text-sm text-green-700">{selectedChapter}</p>
-                      </div>
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    </div>
-                  </div>
-                )}
             </Card>
             </div>
           </div>
         )}
 
-        {/* Study Options - Only show if no mode is selected */}
-        {selectedSubject && selectedChapter && !showDemo && !showExam && (
+        {/* Study Options - Show when no mode is selected */}
+        {!showDemo && !showExam && (
           <div className="mb-8">
             <div className="text-center mb-6">
               <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Modes d'étude disponibles</h2>
@@ -1258,15 +1503,14 @@ const Flashcards = () => {
                   <p className="text-sm md:text-base text-gray-600 mb-4">Apprenez avec des flashcards adaptatives</p>
                   
                   <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs md:text-sm text-gray-600">Cartes disponibles</span>
-                      <Badge variant="secondary" className="bg-blue-200 text-blue-800 text-xs">
-                  {(() => {
-                    const subject = Object.values(subjects).find(s => s.name === selectedSubject);
-                    return subject ? `${subject.flashcards} cartes` : "0 cartes";
-                  })()}
-                      </Badge>
-                    </div>
+                    {getAvailableCardsCount() > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs md:text-sm text-gray-600">Cartes disponibles</span>
+                        <Badge variant="secondary" className="bg-blue-200 text-blue-800 text-xs">
+                          {getAvailableCardsCount()} cartes
+                        </Badge>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-xs md:text-sm text-gray-600">Niveau</span>
                       <Badge variant="outline" className="text-xs">Adaptatif</Badge>
@@ -1274,25 +1518,16 @@ const Flashcards = () => {
                   </div>
                   
                   <Button 
-                    className={`w-full text-white text-sm md:text-base ${
-                      areAllFlashcardsCompleted() 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-                    disabled={areAllFlashcardsCompleted()}
+                    className="w-full text-white text-sm md:text-base bg-blue-600 hover:bg-blue-700"
                   >
                     <Play className="w-4 h-4 mr-2" />
-                    {areAllFlashcardsCompleted() ? 'Terminé !' : 'Commencer l\'étude'}
+                    Commencer l'étude
                   </Button>
               </div>
             </Card>
 
               {/* Review Mode */}
-              <Card className={`p-4 md:p-6 border-0 shadow-xl transition-all duration-300 group ${
-                areAllFlashcardsCompleted() 
-                  ? 'bg-gradient-to-br from-gray-50 to-gray-100 cursor-not-allowed opacity-60' 
-                  : 'bg-gradient-to-br from-green-50 to-green-100 hover:shadow-2xl cursor-pointer'
-              }`} onClick={areAllFlashcardsCompleted() ? undefined : (e) => { e.preventDefault(); handleStartFlashcards(); }}>
+              <Card className="p-4 md:p-6 border-0 shadow-xl transition-all duration-300 group bg-gradient-to-br from-green-50 to-green-100 hover:shadow-2xl cursor-pointer" onClick={(e) => { e.preventDefault(); handleStartFlashcards(); }}>
                 <div className="text-center">
                   <div className="w-12 h-12 md:w-16 md:h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
                     <RotateCcw className="w-6 h-6 md:w-8 md:h-8 text-white" />
@@ -1301,15 +1536,14 @@ const Flashcards = () => {
                   <p className="text-sm md:text-base text-gray-600 mb-4">Révisez les cartes étudiées</p>
                   
                   <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs md:text-sm text-gray-600">À réviser</span>
-                      <Badge variant="secondary" className="bg-green-200 text-green-800 text-xs">
-                  {(() => {
-                    const subject = Object.values(subjects).find(s => s.name === selectedSubject);
-                          return subject ? `${Math.floor(subject.flashcards * 0.3)} cartes` : "0 cartes";
-                  })()}
-                      </Badge>
-                    </div>
+                    {getReviewCardsCount() > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs md:text-sm text-gray-600">À réviser</span>
+                        <Badge variant="secondary" className="bg-green-200 text-green-800 text-xs">
+                          {getReviewCardsCount()} cartes
+                        </Badge>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-xs md:text-sm text-gray-600">Efficacité</span>
                       <Badge variant="outline" className="text-xs">Optimisée</Badge>
@@ -1317,48 +1551,42 @@ const Flashcards = () => {
                   </div>
                   
                   <Button 
-                    className={`w-full text-white text-sm md:text-base ${
-                      areAllFlashcardsCompleted() 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-green-600 hover:bg-green-700'
-                    }`}
-                    disabled={areAllFlashcardsCompleted()}
+                    className="w-full text-white text-sm md:text-base bg-green-600 hover:bg-green-700"
                   >
                     <RotateCcw className="w-4 h-4 mr-2" />
-                    {areAllFlashcardsCompleted() ? 'Terminé !' : 'Commencer la révision'}
+                    Commencer la révision
                   </Button>
               </div>
             </Card>
 
-              {/* Exam Mode */}
-              <Card className="p-4 md:p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer group" onClick={handleStartExam}>
-                <div className="text-center">
-                  <div className="w-12 h-12 md:w-16 md:h-16 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
-                    <Trophy className="w-6 h-6 md:w-8 md:h-8 text-white" />
-              </div>
-                  <h3 className="text-lg md:text-2xl font-bold text-gray-900 mb-2">Test de Connaissance</h3>
-                  <p className="text-sm md:text-base text-gray-600 mb-4">Évaluez vos connaissances</p>
-                  
-                  <div className="space-y-2 mb-4">
+            {/* Knowledge Tests - Access to knowledge tests page */}
+            <Card className="p-4 md:p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer group" onClick={() => {
+              navigate('/knowledge-tests');
+            }}>
+              <div className="text-center">
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <ClipboardCheck className="w-6 h-6 md:w-8 md:h-8 text-white" />
+                </div>
+                <h3 className="text-lg md:text-2xl font-bold text-gray-900 mb-2">Tests de Connaissances</h3>
+                <p className="text-sm md:text-base text-gray-600 mb-4">Évaluez vos connaissances avec des tests adaptés à votre niveau</p>
+                
+                <div className="space-y-2 mb-4">
+                  {getAvailableTestsCount() > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs md:text-sm text-gray-600">Questions</span>
-                      <Badge variant="secondary" className="bg-purple-200 text-purple-800 text-xs">
-                  {(() => {
-                          const questions = examQuestions[selectedSubject as keyof typeof examQuestions] || [];
-                          return `${questions.length} questions`;
-                  })()}
-                      </Badge>
+                      <span className="text-xs md:text-sm text-gray-600">Tests disponibles</span>
+                      <Badge variant="secondary" className="bg-purple-200 text-purple-800 text-xs">{getAvailableTestsCount()} tests</Badge>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs md:text-sm text-gray-600">Durée</span>
-                      <Badge variant="outline" className="text-xs">Chronométré</Badge>
-                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs md:text-sm text-gray-600">Durée</span>
+                    <Badge variant="outline" className="text-xs">60 min</Badge>
                   </div>
-                  
-                  <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm md:text-base">
-                    <Trophy className="w-4 h-4 mr-2" />
-                    Passer le test
-                  </Button>
+                </div>
+                
+                <Button className="w-full text-white text-sm md:text-base bg-purple-600 hover:bg-purple-700">
+                  <ClipboardCheck className="w-4 h-4 mr-2" />
+                  Accéder aux tests
+                </Button>
               </div>
             </Card>
             </div>
@@ -1434,7 +1662,7 @@ const Flashcards = () => {
                         <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
                           <TimerIcon className="w-4 h-4 text-blue-600" />
                         <Timer 
-                          duration={15} 
+                          duration={30} 
                           onTimeUp={handleTimeUp}
                             className="text-blue-600 font-bold text-sm"
                         />
@@ -1455,7 +1683,6 @@ const Flashcards = () => {
                           <Clock className="w-4 h-4" />
                           <span className="font-semibold text-sm">Temps écoulé !</span>
                         </div>
-                        <p className="text-red-700 text-xs mt-1">Voici la bonne réponse :</p>
                       </div>
                     )}
                   </div>
@@ -1486,13 +1713,21 @@ const Flashcards = () => {
                         </Button>
                       ) : (
                         <div className="space-y-4">
-                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg md:rounded-xl p-4 md:p-6">
-                            <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
-                              <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
-                              <span className="text-base md:text-lg font-bold text-green-800">Bonne réponse :</span>
+                          {!timeUp && (
+                            <div className={`bg-gradient-to-r ${lastAnswerCorrect ? 'from-green-50 to-emerald-50 border-2 border-green-200' : 'from-red-50 to-rose-50 border-2 border-red-200'} rounded-lg md:rounded-xl p-4 md:p-6`}>
+                              <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
+                                {lastAnswerCorrect ? (
+                                  <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
+                                ) : (
+                                  <XCircle className="w-5 h-5 md:w-6 md:h-6 text-red-600" />
+                                )}
+                                <span className={`text-base md:text-lg font-bold ${lastAnswerCorrect ? 'text-green-800' : 'text-red-800'}`}>
+                                  {lastAnswerCorrect ? 'Bonne réponse :' : 'Mauvaise réponse. La bonne réponse était :'}
+                                </span>
+                              </div>
+                              <p className={`text-base md:text-lg leading-relaxed ${lastAnswerCorrect ? 'text-green-700' : 'text-red-700'}`}>{currentCardData.answer}</p>
                             </div>
-                            <p className="text-green-700 text-base md:text-lg leading-relaxed">{currentCardData.answer}</p>
-          </div>
+                          )}
                           
                           <div className="flex flex-col sm:flex-row gap-3">
                             <Button onClick={handleNextCard} className="flex-1 h-10 md:h-12 text-base md:text-lg bg-green-600 hover:bg-green-700">

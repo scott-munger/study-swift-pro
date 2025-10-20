@@ -313,13 +313,9 @@ const AdminDashboard = () => {
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Actions rapides</h3>
                     <div className="space-x-2">
-                      <Button onClick={() => window.location.href = '/simple-admin/dashboard?tab=users'}>
+                      <Button onClick={() => window.location.href = '/admin/users'}>
                         <Users className="h-4 w-4 mr-2" />
-                        Voir tous les utilisateurs
-                      </Button>
-                      <Button variant="outline">
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Ajouter un utilisateur
+                        Gérer les utilisateurs
                       </Button>
                     </div>
                   </div>

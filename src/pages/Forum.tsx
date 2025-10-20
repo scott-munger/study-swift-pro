@@ -6,11 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn } from "lucide-react";
+import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn, UserPlus, Menu, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import ForumPostDetail from "@/components/ui/forum-post-detail";
 import SimpleForumDialog from "@/components/ui/simple-forum-dialog";
+import ForumImageGallery from "@/components/ui/ForumImageGallery";
+import CreateGroupDialog from "@/components/ui/CreateGroupDialog";
+import GroupDetailDialog from "@/components/ui/GroupDetailDialog";
+import UserProfileDialog from "@/components/ui/UserProfileDialog";
 
 interface ForumPost {
   id: number;
@@ -21,6 +25,7 @@ interface ForumPost {
     firstName: string;
     lastName: string;
     role: string;
+    profilePhoto?: string;
   };
   subject?: {
     id: number;
@@ -35,6 +40,13 @@ interface ForumPost {
     likes: number;
   };
   likes: Array<{ id: number; userId: number }>;
+  images?: Array<{
+    id: number;
+    filename: string;
+    mimetype: string;
+    size: number;
+    createdAt: string;
+  }>;
   replies: any[];
   tags?: string[];
 }
@@ -87,8 +99,12 @@ const Forum = () => {
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
   const [showPostDetail, setShowPostDetail] = useState(false);
   const [editingPost, setEditingPost] = useState<ForumPost | null>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [editDialogOpenForId, setEditDialogOpenForId] = useState<number | null>(null);
-
+  const [studyGroups, setStudyGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
+  const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(null);
+  const [showUserProfile, setShowUserProfile] = useState(false);
 
   const [selectedSubject, setSelectedSubject] = useState("All");
 
@@ -126,10 +142,10 @@ const Forum = () => {
   };
 
   // Fonction pour charger les données depuis l'API
-  const loadDataFromAPI = async () => {
+  const loadDataFromAPI = async (showToast: boolean = true) => {
     try {
       const [postsRes, subjectsRes] = await Promise.all([
-        fetch('http://localhost:8081/api/forum/posts'),
+        fetch('http://localhost:8081/api/forum/posts-temp'),
         fetch('http://localhost:8081/api/subjects')
       ]);
       
@@ -163,13 +179,27 @@ const Forum = () => {
         
         setPosts(postsWithReplies);
         setSubjects(subjectsData.map((s: any) => ({ id: s.id, name: s.name, level: s.level })));
+        
+        // Debug des photos de profil
+        console.log('📝 Posts chargés avec photos de profil:');
+        postsWithReplies.forEach((post: any, index: number) => {
+          console.log(`👤 Post ${index + 1} - Auteur:`, {
+            id: post.author.id,
+            name: `${post.author.firstName} ${post.author.lastName}`,
+            profilePhoto: post.author.profilePhoto,
+            hasPhoto: !!post.author.profilePhoto
+          });
+        });
+        
         // Connexion établie
         
-        toast({
-          title: "Mode en ligne",
-          description: "Données chargées depuis la base de données",
-          variant: "default"
-        });
+        if (showToast) {
+          toast({
+            title: "Mode en ligne",
+            description: "Données chargées depuis la base de données",
+            variant: "default"
+          });
+        }
         
         return true;
       } else {
@@ -219,6 +249,86 @@ const Forum = () => {
     }
   };
 
+  // Charger les groupes d'étude
+  const loadStudyGroups = async () => {
+    try {
+      const response = await fetch('http://localhost:8081/api/study-groups', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (response.ok) {
+        const groups = await response.json();
+        setStudyGroups(groups);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des groupes:', error);
+    }
+  };
+
+  // Rejoindre un groupe
+  const handleJoinGroup = async (groupId: number) => {
+    try {
+      const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/join`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Succès !",
+          description: "Vous avez rejoint le groupe avec succès"
+        });
+        loadStudyGroups();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Impossible de rejoindre le groupe",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Quitter un groupe
+  const handleLeaveGroup = async (groupId: number) => {
+    try {
+      const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/leave`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Succès !",
+          description: "Vous avez quitté le groupe"
+        });
+        loadStudyGroups();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erreur",
+          description: error.error || "Impossible de quitter le groupe",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+    }
+  };
+
   // Charger les données au montage du composant
   useEffect(() => {
     const loadData = async () => {
@@ -235,6 +345,7 @@ const Forum = () => {
       // Charger les statistiques du forum
       await loadForumStats();
       await loadOnlineUsers();
+      await loadStudyGroups();
       
       setLoading(false);
     };
@@ -283,7 +394,7 @@ const Forum = () => {
 
 
 
-  const handleCreatePost = async (data: { title: string; content: string; subjectId?: number }) => {
+  const handleCreatePost = async (data: { title: string; content: string; subjectId?: number; images?: File[] }) => {
     if (!user) return;
     
     const newPost: ForumPost = {
@@ -325,15 +436,50 @@ const Forum = () => {
           authorId: newPost.author.id
         })
       });
+      
       if (resp.ok) {
         const saved = await resp.json();
-        // Recharger les données depuis l'API pour avoir les données à jour
-        await loadDataFromAPI();
-        // Post sauvegardé avec succès
+        
+        // Upload des images si elles existent
+        if (data.images && data.images.length > 0) {
+          const formData = new FormData();
+          data.images.forEach(image => {
+            formData.append('images', image);
+          });
+          
+          try {
+            const imageResp = await fetch(`http://localhost:8081/api/forum/posts/${saved.id}/images`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
+              body: formData
+            });
+            
+            if (!imageResp.ok) {
+              console.error('Erreur lors de l\'upload des images');
+            }
+          } catch (imageError) {
+            console.error('Erreur lors de l\'upload des images:', imageError);
+          }
+        }
+        
+        // Recharger les données depuis l'API pour avoir les données à jour (sans toast)
+        await loadDataFromAPI(false);
+        
+        toast({
+          title: "✅ Post créé",
+          description: "Votre post a été publié avec succès",
+          variant: "default"
+        });
       } else {
         // fallback local
         setPosts(prev => [newPost, ...prev]);
-        // Post ajouté localement
+        toast({
+          title: "⚠️ Mode hors ligne",
+          description: "Post ajouté localement",
+          variant: "default"
+        });
       }
     } catch (e) {
       setPosts(prev => [newPost, ...prev]);
@@ -658,8 +804,6 @@ const Forum = () => {
           title: "Réponse supprimée",
           description: "La réponse a été supprimée avec succès",
         });
-        
-        return true;
       } else {
         const error = await response.json();
         toast({
@@ -667,7 +811,6 @@ const Forum = () => {
           description: error.error || "Impossible de supprimer la réponse",
           variant: "destructive"
         });
-        return false;
       }
     } catch (error) {
       console.error('Erreur lors de la suppression de la réponse:', error);
@@ -676,7 +819,6 @@ const Forum = () => {
         description: "Une erreur est survenue lors de la suppression",
         variant: "destructive"
       });
-      return false;
     }
   };
 
@@ -736,6 +878,17 @@ const Forum = () => {
             
             {/* Boutons d'action - Optimisés mobile */}
             <div className="flex items-center justify-between sm:justify-end space-x-2">
+              {/* Bouton menu mobile */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="lg:hidden flex items-center space-x-1"
+              >
+                <Menu className="w-4 h-4" />
+                <span>Menu</span>
+              </Button>
+              
               <Button
                 variant="outline"
                 size="sm"
@@ -763,7 +916,7 @@ const Forum = () => {
         </div>
 
         {/* Forum Stats - Optimisées mobile */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
           <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
@@ -776,31 +929,163 @@ const Forum = () => {
           <Card className="p-3 sm:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Actifs</p>
-                <p className="text-lg sm:text-2xl font-bold text-secondary">{forumStats.activeUsers}</p>
-              </div>
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-secondary" />
-            </div>
-          </Card>
-          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
-            <div className="flex items-center justify-between">
-              <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Aujourd'hui</p>
-                <p className="text-lg sm:text-2xl font-bold text-accent">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
               </div>
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-accent" />
-            </div>
-          </Card>
-          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">En Ligne</p>
-                <p className="text-lg sm:text-2xl font-bold text-success">{forumStats.onlineUsers}</p>
-              </div>
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-success" />
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
             </div>
           </Card>
         </div>
+
+        {/* Menu Mobile - Overlay */}
+        {showMobileMenu && (
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setShowMobileMenu(false)}>
+            <div className="fixed right-0 top-0 h-full w-80 bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Menu Forum</h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowMobileMenu(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="p-4 space-y-6">
+                {/* Actions Rapides */}
+                <div>
+                  <h3 className="font-semibold text-foreground mb-4">Actions Rapides</h3>
+                  <div className="space-y-2">
+                    <SimpleForumDialog
+                      onSave={handleCreatePost}
+                      subjects={subjects}
+                      showSubjectSelector={true}
+                      trigger={
+                        <Button variant="outline" className="w-full justify-start">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Poser une Question
+                        </Button>
+                      }
+                    />
+                    <CreateGroupDialog 
+                      subjects={subjects}
+                      onGroupCreated={loadStudyGroups}
+                    />
+                    <SimpleForumDialog
+                      onSave={handleCreatePost}
+                      subjects={subjects}
+                      showSubjectSelector={true}
+                      trigger={
+                        <Button variant="outline" className="w-full justify-start">
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Partager des Ressources
+                        </Button>
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Groupes d'Étude */}
+                <div>
+                  <h3 className="font-semibold text-foreground mb-4 flex items-center justify-between">
+                    <span>Groupes d'Étude</span>
+                    <Badge variant="secondary">{studyGroups.length}</Badge>
+                  </h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {studyGroups.slice(0, 5).map((group) => (
+                      <div 
+                        key={group.id} 
+                        className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-all cursor-pointer hover:shadow-md"
+                        onClick={() => {
+                          setSelectedGroup(group);
+                          setShowMobileMenu(false);
+                        }}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-medium text-sm line-clamp-1">{group.name}</h4>
+                          {group.userClass && (
+                            <Badge variant="outline" className="text-xs shrink-0 ml-2">
+                              📚 {group.userClass}{group.section ? ` - ${group.section}` : ''}
+                            </Badge>
+                          )}
+                        </div>
+                        {group.description && (
+                          <p className="text-xs text-gray-600 mb-2 line-clamp-2">{group.description}</p>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center text-xs text-gray-500">
+                            <Users className="w-3 h-3 mr-1" />
+                            {group._count.members} membres
+                          </div>
+                          {group.isMember ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="text-xs h-6"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLeaveGroup(group.id);
+                              }}
+                            >
+                              Quitter
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              className="text-xs h-6"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleJoinGroup(group.id);
+                              }}
+                            >
+                              <UserPlus className="w-3 h-3 mr-1" />
+                              Rejoindre
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {studyGroups.length === 0 && (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        Aucun groupe pour le moment.<br />
+                        Créez-en un !
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section Publicités */}
+                <div>
+                  <h3 className="font-semibold text-foreground mb-4">Publicités</h3>
+                  <div className="space-y-3">
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
+                      <h4 className="font-semibold text-blue-900 mb-2">📚 Cours Particuliers</h4>
+                      <p className="text-sm text-blue-700 mb-3">
+                        Besoin d'aide ? Nos tuteurs qualifiés sont là pour vous !
+                      </p>
+                      <Button size="sm" variant="outline" className="w-full">
+                        En savoir plus
+                      </Button>
+                    </div>
+                    <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                      <h4 className="font-semibold text-green-900 mb-2">🎯 Tests de Connaissances</h4>
+                      <p className="text-sm text-green-700 mb-3">
+                        Évaluez votre niveau avec nos tests interactifs !
+                      </p>
+                      <Button size="sm" variant="outline" className="w-full">
+                        Découvrir
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
           {/* Contenu Principal du Forum */}
@@ -826,6 +1111,8 @@ const Forum = () => {
                       </Button>
                     }
                     onSave={handleCreatePost}
+                    subjects={subjects}
+                    showSubjectSelector={true}
                   />
                 </div>
               </div>
@@ -857,6 +1144,8 @@ const Forum = () => {
                     </p>
                     <SimpleForumDialog
                       onSave={handleCreatePost}
+                      subjects={subjects}
+                      showSubjectSelector={true}
                     />
                   </Card>
                 ) : (
@@ -866,28 +1155,46 @@ const Forum = () => {
                     
                     return (
                       <Card key={post.id} className="p-4 sm:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
-                    <div className="flex items-start justify-between mb-3 sm:mb-4">
-                      <div className="flex items-start gap-2 sm:gap-3 flex-1">
-                        <Avatar className="w-8 h-8 sm:w-10 sm:h-10">
-                          <AvatarImage src="/placeholder.svg" />
+                    {/* En-tête avec profil et boutons */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-start gap-2 sm:gap-3">
+                        <Avatar 
+                          className="w-8 h-8 sm:w-10 sm:h-10 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                          onClick={() => {
+                            console.log('👤 Clic sur profil:', post.author);
+                            setSelectedUserProfile(post.author);
+                            setShowUserProfile(true);
+                          }}
+                        >
+                          <AvatarImage 
+                            src={post.author.profilePhoto ? `http://localhost:8081/api/profile/photos/${post.author.profilePhoto}` : undefined} 
+                            alt={`${post.author.firstName} ${post.author.lastName}`}
+                            onError={() => console.log('❌ Erreur chargement photo:', post.author.profilePhoto)}
+                            onLoad={() => console.log('✅ Photo chargée:', post.author.profilePhoto)}
+                          />
                           <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
                                 {post.author.firstName[0]}{post.author.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base truncate" 
+                        <div>
+                          <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base" 
                                     onClick={() => handleJoinDiscussion(post)}>
                                   {post.title}
                                 </h3>
                             {post.isPinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-primary flex-shrink-0" />}
                                 {post.isLocked && <Lock className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />}
                           </div>
-                          <p className="text-muted-foreground text-xs sm:text-sm mb-2 line-clamp-2">
-                            {post.content}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
-                                <span className="truncate">par {post.author.firstName} {post.author.lastName}</span>
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground mt-1">
+                                <span 
+                                  className="truncate cursor-pointer hover:text-primary hover:underline"
+                                  onClick={() => {
+                                    setSelectedUserProfile(post.author);
+                                    setShowUserProfile(true);
+                                  }}
+                                >
+                                  par {post.author.firstName} {post.author.lastName}
+                                </span>
                                 <Badge variant={post.author.role === "TUTOR" ? "secondary" : "outline"} className="text-xs">
                                   {post.author.role === "TUTOR" ? "Tuteur" : "Étudiant"}
                             </Badge>
@@ -901,84 +1208,110 @@ const Forum = () => {
                                   {new Date(post.createdAt).toLocaleDateString('fr-FR')}
                                 </div>
                               </div>
-                            </div>
-                          </div>
-                          {canEdit && (
-                            <div className="flex gap-1 sm:gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setEditingPost(post);
-                                  setEditDialogOpenForId(post.id);
-                                }}
-                                className="p-1 sm:p-2"
-                              >
-                                <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeletePost(post.id)}
-                                className="text-red-600 hover:text-red-700 p-1 sm:p-2"
-                              >
-                                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                              </Button>
                         </div>
-                          )}
+                      </div>
+                      {canEdit && (
+                        <div className="flex gap-1 sm:gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingPost(post);
+                              setEditDialogOpenForId(post.id);
+                            }}
+                            className="p-1 sm:p-2"
+                          >
+                            <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeletePost(post.id)}
+                            className="text-red-600 hover:text-red-700 p-1 sm:p-2"
+                          >
+                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Séparateur */}
+                    <div className="border-t border-border mb-3"></div>
+
+                    {/* Contenu du post (texte + images) */}
+                    <div className="mb-3">
+                      <p className="text-muted-foreground text-xs sm:text-sm mb-3 line-clamp-3">
+                        {post.content}
+                      </p>
+                      {post.images && post.images.length > 0 && (
+                        <ForumImageGallery
+                          images={post.images}
+                          postId={post.id}
+                          className="text-xs"
+                        />
+                      )}
                     </div>
                     
                     <div className="pt-4 border-t border-border">
                       {/* Section mobile - disposition verticale */}
                       <div className="flex flex-col sm:hidden space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <MessageSquare className="w-4 h-4" />
-                            <span>{post._count.replies} réponses</span>
-                          </div>
+                        <div className="flex items-center gap-2">
                           <Button
                             variant={isLiked ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleLikePost(post.id)}
-                            className="flex items-center gap-1"
+                            className="flex items-center gap-2"
                           >
                             <ThumbsUp className="w-4 h-4" />
-                            <span className="text-xs">{post._count.likes}</span>
+                            <span>{post._count.likes}</span>
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleJoinDiscussion(post)}
+                            className="flex-1 relative"
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Rejoindre la Discussion
+                            {post._count.replies > 0 && (
+                              <Badge 
+                                variant="destructive" 
+                                className="ml-2 h-5 min-w-[20px] flex items-center justify-center"
+                              >
+                                {post._count.replies}
+                              </Badge>
+                            )}
                           </Button>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleJoinDiscussion(post)}
-                          className="w-full"
-                        >
-                          Rejoindre la Discussion
-                        </Button>
                       </div>
                       
                       {/* Section desktop - disposition horizontale */}
-                      <div className="hidden sm:flex items-center justify-between">
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <MessageSquare className="w-4 h-4" />
-                            <span>{post._count.replies} réponses</span>
-                          </div>
-                          <Button
-                            variant={isLiked ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => handleLikePost(post.id)}
-                            className="flex items-center gap-1"
-                          >
-                            <ThumbsUp className="w-4 h-4" />
-                            {post._count.likes}
-                          </Button>
-                        </div>
+                      <div className="hidden sm:flex items-center gap-3">
+                        <Button
+                          variant={isLiked ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleLikePost(post.id)}
+                          className="flex items-center gap-2"
+                        >
+                          <ThumbsUp className="w-4 h-4" />
+                          <span>{post._count.likes}</span>
+                        </Button>
                         <Button 
                           variant="outline" 
                           size="sm" 
                           onClick={() => handleJoinDiscussion(post)}
+                          className="flex items-center gap-2"
                         >
+                          <MessageSquare className="w-4 h-4" />
                           Rejoindre la Discussion
+                          {post._count.replies > 0 && (
+                            <Badge 
+                              variant="destructive" 
+                              className="ml-2 h-5 min-w-[20px] flex items-center justify-center"
+                            >
+                              {post._count.replies}
+                            </Badge>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -1019,14 +1352,43 @@ const Forum = () => {
             )}
           </div>
 
-          {/* Barre Latérale */}
-          <div className="lg:col-span-1 space-y-6">
+          {/* Section Publicité Mobile - Visible uniquement sur mobile */}
+          <div className="lg:hidden mt-6">
+            <Card className="p-4 bg-gradient-card border-border">
+              <h3 className="font-semibold text-foreground mb-4">Publicités</h3>
+              <div className="space-y-3">
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-blue-900 mb-2">📚 Cours Particuliers</h4>
+                  <p className="text-sm text-blue-700 mb-3">
+                    Besoin d'aide ? Nos tuteurs qualifiés sont là pour vous !
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full">
+                    En savoir plus
+                  </Button>
+                </div>
+                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                  <h4 className="font-semibold text-green-900 mb-2">🎯 Tests de Connaissances</h4>
+                  <p className="text-sm text-green-700 mb-3">
+                    Évaluez votre niveau avec nos tests interactifs !
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full">
+                    Découvrir
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Barre Latérale - Masquée sur mobile */}
+          <div className="hidden lg:block lg:col-span-1 space-y-6">
             {/* Actions Rapides */}
             <Card className="p-4 bg-gradient-card border-border">
               <h3 className="font-semibold text-foreground mb-4">Actions Rapides</h3>
               <div className="space-y-2">
                 <SimpleForumDialog
                   onSave={handleCreatePost}
+                  subjects={subjects}
+                  showSubjectSelector={true}
                   trigger={
                     <Button variant="outline" className="w-full justify-start">
                       <Plus className="w-4 h-4 mr-2" />
@@ -1034,17 +1396,14 @@ const Forum = () => {
                     </Button>
                   }
                 />
-                <SimpleForumDialog
-                  onSave={handleCreatePost}
-                  trigger={
-                    <Button variant="outline" className="w-full justify-start">
-                      <Users className="w-4 h-4 mr-2" />
-                      Créer un Groupe d'Étude
-                    </Button>
-                  }
+                <CreateGroupDialog 
+                  subjects={subjects}
+                  onGroupCreated={loadStudyGroups}
                 />
                 <SimpleForumDialog
                   onSave={handleCreatePost}
+                  subjects={subjects}
+                  showSubjectSelector={true}
                   trigger={
                     <Button variant="outline" className="w-full justify-start">
                       <MessageSquare className="w-4 h-4 mr-2" />
@@ -1055,53 +1414,98 @@ const Forum = () => {
               </div>
             </Card>
 
-            {/* Sujets Populaires */}
+            {/* Groupes d'Étude */}
             <Card className="p-4 bg-gradient-card border-border">
-              <h3 className="font-semibold text-foreground mb-4">Sujets Tendance</h3>
+              <h3 className="font-semibold text-foreground mb-4 flex items-center justify-between">
+                <span>Groupes d'Étude</span>
+                <Badge variant="secondary">{studyGroups.length}</Badge>
+              </h3>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {studyGroups.slice(0, 5).map((group) => (
+                  <div 
+                    key={group.id} 
+                    className="p-3 bg-white/50 rounded-lg border border-gray-200 hover:border-blue-300 transition-all cursor-pointer hover:shadow-md"
+                    onClick={() => setSelectedGroup(group)}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-medium text-sm line-clamp-1">{group.name}</h4>
+                      {group.userClass && (
+                        <Badge variant="outline" className="text-xs shrink-0 ml-2">
+                          📚 {group.userClass}{group.section ? ` - ${group.section}` : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    {group.description && (
+                      <p className="text-xs text-gray-600 mb-2 line-clamp-2">{group.description}</p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-xs text-gray-500">
+                        <Users className="w-3 h-3 mr-1" />
+                        {group._count.members} membres
+                      </div>
+                      {group.isMember ? (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-xs h-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleLeaveGroup(group.id);
+                          }}
+                        >
+                          Quitter
+                        </Button>
+                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="default" 
+                          className="text-xs h-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleJoinGroup(group.id);
+                          }}
+                        >
+                          <UserPlus className="w-3 h-3 mr-1" />
+                          Rejoindre
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {studyGroups.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Aucun groupe pour le moment.<br />
+                    Créez-en un !
+                  </p>
+                )}
+              </div>
+            </Card>
+
+            {/* Section Publicités */}
+            <Card className="p-4 bg-gradient-card border-border">
+              <h3 className="font-semibold text-foreground mb-4">Publicités</h3>
               <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Préparation Terminale</span>
-                  <Badge variant="secondary">124</Badge>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-blue-900 mb-2">📚 Cours Particuliers</h4>
+                  <p className="text-sm text-blue-700 mb-3">
+                    Besoin d'aide ? Nos tuteurs qualifiés sont là pour vous !
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full">
+                    En savoir plus
+                  </Button>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Résolution de Problèmes Mathématiques</span>
-                  <Badge variant="secondary">89</Badge>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Conseils d'Étude</span>
-                  <Badge variant="secondary">67</Badge>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Stratégies d'Examen</span>
-                  <Badge variant="secondary">45</Badge>
+                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                  <h4 className="font-semibold text-green-900 mb-2">🎯 Tests de Connaissances</h4>
+                  <p className="text-sm text-green-700 mb-3">
+                    Évaluez votre niveau avec nos tests interactifs !
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full">
+                    Découvrir
+                  </Button>
                 </div>
               </div>
             </Card>
 
-            {/* Utilisateurs en Ligne */}
-            <Card className="p-4 bg-gradient-card border-border">
-              <h3 className="font-semibold text-foreground mb-4">Qui est en Ligne</h3>
-              <div className="space-y-3">
-                {onlineUsers.length > 0 ? (
-                  onlineUsers.map((user) => (
-                    <div key={user.id} className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <Avatar className="w-6 h-6">
-                        <AvatarFallback className="text-xs">{user.initials}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm text-muted-foreground">{user.name}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-muted-foreground text-center py-4">
-                    Aucun utilisateur en ligne
-                  </div>
-                )}
-                <Button variant="outline" size="sm" className="w-full mt-2">
-                  Voir Tous ({forumStats.onlineUsers} en ligne)
-                </Button>
-              </div>
-            </Card>
           </div>
         </div>
 
@@ -1125,9 +1529,60 @@ const Forum = () => {
           onLike={handleLikePost}
           onReply={handleReply}
           onLikeReply={handleLikeReply}
-          onEditReply={handleEditReply}
-          onDeleteReply={handleDeleteReply}
+          onDeleteReply={(replyId: number) => handleDeleteReply(selectedPost?.id || 0, replyId)}
         />
+
+      {/* Dialog détails du groupe */}
+      {selectedGroup && (
+        <GroupDetailDialog
+          group={selectedGroup}
+          open={!!selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          onLeave={() => handleLeaveGroup(selectedGroup.id)}
+          onDelete={async () => {
+            try {
+              const response = await fetch(`http://localhost:8081/api/study-groups/${selectedGroup.id}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+              });
+              
+              if (response.ok) {
+                toast({
+                  title: "Succès !",
+                  description: "Groupe supprimé avec succès"
+                });
+                loadStudyGroups();
+              } else {
+                const error = await response.json();
+                toast({
+                  title: "Erreur",
+                  description: error.error || "Impossible de supprimer le groupe",
+                  variant: "destructive"
+                });
+              }
+            } catch (error) {
+              console.error('Erreur:', error);
+              toast({
+                title: "Erreur",
+                description: "Une erreur est survenue",
+                variant: "destructive"
+              });
+            }
+          }}
+        />
+      )}
+
+      {/* Dialog profil utilisateur */}
+      <UserProfileDialog
+        user={selectedUserProfile}
+        open={showUserProfile}
+        onClose={() => {
+          setShowUserProfile(false);
+          setSelectedUserProfile(null);
+        }}
+      />
 
       </div>
     </div>

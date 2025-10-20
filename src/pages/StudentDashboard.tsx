@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,12 +19,62 @@ import {
 const StudentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [studentStats] = useState({
-    flashcardsCompleted: 156,
-    studyStreak: 7,
-    averageScore: 87,
-    timeSpent: '24h 30m'
+
+  // Debug: Afficher les informations de debug
+  console.log('🔍 StudentDashboard Debug:', {
+    user,
+    userRole: user?.role,
+    userEmail: user?.email,
+    currentPath: window.location.pathname,
+    timestamp: new Date().toISOString()
   });
+  const [studentStats, setStudentStats] = useState({
+    flashcardsCompleted: 0,
+    studyStreak: 0,
+    averageScore: 0,
+    timeSpent: '0h 0m',
+    totalAttempts: 0,
+    subjectProgress: []
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Charger les statistiques réelles depuis l'API
+  useEffect(() => {
+    const loadStudentStats = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+          console.log('❌ Aucun token disponible');
+          return;
+        }
+
+        const response = await fetch('http://localhost:8081/api/student/dashboard-stats', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📊 Statistiques étudiant chargées:', data);
+          setStudentStats(data);
+        } else {
+          console.error('❌ Erreur lors du chargement des statistiques:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors du chargement des statistiques:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      loadStudentStats();
+    }
+  }, [user]);
 
 
 
@@ -68,6 +118,11 @@ const StudentDashboard = () => {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header Simple */}
         <div className="text-center mb-12">
+          <div className="mb-4">
+            <Badge variant="secondary" className="mb-2">
+              📊 Tableau de Bord Étudiant
+            </Badge>
+          </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Bonjour {user.firstName} ! 👋
           </h1>
@@ -85,19 +140,34 @@ const StudentDashboard = () => {
         </div>
 
         {/* Actions Principales */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <Card className="text-center p-8 hover:shadow-lg transition-shadow cursor-pointer" 
                 onClick={() => navigate('/flashcards')}>
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Zap className="w-8 h-8 text-blue-600" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Étudier</h3>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Flashcards</h3>
             <p className="text-gray-600 mb-4">
-              Accédez aux flashcards et tests pour réviser vos matières
+              Étudiez avec les cartes d'apprentissage
             </p>
             <Button size="lg" className="w-full">
               <BookOpen className="h-5 w-5 mr-2" />
-              Commencer à étudier
+              Étudier
+            </Button>
+          </Card>
+
+          <Card className="text-center p-8 hover:shadow-lg transition-shadow cursor-pointer" 
+                onClick={() => navigate('/knowledge-tests')}>
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Target className="w-8 h-8 text-orange-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Tests</h3>
+            <p className="text-gray-600 mb-4">
+              Testez vos connaissances avec des quiz
+            </p>
+            <Button size="lg" variant="outline" className="w-full">
+              <Target className="h-5 w-5 mr-2" />
+              Passer un Test
             </Button>
           </Card>
 
@@ -136,28 +206,28 @@ const StudentDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
           <StatCard
             title="Flashcards"
-            value={studentStats.flashcardsCompleted}
+            value={loading ? '...' : studentStats.flashcardsCompleted}
             icon={BookOpen}
             color="text-blue-600"
             subtitle="Complétées"
           />
           <StatCard
             title="Série"
-            value={`${studentStats.studyStreak}`}
+            value={loading ? '...' : `${studentStats.studyStreak}`}
             icon={Target}
             color="text-green-600"
             subtitle="jours"
           />
           <StatCard
             title="Score"
-            value={`${studentStats.averageScore}%`}
+            value={loading ? '...' : `${studentStats.averageScore}%`}
             icon={Star}
             color="text-yellow-600"
             subtitle="Moyen"
           />
           <StatCard
             title="Temps"
-            value={studentStats.timeSpent}
+            value={loading ? '...' : studentStats.timeSpent}
             icon={Clock}
             color="text-purple-600"
             subtitle="Étude"
@@ -177,64 +247,13 @@ const StudentDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {(() => {
-                // Définir les matières selon la classe et section de l'étudiant
-                let subjects = [];
-                
-                if (user.userClass === '9ème') {
-                  subjects = [
-                    { name: 'Français', progress: 80, color: 'text-blue-600' },
-                    { name: 'Histoire-Géographie', progress: 65, color: 'text-green-600' },
-                    { name: 'Anglais', progress: 70, color: 'text-purple-600' },
-                    { name: 'Sciences', progress: 75, color: 'text-orange-600' }
-                  ];
-                } else if (user.userClass === 'Terminale') {
-                  if (user.section === 'SMP') {
-                    subjects = [
-                      { name: 'Mathématiques', progress: 85, color: 'text-blue-600' },
-                      { name: 'Physique', progress: 70, color: 'text-green-600' },
-                      { name: 'Chimie', progress: 65, color: 'text-purple-600' },
-                      { name: 'Informatique', progress: 60, color: 'text-orange-600' }
-                    ];
-                  } else if (user.section === 'SVT') {
-                    subjects = [
-                      { name: 'Biologie', progress: 80, color: 'text-blue-600' },
-                      { name: 'Sciences de la Terre', progress: 70, color: 'text-green-600' },
-                      { name: 'Chimie', progress: 65, color: 'text-purple-600' },
-                      { name: 'Physique', progress: 60, color: 'text-orange-600' }
-                    ];
-                  } else if (user.section === 'SES') {
-                    subjects = [
-                      { name: 'Économie', progress: 75, color: 'text-blue-600' },
-                      { name: 'Sociologie', progress: 70, color: 'text-green-600' },
-                      { name: 'Mathématiques', progress: 65, color: 'text-purple-600' },
-                      { name: 'Histoire-Géographie', progress: 80, color: 'text-orange-600' }
-                    ];
-                  } else if (user.section === 'LLA') {
-                    subjects = [
-                      { name: 'Littérature', progress: 85, color: 'text-blue-600' },
-                      { name: 'Philosophie', progress: 70, color: 'text-green-600' },
-                      { name: 'Langues Vivantes', progress: 75, color: 'text-purple-600' },
-                      { name: 'Histoire-Géographie', progress: 80, color: 'text-orange-600' }
-                    ];
-                  } else {
-                    // Section non spécifiée - matières générales
-                    subjects = [
-                      { name: 'Mathématiques', progress: 75, color: 'text-blue-600' },
-                      { name: 'Français', progress: 80, color: 'text-green-600' },
-                      { name: 'Histoire-Géographie', progress: 70, color: 'text-purple-600' }
-                    ];
-                  }
-                } else {
-                  // Classe non reconnue - matières par défaut
-                  subjects = [
-                    { name: 'Mathématiques', progress: 75, color: 'text-blue-600' },
-                    { name: 'Français', progress: 80, color: 'text-green-600' },
-                    { name: 'Histoire-Géographie', progress: 70, color: 'text-purple-600' }
-                  ];
-                }
-
-                return subjects.map((subject, index) => (
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Chargement des matières...</p>
+                </div>
+              ) : studentStats.subjectProgress && studentStats.subjectProgress.length > 0 ? (
+                studentStats.subjectProgress.map((subject, index) => (
                   <div key={index} className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="font-medium">{subject.name}</span>
@@ -242,8 +261,12 @@ const StudentDashboard = () => {
                     </div>
                     <Progress value={subject.progress} className="h-3" />
                   </div>
-                ));
-              })()}
+                ))
+              ) : (
+                <div className="text-center py-8 col-span-full">
+                  <p className="text-muted-foreground">Aucune donnée de progression disponible</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

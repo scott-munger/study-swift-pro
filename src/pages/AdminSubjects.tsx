@@ -34,6 +34,11 @@ interface Subject {
 
 const AdminSubjects = () => {
   const { toast } = useToast();
+  // Détection admin tolérante
+  const storageUser = (() => { try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null'); } catch { return null; } })();
+  const tokenRaw = localStorage.getItem('token') || sessionStorage.getItem('token');
+  const tokenPayload = (() => { try { return tokenRaw ? JSON.parse(atob(tokenRaw.split('.')[1])) : null; } catch { return null; } })();
+  const isAdminEffective = (storageUser?.role === 'ADMIN') || (tokenPayload?.role === 'ADMIN');
   const [token, setToken] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -47,16 +52,17 @@ const AdminSubjects = () => {
   });
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
+    const savedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
     console.log('🔐 AdminSubjects - Token trouvé:', savedToken ? 'Oui' : 'Non');
     console.log('🔐 AdminSubjects - Token:', savedToken);
     
-    if (savedToken) {
+    if (savedToken && isAdminEffective) {
       setToken(savedToken);
       loadSubjects(savedToken);
     } else {
-      console.log('🔐 AdminSubjects - Pas de token, redirection vers login');
-      window.location.href = '/login';
+      console.log('🔐 AdminSubjects - Pas de token ou pas admin');
+      setToken(null);
+      setLoading(false);
     }
   }, []);
 
@@ -214,7 +220,7 @@ const AdminSubjects = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.location.href = '/simple-admin/dashboard'}
+                onClick={() => window.location.href = '/admin/dashboard-modern'}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Retour au Dashboard

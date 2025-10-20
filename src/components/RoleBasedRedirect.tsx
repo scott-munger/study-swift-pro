@@ -32,7 +32,7 @@ const RoleBasedRedirect: React.FC = () => {
       console.log('🔍 RoleBasedRedirect - Redirection depuis /dashboard pour:', user.role);
       // Déterminer le rôle et rediriger
       if (user.role === 'ADMIN' || isAdmin) {
-        navigate('/simple-admin/dashboard');
+        navigate('/admin/dashboard-modern', { replace: true });
       } else if (user.role === 'STUDENT') {
         navigate('/student/dashboard');
       } else if (user.role === 'TUTOR') {
@@ -127,7 +127,7 @@ const RoleBasedRedirect: React.FC = () => {
             <Button
               variant="outline"
               className="h-auto p-6 flex flex-col items-center space-y-3"
-              onClick={() => navigate('/simple-admin/dashboard')}
+              onClick={() => navigate('/admin/dashboard-modern')}
             >
               <Shield className="h-8 w-8 text-purple-600" />
               <div className="text-center">

@@ -35,25 +35,36 @@ const AdminModeration = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [forumPosts, setForumPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<any>(null);
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [editingPost, setEditingPost] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    content: '',
+    isPinned: false,
+    isLocked: false
+  });
 
   // Vérifier l'accès admin
-  const hasAdminAccess = adminUser || user?.role === 'ADMIN';
-  
-  if (!user || !hasAdminAccess) {
+  const storageUser = (() => { try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null'); } catch { return null; } })();
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  const payload = (() => { try { return token ? JSON.parse(atob(token.split('.')[1])) : null; } catch { return null; } })();
+  const hasAdminAccess = adminUser || user?.role === 'ADMIN' || storageUser?.role === 'ADMIN' || payload?.role === 'ADMIN';
+
+  if (!hasAdminAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="w-96">
           <CardHeader>
             <CardTitle className="text-center">Accès Refusé</CardTitle>
             <CardDescription className="text-center">
-              Vous devez être connecté en tant qu'administrateur pour accéder à cette page.
+              Vous devez être administrateur pour accéder à cette page.
             </CardDescription>
           </CardHeader>
-          <CardContent className="text-center">
-            <Button onClick={() => window.location.href = '/login'}>
-              Se connecter
-            </Button>
-          </CardContent>
+          <CardContent className="text-center" />
         </Card>
       </div>
     );
@@ -67,7 +78,7 @@ const AdminModeration = () => {
   const loadForumPosts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/forum-posts', {
         method: 'GET',
         headers: {
@@ -121,6 +132,241 @@ const AdminModeration = () => {
       toast({
         title: "Erreur",
         description: "Impossible de modérer le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeletePost = async (postId: number) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce post ?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        setForumPosts(prev => prev.filter((post: any) => post.id !== postId));
+        toast({
+          title: "Post supprimé",
+          description: "Le post a été supprimé avec succès",
+        });
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de la suppression');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleBulkDelete = async (postIds: number[]) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${postIds.length} post(s) ?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ postIds })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setForumPosts(prev => prev.filter((post: any) => !postIds.includes(post.id)));
+        setSelectedPosts([]);
+        setIsSelectMode(false);
+        toast({
+          title: "Posts supprimés",
+          description: `${result.deletedCount} post(s) supprimé(s) avec succès`,
+        });
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de la suppression');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression en masse:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer les posts",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSelectPost = (postId: number) => {
+    setSelectedPosts(prev => 
+      prev.includes(postId) 
+        ? prev.filter(id => id !== postId)
+        : [...prev, postId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPosts.length === filteredPosts.length) {
+      setSelectedPosts([]);
+    } else {
+      setSelectedPosts(filteredPosts.map((post: any) => post.id));
+    }
+  };
+
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedPosts([]);
+  };
+
+  const handleViewPost = async (postId: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const post = await response.json();
+        setSelectedPost(post);
+        setShowPostModal(true);
+      } else {
+        throw new Error('Erreur lors du chargement du post');
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement du post:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Fonction pour éditer un post
+  const handleEditPost = (post: any) => {
+    setEditingPost(post);
+    setEditForm({
+      title: post.title,
+      content: post.content,
+      isPinned: post.isPinned || false,
+      isLocked: post.isLocked || false
+    });
+    setShowEditModal(true);
+  };
+
+  // Fonction pour sauvegarder les modifications d'un post
+  const handleSaveEdit = async () => {
+    if (!editingPost) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${editingPost.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editForm)
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Post modifié",
+          description: "Le post a été modifié avec succès",
+        });
+        setShowEditModal(false);
+        setEditingPost(null);
+        loadForumPosts(); // Recharger les posts
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de la modification');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Fonction pour épingler/désépingler un post
+  const handleTogglePin = async (postId: number, currentPinStatus: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isPinned: !currentPinStatus })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Post modifié",
+          description: `Post ${!currentPinStatus ? 'épinglé' : 'désépinglé'} avec succès`,
+        });
+        loadForumPosts();
+      } else {
+        throw new Error('Erreur lors de la modification');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Fonction pour verrouiller/déverrouiller un post
+  const handleToggleLock = async (postId: number, currentLockStatus: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isLocked: !currentLockStatus })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Post modifié",
+          description: `Post ${!currentLockStatus ? 'verrouillé' : 'déverrouillé'} avec succès`,
+        });
+        loadForumPosts();
+      } else {
+        throw new Error('Erreur lors de la modification');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier le post",
         variant: "destructive"
       });
     }
@@ -250,7 +496,7 @@ const AdminModeration = () => {
               </p>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="outline" onClick={() => window.location.href = '/admin/dashboard'}>
+              <Button variant="outline" onClick={() => window.location.href = '/admin/dashboard-modern'}>
                 Retour au tableau de bord
               </Button>
             </div>
@@ -409,9 +655,49 @@ const AdminModeration = () => {
                     </div>
 
                     <div className="flex items-center space-x-2 ml-4">
-                      <Button variant="ghost" size="sm">
+                      {/* Bouton Voir */}
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleViewPost(post.id)}
+                        title="Voir le post"
+                      >
                         <Eye className="h-4 w-4" />
                       </Button>
+                      
+                      {/* Bouton Éditer */}
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEditPost(post)}
+                        title="Éditer le post"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      
+                      {/* Bouton Épingler/Désépingler */}
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className={post.isPinned ? "text-yellow-600" : "text-gray-600"}
+                        onClick={() => handleTogglePin(post.id, post.isPinned)}
+                        title={post.isPinned ? "Désépingler" : "Épingler"}
+                      >
+                        📌
+                      </Button>
+                      
+                      {/* Bouton Verrouiller/Déverrouiller */}
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className={post.isLocked ? "text-red-600" : "text-gray-600"}
+                        onClick={() => handleToggleLock(post.id, post.isLocked)}
+                        title={post.isLocked ? "Déverrouiller" : "Verrouiller"}
+                      >
+                        🔒
+                      </Button>
+                      
+                      {/* Actions de modération selon le statut */}
                       {post.status === 'pending' && (
                         <>
                           <Button 
@@ -456,8 +742,16 @@ const AdminModeration = () => {
                           </Button>
                         </>
                       )}
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-4 w-4" />
+                      
+                      {/* Bouton Supprimer (toujours visible) */}
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-600"
+                        onClick={() => handleDeletePost(post.id)}
+                        title="Supprimer définitivement"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -467,6 +761,79 @@ const AdminModeration = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Modal d'édition de post */}
+        {showEditModal && editingPost && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <CardHeader>
+                <CardTitle>Éditer le Post</CardTitle>
+                <CardDescription>
+                  Modifier le contenu et les paramètres du post
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-title">Titre</Label>
+                  <Input
+                    id="edit-title"
+                    value={editForm.title}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Titre du post"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="edit-content">Contenu</Label>
+                  <textarea
+                    id="edit-content"
+                    value={editForm.content}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
+                    placeholder="Contenu du post"
+                    className="w-full p-3 border border-gray-300 rounded-md min-h-[200px]"
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isPinned}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, isPinned: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <span>Épingler le post</span>
+                  </label>
+                  
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isLocked}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, isLocked: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <span>Verrouiller le post</span>
+                  </label>
+                </div>
+                
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingPost(null);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                  <Button onClick={handleSaveEdit}>
+                    Sauvegarder
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );

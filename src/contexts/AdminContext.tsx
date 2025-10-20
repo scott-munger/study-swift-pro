@@ -81,7 +81,7 @@ export const useAdmin = () => {
 };
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [stats, setStats] = useState<AdminStats>({
     totalUsers: 0,
@@ -261,7 +261,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Initialiser l'admin depuis localStorage
   useEffect(() => {
-    const savedAdmin = localStorage.getItem('adminUser');
+    const savedAdmin = localStorage.getItem('adminUser') || sessionStorage.getItem('adminUser');
     if (savedAdmin) {
       try {
         const adminData = JSON.parse(savedAdmin);
@@ -274,8 +274,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Vérifier si l'utilisateur connecté est admin
   useEffect(() => {
-    console.log('AdminContext useEffect:', { user, userRole: user?.role });
-    
+    // Attendre que l'auth soit prête avant d'évaluer le rôle
+    if (authLoading) return;
+
+    console.log('AdminContext useEffect:', { user, userRole: user?.role, authLoading });
     if (user && user.role === 'ADMIN') {
       console.log('Création du contexte admin pour:', user.email);
       const adminUserData: AdminUser = {
@@ -289,20 +291,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
       setAdminUser(adminUserData);
       localStorage.setItem('adminUser', JSON.stringify(adminUserData));
-    } else if (user && user.role !== 'ADMIN') {
+    } else if (user && typeof user.role !== 'undefined' && user.role !== 'ADMIN') {
+      // Ne dégrade pas si le rôle est momentanément undefined (ex: refreshUser partiel)
       console.log('Utilisateur non-admin détecté:', user.email, user.role);
-      // Si l'utilisateur n'est pas admin, s'assurer qu'il n'y a pas d'adminUser
       setAdminUser(null);
       localStorage.removeItem('adminUser');
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   // ===== FONCTIONS CRUD =====
 
   // CRUD Users
   const getUsers = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'GET',
         headers: {

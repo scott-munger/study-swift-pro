@@ -10,6 +10,10 @@ import { Separator } from "@/components/ui/separator";
 import { BookOpen, User, Mail, Lock, Eye, EyeOff, Upload, ArrowRight, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { ClassSectionSelector } from '@/components/ui/ClassSectionSelector';
+import { DepartmentCitySelector } from '@/components/ui/DepartmentCitySelector';
+import { validateClassSection } from '@/lib/classConfig';
+import { validateDepartmentCity } from '@/lib/locationConfig';
 
 const Register = () => {
   const { toast } = useToast();
@@ -24,11 +28,12 @@ const Register = () => {
     password: "",
     confirmPassword: "",
     accountType: "student", // "student" ou "tutor"
-    classLevel: "",
+    userClass: "",
     section: "",
     wantsTutorAccount: false,
     tutorProof: null as File | null,
     department: "",
+    city: "",
     gender: "",
     phone: "",
     address: "",
@@ -38,8 +43,6 @@ const Register = () => {
     bio: "",
   });
 
-  const finalYearSections = ["SMP", "SVT", "SES", "LLA"];
-  const departments = ["Ouest", "Nord", "Sud", "Artibonite", "Centre", "Nord-Est", "Nord-Ouest", "Grand'Anse", "Nippes", "Sud-Est"];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -107,13 +110,63 @@ const Register = () => {
     }
 
     // Validation conditionnelle selon le type de compte
-    if (formData.accountType === "student" && !formData.classLevel) {
+    if (formData.accountType === "student" && !formData.userClass) {
       toast({
         title: "Classe requise",
-        description: "Veuillez sélectionner votre niveau de classe",
+        description: "Veuillez sélectionner votre classe",
         variant: "destructive"
       });
       return;
+    }
+
+    // Validation département/ville
+    if (!formData.department) {
+      toast({
+        title: "Département requis",
+        description: "Veuillez sélectionner votre département",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!validateDepartmentCity(formData.department, formData.city || '')) {
+      toast({
+        title: "Erreur",
+        description: "La combinaison département/ville n'est pas valide",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validation des champs obligatoires pour tous
+    if (!formData.phone) {
+      toast({
+        title: "Téléphone requis",
+        description: "Veuillez renseigner votre numéro de téléphone",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!formData.address) {
+      toast({
+        title: "Adresse requise",
+        description: "Veuillez renseigner votre adresse",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validation classe/section pour les étudiants
+    if (formData.accountType === "student" && formData.userClass) {
+      if (!validateClassSection(formData.userClass, formData.section || '')) {
+        toast({
+          title: "Erreur",
+          description: "La combinaison classe/section n'est pas valide",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     // Validation pour les tuteurs
@@ -132,13 +185,16 @@ const Register = () => {
     let userClass, section;
     
     if (formData.accountType === "student") {
-      userClass = formData.classLevel === "final-year" ? "Terminale" : "9ème";
-      section = formData.classLevel === "final-year" ? formData.section : undefined;
+      userClass = formData.userClass;
+      section = formData.section || undefined;
     } else {
       // Pour les tuteurs, pas de classe/section
       userClass = undefined;
       section = undefined;
     }
+
+    // Formater le numéro de téléphone avec l'indicatif
+    const formattedPhone = formData.phone ? `+509${formData.phone.replace(/\D/g, '')}` : undefined;
 
     const success = await register(
       formData.email, 
@@ -148,7 +204,7 @@ const Register = () => {
       userClass, 
       section,
       formData.department,
-      formData.phone || undefined,
+      formattedPhone,
       formData.address || undefined,
       formData.accountType, // Ajouter le rôle
       formData.accountType === "tutor" ? {
@@ -400,38 +456,13 @@ const Register = () => {
 
                 {formData.accountType === "student" ? (
                   <>
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-2 block">
-                        Niveau de Classe
-                      </Label>
-                      <Select value={formData.classLevel} onValueChange={(value) => handleSelectChange("classLevel", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionnez votre niveau de classe" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="final-year">Terminale</SelectItem>
-                          <SelectItem value="9th-grade">9ème</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {formData.classLevel === "final-year" && (
-                      <div>
-                        <Label className="text-sm font-medium text-foreground mb-2 block">
-                          Section
-                        </Label>
-                        <Select value={formData.section} onValueChange={(value) => handleSelectChange("section", value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionnez votre section" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {finalYearSections.map(section => (
-                              <SelectItem key={section} value={section}>{section}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    <ClassSectionSelector
+                      selectedClass={formData.userClass}
+                      selectedSection={formData.section}
+                      onClassChange={(className) => handleSelectChange("userClass", className)}
+                      onSectionChange={(section) => handleSelectChange("section", section)}
+                      showLabel={true}
+                    />
                   </>
                 ) : (
                   <>
@@ -532,44 +563,47 @@ const Register = () => {
                   <p className="text-sm text-muted-foreground">Dernière étape pour compléter votre inscription</p>
                 </div>
 
-                <div>
-                  <Label className="text-sm font-medium text-foreground mb-2 block">
-                    Département (Zone de Résidence)
-                  </Label>
-                  <Select value={formData.department} onValueChange={(value) => handleSelectChange("department", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez votre département" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map(dept => (
-                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <DepartmentCitySelector
+                  selectedDepartment={formData.department}
+                  selectedCity={formData.city}
+                  onDepartmentChange={(department) => handleSelectChange("department", department)}
+                  onCityChange={(city) => handleSelectChange("city", city)}
+                  showLabel={true}
+                />
 
                 <div>
                   <Label htmlFor="phone" className="text-sm font-medium text-foreground">
-                    Téléphone (Optionnel)
+                    Téléphone *
                   </Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    placeholder="+509 1234-5678"
-                  />
+                  <div className="flex">
+                    <div className="flex items-center px-3 py-2 border border-input bg-muted rounded-l-md text-sm text-muted-foreground">
+                      +509
+                    </div>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      required
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      placeholder="1234-5678"
+                      className="rounded-l-none border-l-0"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Format: +509 suivi de votre numéro (ex: 1234-5678)
+                  </p>
                 </div>
 
                 <div>
                   <Label htmlFor="address" className="text-sm font-medium text-foreground">
-                    Adresse (Optionnel)
+                    Adresse *
                   </Label>
                   <Input
                     id="address"
                     name="address"
                     type="text"
+                    required
                     value={formData.address}
                     onChange={handleInputChange}
                     placeholder="Rue, Ville, Département"

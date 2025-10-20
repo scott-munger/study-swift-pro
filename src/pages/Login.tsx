@@ -18,6 +18,7 @@ const Login = () => {
     email: "",
     password: "",
   });
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -39,59 +40,78 @@ const Login = () => {
       return;
     }
 
-    const success = await login(formData.email, formData.password);
+    const success = await login(formData.email, formData.password, rememberMe);
     
     if (success) {
-        // Récupérer les informations utilisateur pour déterminer la redirection
-        const token = localStorage.getItem('token');
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            let userRole = payload.role;
-            
-            console.log('🔐 Token payload:', payload);
-            console.log('🔐 Rôle détecté:', userRole);
-            
-            // Si le rôle n'est pas présent, récupérer depuis le user object
-            if (!userRole && user && user.role) {
-              console.log('🔐 Utilisation du rôle depuis AuthContext:', user.role);
-              userRole = user.role;
-            }
-            
-            // Rediriger selon le rôle
-            if (userRole === 'ADMIN') {
-              // Stocker les données admin et rediriger vers le dashboard admin
-              if (user) {
-                localStorage.setItem('adminUser', JSON.stringify(user));
-              }
-              console.log('🔐 Redirection admin vers /simple-admin/dashboard');
-              navigate('/simple-admin/dashboard');
-            } else if (userRole === 'STUDENT') {
-              // Rediriger les étudiants vers leur tableau de bord
-              console.log('🔐 Redirection étudiant vers /student/dashboard');
-              navigate('/student/dashboard');
-            } else if (userRole === 'TUTOR') {
-              // Rediriger les tuteurs vers leur profil
-              console.log('🔐 Redirection tuteur vers /profile');
-              navigate('/profile');
-            } else {
-              // Pour les autres rôles, rediriger vers la page d'accueil
-              console.log('🔐 Redirection par défaut vers /');
-              navigate('/');
-            }
-            
-            toast({
-              title: "Connexion réussie",
-              description: `Bienvenue ${userRole === 'ADMIN' ? 'Administrateur' : userRole === 'TUTOR' ? 'Tuteur' : 'Étudiant'} !`,
-            });
-          } catch (error) {
-            console.error('Erreur de décodage du token:', error);
-            navigate('/');
-          }
-        } else {
-          console.log('🔐 Aucun token trouvé');
-          navigate('/');
+      // ATTENDRE que le user soit chargé dans le contexte
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Récupérer immédiatement les informations utilisateur pour déterminer la redirection
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
+      let userRole = null;
+      let userData = null;
+      
+      // Essayer de récupérer le rôle depuis le token
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          userRole = payload.role;
+          console.log('🔐 Rôle détecté depuis token:', userRole);
+        } catch (error) {
+          console.error('Erreur de décodage du token:', error);
         }
+      }
+      
+      // Essayer de récupérer le rôle depuis les données utilisateur sauvegardées
+      if (!userRole && savedUser) {
+        try {
+          userData = JSON.parse(savedUser);
+          userRole = userData.role;
+          console.log('🔐 Rôle détecté depuis localStorage:', userRole);
+        } catch (error) {
+          console.error('Erreur de parsing des données utilisateur:', error);
+        }
+      }
+      
+      // Essayer de récupérer le rôle depuis l'état React
+      if (!userRole && user && user.role) {
+        userRole = user.role;
+        console.log('🔐 Rôle détecté depuis AuthContext:', userRole);
+      }
+      
+      console.log('🔐 Rôle final pour redirection:', userRole);
+      
+      // Rediriger selon le rôle
+      if (userRole === 'ADMIN') {
+        // Stocker les données admin et rediriger vers le dashboard admin
+        if (userData) {
+          localStorage.setItem('adminUser', JSON.stringify(userData));
+        } else if (user) {
+          localStorage.setItem('adminUser', JSON.stringify(user));
+        }
+        console.log('🔐 Redirection admin vers /admin/dashboard-modern');
+        // Utiliser window.location pour forcer un vrai rechargement
+        window.location.href = '/admin/dashboard-modern';
+        return; // Arrêter l'exécution ici
+      } else if (userRole === 'STUDENT') {
+        // Rediriger les étudiants vers leur tableau de bord
+        console.log('🔐 Redirection étudiant vers /student/dashboard');
+        navigate('/student/dashboard');
+      } else if (userRole === 'TUTOR') {
+        // Rediriger les tuteurs vers leur profil
+        console.log('🔐 Redirection tuteur vers /profile');
+        navigate('/profile');
+      } else {
+        // Pour les autres rôles, rediriger vers la page d'accueil
+        console.log('🔐 Redirection par défaut vers /');
+        navigate('/');
+      }
+      
+      toast({
+        title: "Connexion réussie",
+        description: `Bienvenue ${userRole === 'ADMIN' ? 'Administrateur' : userRole === 'TUTOR' ? 'Tuteur' : 'Étudiant'} !`,
+      });
     } else {
       toast({
         title: "Erreur de connexion",
@@ -182,6 +202,8 @@ const Login = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 text-primary focus:ring-primary border-muted rounded"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-muted-foreground">
@@ -199,6 +221,7 @@ const Login = () => {
             <Button type="submit" variant="premium" className="w-full" disabled={loading}>
               {loading ? "Connexion..." : "Se connecter"}
             </Button>
+
 
             <Separator className="my-4 sm:my-6" />
 

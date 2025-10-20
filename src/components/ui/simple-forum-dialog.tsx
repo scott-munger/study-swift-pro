@@ -4,23 +4,42 @@ import { Button } from '@/components/ui/enhanced-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, BookOpen } from 'lucide-react';
+import ImageUpload from './ImageUpload';
 
 interface SimpleForumDialogProps {
   trigger?: React.ReactNode;
-  onSave?: (data: { title: string; content: string; subjectId?: number }) => Promise<void>;
-  initialData?: { title?: string; content?: string };
+  onSave?: (data: { title: string; content: string; subjectId?: number; images?: File[] }) => Promise<void>;
+  initialData?: { title?: string; content?: string; subjectId?: number };
   mode?: 'create' | 'edit';
   submitLabel?: string;
   dialogTitle?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  showImageUpload?: boolean;
+  subjects?: Array<{ id: number; name: string; level?: string }>;
+  showSubjectSelector?: boolean;
 }
 
-const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({ trigger, onSave, initialData, mode = 'create', submitLabel, dialogTitle, open: controlledOpen, onOpenChange }) => {
+const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({ 
+  trigger, 
+  onSave, 
+  initialData, 
+  mode = 'create', 
+  submitLabel, 
+  dialogTitle, 
+  open: controlledOpen, 
+  onOpenChange,
+  showImageUpload = true,
+  subjects = [],
+  showSubjectSelector = true
+}) => {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(initialData?.title || '');
   const [content, setContent] = useState(initialData?.content || '');
+  const [subjectId, setSubjectId] = useState<number | undefined>(initialData?.subjectId);
+  const [images, setImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : open;
@@ -31,7 +50,10 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({ trigger, onSave, 
       if (initialData) {
         setTitle(initialData.title || '');
         setContent(initialData.content || '');
+        setSubjectId(initialData.subjectId);
       }
+      // Reset images when opening
+      setImages([]);
     }
   }, [isOpen, initialData]);
 
@@ -43,17 +65,29 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({ trigger, onSave, 
       return;
     }
 
+    if (showSubjectSelector && !subjectId) {
+      alert('Veuillez sélectionner une matière');
+      return;
+    }
+
     setLoading(true);
     
     try {
       if (onSave) {
-        await onSave({ title: title.trim(), content: content.trim() });
+        await onSave({ 
+          title: title.trim(), 
+          content: content.trim(),
+          subjectId: subjectId,
+          images: images.length > 0 ? images : undefined
+        });
       }
       
       if (onOpenChange) onOpenChange(false);
       else setOpen(false);
       setTitle('');
       setContent('');
+      setSubjectId(undefined);
+      setImages([]);
     } catch (error) {
       console.error('Erreur lors de l\'enregistrement du post:', error);
       alert('Erreur lors de l\'enregistrement du post');
@@ -102,6 +136,42 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({ trigger, onSave, 
               rows={4}
             />
           </div>
+
+          {showSubjectSelector && subjects.length > 0 && (
+            <div>
+              <Label htmlFor="subject" className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Matière <span className="text-red-600">*</span>
+              </Label>
+              <Select value={subjectId?.toString() || ''} onValueChange={(value) => setSubjectId(parseInt(value))}>
+                <SelectTrigger id="subject" className="mt-2">
+                  <SelectValue placeholder="Sélectionnez une matière" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id.toString()}>
+                      {subject.name} {subject.level ? `(${subject.level})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                ⚠️ Obligatoire - Aide les autres étudiants à filtrer par matière
+              </p>
+            </div>
+          )}
+
+          {showImageUpload && (
+            <div>
+              <Label>Images (optionnel)</Label>
+              <ImageUpload
+                onImagesChange={setImages}
+                maxImages={5}
+                maxSize={10}
+                className="mt-2"
+              />
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>

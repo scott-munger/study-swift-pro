@@ -110,7 +110,7 @@ const Admin = () => {
 
           <div className="text-center space-y-4">
             <Button 
-              onClick={() => window.location.href = '/admin/login'}
+              onClick={() => window.location.href = '/login'}
               size="lg"
               className="w-full md:w-auto"
             >

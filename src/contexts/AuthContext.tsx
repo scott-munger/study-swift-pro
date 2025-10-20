@@ -11,6 +11,9 @@ export interface User {
   department?: string | null;
   phone?: string | null;
   address?: string | null;
+  profilePhoto?: string | null;
+  isProfilePrivate?: boolean;
+  darkMode?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,6 +35,8 @@ interface AuthContextType {
   deleteAccount: () => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   refreshUser: () => Promise<void>;
+  uploadProfilePhoto: (photo: File) => Promise<boolean>;
+  deleteProfilePhoto: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,6 +58,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rememberMe = localStorage.getItem('rememberMe');
     const savedUser = localStorage.getItem('user');
     const savedToken = localStorage.getItem('token');
+    const sessionUser = sessionStorage.getItem('user');
+    const sessionToken = sessionStorage.getItem('token');
     
     // Ne restaurer l'utilisateur que si "Se souvenir de moi" est activé
     if (rememberMe === 'true' && savedUser && savedToken) {
@@ -81,13 +88,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('adminUser');
         localStorage.removeItem('rememberMe');
       }
-    } else if (rememberMe !== 'true' && savedUser && savedToken) {
-      // Si "Se souvenir de moi" n'est pas activé mais qu'il y a des données,
-      // les nettoyer pour éviter l'affichage persistant
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-      localStorage.removeItem('adminUser');
-      localStorage.removeItem('rememberMe');
+    } else if (sessionUser && sessionToken) {
+      // Session en cours (non "se souvenir de moi") → restaurer depuis sessionStorage
+      try {
+        const parsedUser = JSON.parse(sessionUser);
+        setUser(parsedUser);
+      } catch (e) {
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('token');
+      }
+    } else {
+      // Pas de restauration automatique depuis localStorage si rememberMe !== 'true'
     }
     
     // Délai minimal pour éviter les redirections flash
@@ -102,6 +113,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
+      console.log('🔐 Tentative de connexion avec:', email);
+      
       // Appel à l'API locale
       const response = await fetch('http://localhost:8081/api/auth/login', {
         method: 'POST',
@@ -111,26 +124,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('📡 Réponse API login:', response.status, response.statusText);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Login réussi:', data.user.email, data.user.role);
         setUser(data.user);
         
-        // Sauvegarder les données selon le choix de l'utilisateur
-        if (rememberMe) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('rememberMe', 'true');
-        } else {
-          // Ne pas sauvegarder si l'utilisateur ne veut pas rester connecté
-          localStorage.removeItem('user');
-          localStorage.removeItem('token');
-          localStorage.removeItem('rememberMe');
-        }
+        // Toujours persister dans les deux stockages pour éviter les 401
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        sessionStorage.setItem('user', JSON.stringify(data.user));
+        sessionStorage.setItem('token', data.token);
+        if (rememberMe) localStorage.setItem('rememberMe', 'true');
+        console.log('💾 Données sauvegardées dans localStorage et sessionStorage');
         return true;
       }
 
       // Fallback vers le mode démo si l'API normale échoue
-      console.log('Tentative de connexion en mode démo...');
+      console.log('⚠️ Login normal échoué, tentative en mode démo...');
       const demoResponse = await fetch('http://localhost:8081/api/demo/login', {
         method: 'POST',
         headers: {
@@ -139,27 +151,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('📡 Réponse API demo:', demoResponse.status, demoResponse.statusText);
+
       if (demoResponse.ok) {
         const demoData = await demoResponse.json();
+        console.log('✅ Login démo réussi:', demoData.user.email, demoData.user.role);
         setUser(demoData.user);
         
-        // Sauvegarder les données selon le choix de l'utilisateur
-        if (rememberMe) {
-          localStorage.setItem('user', JSON.stringify(demoData.user));
-          localStorage.setItem('token', demoData.token);
-          localStorage.setItem('rememberMe', 'true');
-        } else {
-          // Ne pas sauvegarder si l'utilisateur ne veut pas rester connecté
-          localStorage.removeItem('user');
-          localStorage.removeItem('token');
-          localStorage.removeItem('rememberMe');
-        }
+        // Toujours persister dans les deux stockages
+        localStorage.setItem('user', JSON.stringify(demoData.user));
+        localStorage.setItem('token', demoData.token);
+        sessionStorage.setItem('user', JSON.stringify(demoData.user));
+        sessionStorage.setItem('token', demoData.token);
+        if (rememberMe) localStorage.setItem('rememberMe', 'true');
+        console.log('💾 Données démo sauvegardées dans localStorage et sessionStorage');
         return true;
       }
 
+      console.error('❌ Échec des deux méthodes de connexion');
+      const errorData = await demoResponse.json().catch(() => ({}));
+      console.error('❌ Détails erreur:', errorData);
       return false;
     } catch (error) {
-      console.error('Erreur de connexion:', error);
+      console.error('❌ Erreur de connexion (exception):', error);
       return false;
     } finally {
       setLoading(false);
@@ -219,6 +233,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('adminUser');
     localStorage.removeItem('adminToken');
     localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('token');
     sessionStorage.clear();
     console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
     // La redirection sera gérée par les composants qui utilisent logout
@@ -226,42 +242,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     };
   };
 
   const updateProfile = async (profileData: Partial<User>): Promise<boolean> => {
     try {
-      const token = localStorage.getItem('token');
+      console.log('🔄 updateProfile - Début de la mise à jour...');
+      console.log('📤 Données reçues:', profileData);
+      
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       if (!token) {
-        console.error('Aucun token d\'authentification trouvé');
+        console.error('❌ Aucun token d\'authentification trouvé');
         return false;
       }
 
+      console.log('🔑 Token trouvé, envoi de la requête...');
+
       const response = await fetch('http://localhost:8081/api/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(profileData)
       });
 
+      console.log('📡 Réponse reçue:', response.status, response.statusText);
+
       if (response.ok) {
         const result = await response.json();
+        console.log('✅ Mise à jour réussie:', result);
         setUser(result.user);
         localStorage.setItem('user', JSON.stringify(result.user));
         return true;
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
-        console.error('Erreur API:', response.status, errorData);
+        console.error('❌ Erreur API:', response.status, errorData);
         return false;
       }
     } catch (error) {
-      console.error('Erreur lors de la mise à jour du profil:', error);
+      console.error('❌ Erreur lors de la mise à jour du profil:', error);
       return false;
     }
   };
@@ -315,6 +336,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const uploadProfilePhoto = async (photo: File): Promise<boolean> => {
+    try {
+      const formData = new FormData();
+      formData.append('photo', photo);
+
+      const response = await fetch('http://localhost:8081/api/profile/photo', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Mettre à jour l'utilisateur avec la nouvelle photo
+        if (user) {
+          const updatedUser = { ...user, profilePhoto: data.user.profilePhoto };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Erreur lors de l\'upload de la photo de profil:', error);
+      return false;
+    }
+  };
+
+  const deleteProfilePhoto = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('http://localhost:8081/api/profile/photo', {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        // Mettre à jour l'utilisateur en supprimant la photo
+        if (user) {
+          const updatedUser = { ...user, profilePhoto: null };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Erreur lors de la suppression de la photo de profil:', error);
+      return false;
+    }
+  };
+
   // Charger l'utilisateur au démarrage si un token existe
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -344,6 +416,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     changePassword,
     refreshUser,
+    uploadProfilePhoto,
+    deleteProfilePhoto,
   };
 
   return (

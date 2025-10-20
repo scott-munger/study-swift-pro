@@ -19,16 +19,24 @@ model User {
   department    String?
   phone         String?
   address       String?
+  profilePhoto  String?        // Chemin vers la photo de profil
+  isProfilePrivate Boolean     @default(false) // Profil privé ou public
+  darkMode      Boolean        @default(false) // Mode sombre activé
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   flashcards    Flashcard[]
   forumLikes    ForumLike[]
   forumPosts    ForumPost[]
   forumReplies  ForumReply[]
+  forumImages   ForumImage[]
   messages      Message[]
   reviews       Review[]
   tutorSessions TutorSession[]
   tutor         Tutor?
+  knowledgeTestResults KnowledgeTestResult[]
+  createdGroups StudyGroup[]   @relation("CreatedGroups")
+  groupMemberships GroupMember[] @relation("GroupMemberships")
+  groupMessages GroupMessage[] @relation("GroupMessages")
 
   @@map("users")
 }
@@ -62,6 +70,8 @@ model Subject {
   forumPosts  ForumPost[]
   tutors      TutorSubject[]
   chapters    Chapter[]
+  knowledgeTests KnowledgeTest[]
+  studyGroups StudyGroup[]
 
   @@map("subjects")
 }
@@ -192,6 +202,7 @@ model ForumPost {
   author    User         @relation(fields: [authorId], references: [id])
   subject   Subject?     @relation(fields: [subjectId], references: [id])
   replies   ForumReply[]
+  images    ForumImage[]
 
   @@index([authorId], map: "forum_posts_authorId_fkey")
   @@index([subjectId], map: "forum_posts_subjectId_fkey")
@@ -211,6 +222,7 @@ model ForumReply {
   parent    ForumReply?  @relation("ReplyReplies", fields: [parentId], references: [id])
   replies   ForumReply[] @relation("ReplyReplies")
   post      ForumPost    @relation(fields: [postId], references: [id])
+  images    ForumImage[]
 
   @@index([authorId], map: "forum_replies_authorId_fkey")
   @@index([parentId], map: "forum_replies_parentId_fkey")
@@ -235,6 +247,29 @@ model ForumLike {
   @@map("forum_likes")
 }
 
+model ForumImage {
+  id        Int         @id @default(autoincrement())
+  filename  String      // Nom du fichier original
+  filepath  String      // Chemin vers le fichier sur le serveur
+  mimetype  String      // Type MIME de l'image
+  size      Int         // Taille du fichier en bytes
+  postId    Int?        // ID du post associé (optionnel)
+  replyId   Int?        // ID de la réponse associée (optionnel)
+  uploadedBy Int        // ID de l'utilisateur qui a uploadé l'image
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  
+  // Relations
+  post      ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply     ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  uploader  User        @relation(fields: [uploadedBy], references: [id])
+
+  @@index([postId], map: "forum_images_postId_fkey")
+  @@index([replyId], map: "forum_images_replyId_fkey")
+  @@index([uploadedBy], map: "forum_images_uploadedBy_fkey")
+  @@map("forum_images")
+}
+
 enum Role {
   STUDENT
   TUTOR
@@ -246,4 +281,146 @@ enum SessionStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+model KnowledgeTest {
+  id              Int                    @id @default(autoincrement())
+  title           String
+  description     String?
+  subjectId       Int
+  totalQuestions  Int
+  timeLimit       Int                    // en minutes
+  passingScore    Int                    // pourcentage minimum pour réussir
+  isActive        Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  subject         Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions       KnowledgeQuestion[]
+  results         KnowledgeTestResult[]
+
+  @@index([subjectId])
+  @@map("knowledge_tests")
+}
+
+model KnowledgeQuestion {
+  id              Int                    @id @default(autoincrement())
+  testId          Int
+  question        String
+  type            QuestionType
+  options         Json?                  // Pour les questions à choix multiples
+  correctAnswer   String
+  explanation     String?
+  difficulty      Difficulty             @default(MEDIUM)
+  concept         String?                // Concept abordé par la question
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  test            KnowledgeTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers         KnowledgeTestAnswer[]
+
+  @@index([testId])
+  @@map("knowledge_questions")
+}
+
+model KnowledgeTestResult {
+  id              Int                    @id @default(autoincrement())
+  testId          Int
+  userId          Int
+  score           Int                    // Score obtenu
+  percentage      Float                  // Pourcentage obtenu
+  timeSpent       Int                    // Temps passé en secondes
+  isPassed        Boolean                // Si le test est réussi
+  completedAt     DateTime               @default(now())
+  test            KnowledgeTest          @relation(fields: [testId], references: [id])
+  user            User                   @relation(fields: [userId], references: [id])
+  answers         KnowledgeTestAnswer[]
+
+  @@index([testId])
+  @@index([userId])
+  @@map("knowledge_test_results")
+}
+
+model KnowledgeTestAnswer {
+  id              Int                    @id @default(autoincrement())
+  resultId        Int
+  questionId      Int
+  userAnswer      String
+  isCorrect       Boolean
+  timeSpent       Int                    // Temps passé sur cette question en secondes
+  result          KnowledgeTestResult    @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  question        KnowledgeQuestion      @relation(fields: [questionId], references: [id])
+
+  @@index([resultId])
+  @@index([questionId])
+  @@map("knowledge_test_answers")
+}
+
+model StudyGroup {
+  id          Int            @id @default(autoincrement())
+  name        String
+  description String?        @db.Text
+  subjectId   Int
+  creatorId   Int
+  userClass   String?        // Classe (Seconde, Première, Terminale, etc.)
+  section     String?        // Section (SMP, SVT, LLA, SES, etc.)
+  isPrivate   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  subject     Subject        @relation(fields: [subjectId], references: [id])
+  creator     User           @relation("CreatedGroups", fields: [creatorId], references: [id])
+  members     GroupMember[]
+  messages    GroupMessage[]
+
+  @@index([subjectId])
+  @@index([creatorId])
+  @@index([userClass])
+  @@index([section])
+  @@map("study_groups")
+}
+
+model GroupMessage {
+  id        Int        @id @default(autoincrement())
+  groupId   Int
+  userId    Int
+  content   String     @db.Text
+  createdAt DateTime   @default(now())
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User       @relation("GroupMessages", fields: [userId], references: [id])
+
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_messages")
+}
+
+model GroupMember {
+  id        Int        @id @default(autoincrement())
+  groupId   Int
+  userId    Int
+  role      MemberRole @default(MEMBER)
+  joinedAt  DateTime   @default(now())
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User       @relation("GroupMemberships", fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+enum MemberRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  LONG_ANSWER
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
 }

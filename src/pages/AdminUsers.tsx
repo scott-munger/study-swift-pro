@@ -17,6 +17,8 @@ import {
   Shield
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ClassSectionSelector } from '@/components/ui/ClassSectionSelector';
+import { validateClassSection } from '@/lib/classConfig';
 
 interface User {
   id: number;
@@ -56,7 +58,7 @@ const AdminUsers = () => {
   });
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
+    const savedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
     console.log('🔐 AdminUsers - Token trouvé:', savedToken ? 'Oui' : 'Non');
     console.log('🔐 AdminUsers - Token:', savedToken);
     
@@ -69,28 +71,48 @@ const AdminUsers = () => {
     }
   }, []);
 
-  const loadUsers = async (authToken: string | null = token) => {
-    if (!authToken) {
+  const loadUsers = async (authToken?: string | null) => {
+    // Toujours relire le token le plus frais depuis le stockage
+    const effectiveToken = authToken || localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!effectiveToken) {
       console.log('🔐 AdminUsers - Pas de token pour charger les utilisateurs');
       return;
     }
     setLoading(true);
-    console.log('🔐 AdminUsers - Chargement des utilisateurs avec token:', authToken.substring(0, 50) + '...');
+    console.log('🔐 AdminUsers - Chargement des utilisateurs avec token:', (effectiveToken || '').substring(0, 50) + '...');
     
     try {
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const doFetch = async (tokenToUse: string) => fetch('http://localhost:8081/api/admin/users', {
         headers: {
-          'Authorization': `Bearer ${authToken}`,
+          'Authorization': `Bearer ${tokenToUse}`,
           'Content-Type': 'application/json'
         }
       });
+
+      let response = await doFetch(effectiveToken);
       
       console.log('🔐 AdminUsers - Réponse API:', response.status, response.statusText);
       
+      if (response.status === 401) {
+        // Retenter UNE FOIS en relisant le token depuis le stockage
+        const refreshed = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (refreshed && refreshed !== effectiveToken) {
+          console.warn('🔐 AdminUsers - 401, nouvel essai avec token rafraîchi');
+          response = await doFetch(refreshed);
+        }
+        if (response.status === 401) {
+          console.warn('🔐 AdminUsers - Session expirée confirmée');
+          toast({ title: 'Session expirée', description: 'Veuillez vous reconnecter', variant: 'destructive' });
+          setLoading(false);
+          return; // Ne pas forcer de redirection brutale
+        }
+      }
+
       if (response.ok) {
-        const usersData = await response.json();
-        console.log('🔐 AdminUsers - Données reçues:', usersData.length, 'utilisateurs');
-        setUsers(usersData);
+        const body = await response.json();
+        const list = Array.isArray(body) ? body : (Array.isArray(body.users) ? body.users : []);
+        console.log('🔐 AdminUsers - Données reçues:', list.length, 'utilisateurs');
+        setUsers(list);
       } else {
         const errorData = await response.json();
         console.error('🔐 AdminUsers - Erreur API:', errorData);
@@ -114,6 +136,18 @@ const AdminUsers = () => {
           variant: "destructive" 
         });
         return;
+      }
+
+      // Validation classe/section pour les étudiants
+      if (userForm.role === 'STUDENT' && userForm.userClass) {
+        if (!validateClassSection(userForm.userClass, userForm.section || '')) {
+          toast({ 
+            title: "Erreur", 
+            description: "La combinaison classe/section n'est pas valide", 
+            variant: "destructive" 
+          });
+          return;
+        }
       }
 
       const response = await fetch('http://localhost:8081/api/admin/users', {
@@ -162,6 +196,18 @@ const AdminUsers = () => {
           variant: "destructive" 
         });
         return;
+      }
+
+      // Validation classe/section pour les étudiants
+      if (userForm.role === 'STUDENT' && userForm.userClass) {
+        if (!validateClassSection(userForm.userClass, userForm.section || '')) {
+          toast({ 
+            title: "Erreur", 
+            description: "La combinaison classe/section n'est pas valide", 
+            variant: "destructive" 
+          });
+          return;
+        }
       }
 
       const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
@@ -236,6 +282,7 @@ const AdminUsers = () => {
       address: ''
     });
   };
+
 
   const openEditModal = (user: User) => {
     setEditingUser(user);
@@ -470,40 +517,14 @@ const AdminUsers = () => {
                   <div>
                     <h4 className="text-lg font-semibold mb-3 text-gray-900">Informations Académiques</h4>
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="userClass">Classe *</Label>
-                        <Select value={userForm.userClass} onValueChange={(value) => setUserForm({...userForm, userClass: value, section: ''})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner une classe" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="9ème">9ème Fondamentale</SelectItem>
-                            <SelectItem value="Terminale">Terminale</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="section">Section</Label>
-                        {userForm.userClass === 'Terminale' ? (
-                          <Select value={userForm.section} onValueChange={(value) => setUserForm({...userForm, section: value})}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner une section" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="SMP">SMP (Sciences Mathématiques et Physiques)</SelectItem>
-                              <SelectItem value="SVT">SVT (Sciences de la Vie et de la Terre)</SelectItem>
-                              <SelectItem value="SES">SES (Sciences Économiques et Sociales)</SelectItem>
-                              <SelectItem value="LLA">LLA (Lettres et Langues Africaines)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input
-                            id="section"
-                            value={userForm.section}
-                            onChange={(e) => setUserForm({...userForm, section: e.target.value})}
-                            placeholder="Ex: A, B, C..."
-                          />
-                        )}
+                      <div className="col-span-2">
+                        <ClassSectionSelector
+                          selectedClass={userForm.userClass || ''}
+                          selectedSection={userForm.section || ''}
+                          onClassChange={(className) => setUserForm({...userForm, userClass: className})}
+                          onSectionChange={(section) => setUserForm({...userForm, section: section})}
+                          showLabel={true}
+                        />
                       </div>
                       <div className="col-span-2">
                         <Label htmlFor="department">Département</Label>

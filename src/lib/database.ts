@@ -424,7 +424,8 @@ export async function seedDatabase() {
 
   } catch (error) {
     console.error('❌ Échec de l\'initialisation de la base de données:', error);
-    throw error;
+    // Ne pas faire planter le serveur, juste logger l'erreur
+    console.log('⚠️ Continuation du serveur malgré l\'erreur de seeding');
   }
 }
 

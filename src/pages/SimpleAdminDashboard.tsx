@@ -23,7 +23,6 @@ import {
   DollarSign,
   AlertTriangle,
   CheckCircle,
-  FileText,
   Activity,
   Bell,
   Plus,
@@ -33,6 +32,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ClassSectionSelector } from '@/components/ui/ClassSectionSelector';
+import { validateClassSection } from '@/lib/classConfig';
 
 interface User {
   id: number;
@@ -62,22 +63,6 @@ interface Subject {
   };
 }
 
-interface Flashcard {
-  id: number;
-  question: string;
-  answer: string;
-  subjectId: number;
-  userId: number;
-  difficulty: string;
-  createdAt: string;
-  subject?: {
-    name: string;
-  };
-  user?: {
-    firstName: string;
-    lastName: string;
-  };
-}
 
 interface Stats {
   totalUsers: number;
@@ -106,21 +91,35 @@ const SimpleAdminDashboard = () => {
   });
   const [users, setUsers] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Rediriger définitivement ce tableau de bord vers la page unique de gestion des matières
+  useEffect(() => {
+    navigate('/admin/subjects', { replace: true });
+  }, []);
 
   // Gérer les paramètres de requête pour les onglets
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const tab = urlParams.get('tab');
-    if (tab && ['overview', 'users', 'subjects', 'flashcards', 'profile'].includes(tab)) {
+    if (tab && ['overview', 'users', 'subjects', 'profile'].includes(tab)) {
+      if (tab === 'users') {
+        // Rediriger directement vers la gestion des utilisateurs
+        navigate('/admin/users', { replace: true });
+        return;
+      }
       setActiveTab(tab);
     }
   }, []);
 
   // Fonction pour changer d'onglet et mettre à jour l'URL
   const handleTabChange = (tab: string) => {
+    if (tab === 'users') {
+      // Aller directement sur la page dédiée de gestion des utilisateurs
+      navigate('/admin/users');
+      return;
+    }
     setActiveTab(tab);
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
@@ -130,7 +129,6 @@ const SimpleAdminDashboard = () => {
   // États pour les modales
   const [showUserModal, setShowUserModal] = useState(false);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
-  const [showFlashcardModal, setShowFlashcardModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
@@ -154,12 +152,6 @@ const SimpleAdminDashboard = () => {
     description: ''
   });
 
-  const [flashcardForm, setFlashcardForm] = useState({
-    question: '',
-    answer: '',
-    subjectId: '',
-    difficulty: 'medium'
-  });
 
   // Vérifier l'authentification au chargement
   useEffect(() => {
@@ -190,12 +182,12 @@ const SimpleAdminDashboard = () => {
         }
       } catch (error) {
         console.error('🔐 Erreur parsing user data:', error);
-        navigate('/admin/login');
+        navigate('/login');
       }
     } else {
       console.log('🔐 Aucun token ou utilisateur, redirection vers la connexion...');
       // Rediriger vers la page de connexion admin
-      navigate('/admin/login');
+      navigate('/login');
     }
   }, []);
 
@@ -215,8 +207,7 @@ const SimpleAdminDashboard = () => {
       await Promise.all([
         loadStats(currentToken),
         loadUsers(currentToken),
-        loadSubjects(currentToken),
-        loadFlashcards(currentToken)
+        loadSubjects(currentToken)
       ]);
       
       console.log('✅ Toutes les données chargées avec succès');
@@ -299,32 +290,6 @@ const SimpleAdminDashboard = () => {
     }
   };
 
-  const loadFlashcards = async (currentToken = token) => {
-    console.log('🃏 Chargement des flashcards...');
-    
-    try {
-      // Récupérer toutes les flashcards en une seule requête avec une limite élevée
-      const response = await fetch('http://localhost:8081/api/admin/flashcards?limit=1000', {
-        headers: {
-          'Authorization': `Bearer ${currentToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('🃏 Réponse flashcards:', response.status, response.statusText);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🃏 Données flashcards reçues:', data.flashcards?.length || 0, 'flashcards sur', data.pagination?.total || 0, 'total');
-        setFlashcards(data.flashcards || []);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Erreur flashcards:', errorData);
-      }
-    } catch (error) {
-      console.error('❌ Erreur lors du chargement des flashcards:', error);
-    }
-  };
 
   const handleCreateUser = async () => {
     try {
@@ -421,6 +386,27 @@ const SimpleAdminDashboard = () => {
         });
         loadUsers();
         loadStats();
+      } else if (response.status === 401) {
+        // Token invalide ou expiré
+        toast({
+          title: "Session expirée",
+          description: "Veuillez vous reconnecter",
+          variant: "destructive"
+        });
+        localStorage.removeItem('token');
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else if (response.status === 403) {
+        // Accès refusé
+        toast({
+          title: "Accès refusé",
+          description: "Vous n'avez pas les droits administrateur",
+          variant: "destructive"
+        });
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
       } else {
         toast({
           title: "Erreur",
@@ -546,39 +532,6 @@ const SimpleAdminDashboard = () => {
     }
   };
 
-  const handleDeleteFlashcard = async (flashcardId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
-
-    try {
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Succès",
-          description: "Flashcard supprimée avec succès"
-        });
-        loadFlashcards();
-      } else {
-        toast({
-          title: "Erreur",
-          description: "Erreur lors de la suppression",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Erreur",
-        description: "Erreur de connexion",
-        variant: "destructive"
-      });
-    }
-  };
 
   const resetUserForm = () => {
     setUserForm({
@@ -603,53 +556,7 @@ const SimpleAdminDashboard = () => {
     });
   };
 
-  const resetFlashcardForm = () => {
-    setFlashcardForm({
-      question: '',
-      answer: '',
-      subjectId: '',
-      difficulty: 'medium'
-    });
-  };
 
-  const handleCreateFlashcard = async () => {
-    try {
-      const response = await fetch('http://localhost:8081/api/flashcards', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...flashcardForm,
-          subjectId: parseInt(flashcardForm.subjectId)
-        })
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Succès",
-          description: "Flashcard créée avec succès"
-        });
-        setShowFlashcardModal(false);
-        resetFlashcardForm();
-        loadFlashcards();
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Erreur",
-          description: error.error || "Erreur lors de la création",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Erreur",
-        description: "Erreur de connexion",
-        variant: "destructive"
-      });
-    }
-  };
 
   const openEditUser = (user: User) => {
     setEditingUser(user);
@@ -740,8 +647,8 @@ const SimpleAdminDashboard = () => {
             <div className="flex items-center space-x-4">
               <Shield className="h-8 w-8 text-blue-600" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Dashboard Admin</h1>
-                <p className="text-sm text-gray-500">Gestion du système Study Swift</p>
+                <h1 className="text-2xl font-bold text-gray-900">Gestion des Matières</h1>
+                <p className="text-sm text-gray-500">Gérez toutes les matières de la plateforme</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -759,16 +666,14 @@ const SimpleAdminDashboard = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
-            <TabsTrigger value="users">Utilisateurs</TabsTrigger>
+        <Tabs value="subjects" onValueChange={handleTabChange} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="subjects">Matières</TabsTrigger>
-            <TabsTrigger value="flashcards">Flashcards</TabsTrigger>
-            <TabsTrigger value="profile">Profil</TabsTrigger>
+            <TabsTrigger value="tests">Tests</TabsTrigger>
           </TabsList>
 
-          {/* Vue d'ensemble */}
+          {/* Vue d'ensemble supprimée */}
+          {false && (
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
@@ -869,10 +774,6 @@ const SimpleAdminDashboard = () => {
                       <span className="text-sm">{subjects.length} matières disponibles</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-purple-500" />
-                      <span className="text-sm">{flashcards.length} flashcards créées</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
                       <MessageSquare className="h-4 w-4 text-orange-500" />
                       <span className="text-sm">{stats.totalMessages} messages échangés</span>
                     </div>
@@ -893,27 +794,40 @@ const SimpleAdminDashboard = () => {
                     <BookOpen className="h-4 w-4 mr-2" />
                     Gérer les Matières
                   </Button>
-                  <Button onClick={() => handleTabChange('flashcards')} className="w-full justify-start">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Gérer les Flashcards
-                  </Button>
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
+          </TabsContent>)}
 
-          {/* Gestion des Utilisateurs */}
+          {/* Gestion des Utilisateurs supprimée (navigation vers /admin/users) */}
+          {false && (
           <TabsContent value="users" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Gestion des Utilisateurs</h2>
-              <Dialog open={showUserModal} onOpenChange={setShowUserModal}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => { resetUserForm(); setEditingUser(null); }}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nouvel Utilisateur
+              <Button onClick={() => navigate('/admin/users')}>
+                <Users className="h-4 w-4 mr-2" />
+                Gérer les utilisateurs
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="p-6">
+                <div className="text-center">
+                  <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Gestion des Utilisateurs
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Accédez à l'interface complète de gestion des utilisateurs
+                  </p>
+                  <Button onClick={() => navigate('/admin/users')}>
+                    Ouvrir la gestion des utilisateurs
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Dialog open={showUserModal} onOpenChange={setShowUserModal}>
+              <DialogContent className="max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>
                       {editingUser ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
@@ -970,20 +884,13 @@ const SimpleAdminDashboard = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="userClass">Classe</Label>
-                      <Input
-                        id="userClass"
-                        value={userForm.userClass}
-                        onChange={(e) => setUserForm({...userForm, userClass: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="section">Section</Label>
-                      <Input
-                        id="section"
-                        value={userForm.section}
-                        onChange={(e) => setUserForm({...userForm, section: e.target.value})}
+                    <div className="col-span-2">
+                      <ClassSectionSelector
+                        selectedClass={userForm.userClass || ''}
+                        selectedSection={userForm.section || ''}
+                        onClassChange={(className) => setUserForm({...userForm, userClass: className})}
+                        onSectionChange={(section) => setUserForm({...userForm, section: section})}
+                        showLabel={true}
                       />
                     </div>
                     <div>
@@ -1021,7 +928,6 @@ const SimpleAdminDashboard = () => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            </div>
 
             <Card>
               <CardContent className="p-0">
@@ -1073,7 +979,7 @@ const SimpleAdminDashboard = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </TabsContent>)}
 
           {/* Gestion des Matières */}
           <TabsContent value="subjects" className="space-y-6">
@@ -1177,140 +1083,37 @@ const SimpleAdminDashboard = () => {
             </div>
           </TabsContent>
 
-          {/* Gestion des Flashcards */}
-          <TabsContent value="flashcards" className="space-y-6">
+          {/* Gestion des Tests */}
+          <TabsContent value="tests" className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Gestion des Flashcards</h2>
-              <div className="flex items-center space-x-4">
-                <Badge variant="outline">{flashcards.length} flashcards</Badge>
-                <Dialog open={showFlashcardModal} onOpenChange={setShowFlashcardModal}>
-                  <DialogTrigger asChild>
-                    <Button onClick={() => resetFlashcardForm()}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Nouvelle Flashcard
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Créer une nouvelle flashcard</DialogTitle>
-                      <DialogDescription>
-                        Ajoutez une nouvelle flashcard à la base de données.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="flashcardQuestion">Question</Label>
-                        <Input
-                          id="flashcardQuestion"
-                          value={flashcardForm.question}
-                          onChange={(e) => setFlashcardForm({...flashcardForm, question: e.target.value})}
-                          placeholder="Quelle est la question ?"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="flashcardAnswer">Réponse</Label>
-                        <Input
-                          id="flashcardAnswer"
-                          value={flashcardForm.answer}
-                          onChange={(e) => setFlashcardForm({...flashcardForm, answer: e.target.value})}
-                          placeholder="Quelle est la réponse ?"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="flashcardSubject">Matière</Label>
-                        <Select value={flashcardForm.subjectId} onValueChange={(value) => setFlashcardForm({...flashcardForm, subjectId: value})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner une matière" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {subjects.map((subject) => (
-                              <SelectItem key={subject.id} value={subject.id.toString()}>
-                                {subject.name} ({subject.level})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="flashcardDifficulty">Difficulté</Label>
-                        <Select value={flashcardForm.difficulty} onValueChange={(value) => setFlashcardForm({...flashcardForm, difficulty: value})}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="easy">Facile</SelectItem>
-                            <SelectItem value="medium">Moyen</SelectItem>
-                            <SelectItem value="hard">Difficile</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowFlashcardModal(false)}>
-                        Annuler
-                      </Button>
-                      <Button onClick={handleCreateFlashcard}>
-                        Créer la flashcard
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
+              <h2 className="text-2xl font-bold">Gestion des Tests</h2>
+              <Button onClick={() => navigate('/admin/tests')}>
+                <BookOpen className="h-4 w-4 mr-2" />
+                Gérer les Tests
+              </Button>
             </div>
-
+            
             <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Question</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Réponse</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Matière</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Difficulté</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créateur</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {flashcards.map((flashcard) => (
-                        <tr key={flashcard.id}>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 max-w-xs truncate">
-                              {flashcard.question}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 max-w-xs truncate">
-                              {flashcard.answer}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {flashcard.subject?.name || 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant={flashcard.difficulty === 'easy' ? 'default' : flashcard.difficulty === 'medium' ? 'secondary' : 'destructive'}>
-                              {flashcard.difficulty}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {flashcard.user ? `${flashcard.user.firstName} ${flashcard.user.lastName}` : 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <Button size="sm" variant="outline" onClick={() => handleDeleteFlashcard(flashcard.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <CardContent className="p-6">
+                <div className="text-center">
+                  <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Tests de Connaissances
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Gérez les tests de connaissances et importez depuis CSV
+                  </p>
+                  <Button onClick={() => navigate('/admin/tests')}>
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Ouvrir la gestion des tests
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Profil Admin */}
+          {/* Profil supprimé */}
+          {false && (
           <TabsContent value="profile" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Profil Administrateur</h2>
@@ -1363,10 +1166,6 @@ const SimpleAdminDashboard = () => {
                       <div className="text-2xl font-bold text-green-600">{subjects.length}</div>
                       <div className="text-sm text-gray-600">Matières créées</div>
                     </div>
-                    <div className="text-center p-4 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">{flashcards.length}</div>
-                      <div className="text-sm text-gray-600">Flashcards créées</div>
-                    </div>
                     <div className="text-center p-4 bg-orange-50 rounded-lg">
                       <div className="text-2xl font-bold text-orange-600">{stats.totalMessages}</div>
                       <div className="text-sm text-gray-600">Messages modérés</div>
@@ -1390,14 +1189,10 @@ const SimpleAdminDashboard = () => {
                     <BookOpen className="h-6 w-6 mb-2" />
                     Gérer les Matières
                   </Button>
-                  <Button onClick={() => handleTabChange('flashcards')} variant="outline" className="h-20 flex flex-col items-center justify-center">
-                    <FileText className="h-6 w-6 mb-2" />
-                    Gérer les Flashcards
-                  </Button>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </TabsContent>)}
         </Tabs>
       </main>
     </div>
