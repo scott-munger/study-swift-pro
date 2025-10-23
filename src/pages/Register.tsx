@@ -252,7 +252,7 @@ const Register = () => {
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
             <img 
-              src="/Tyala.png" 
+              src="/placeholder.svg" 
               alt="Tyala Logo" 
               className="h-8 w-auto sm:h-10"
             />
