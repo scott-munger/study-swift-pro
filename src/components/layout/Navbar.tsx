@@ -193,7 +193,11 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to={getHomeRoute()} className="flex items-center gap-2">
               <div className="flex items-center gap-2">
-                <span className={`text-2xl font-bold ${isAdmin ? 'text-white' : 'text-[#00aaff]'}`}>Tyala</span>
+                <img 
+                  src="/Tyala.png" 
+                  alt="Tyala Logo" 
+                  className="h-8 w-auto"
+                />
                 {isAdmin && (
                   <span className="text-xs bg-yellow-400 text-purple-900 px-2 py-1 rounded font-bold">
                     ADMIN
@@ -289,7 +293,11 @@ const Navbar = () => {
                   {/* Logo mobile */}
                   <div className="flex items-center gap-2 mb-8 pb-4 border-b border-border">
                     <Link to={getHomeRoute()} onClick={() => setIsOpen(false)} className="flex items-center gap-2">
-                      <span className={`text-xl font-bold ${isAdmin ? 'text-white' : 'text-[#00aaff]'}`}>Tyala</span>
+                      <img 
+                        src="/Tyala.png" 
+                        alt="Tyala Logo" 
+                        className="h-6 w-auto"
+                      />
                       {isAdmin && (
                         <span className="text-xs bg-yellow-400 text-purple-900 px-2 py-1 rounded font-bold">
                           ADMIN
