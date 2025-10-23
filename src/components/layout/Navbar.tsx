@@ -194,7 +194,7 @@ const Navbar = () => {
             <Link to={getHomeRoute()} className="flex items-center gap-2">
               <div className="flex items-center gap-2">
                 <img 
-                  src="/placeholder.svg" 
+                  src="/Asset 2Tyala copie.png" 
                   alt="Tyala Logo" 
                   className="h-8 w-auto"
                 />
@@ -294,7 +294,7 @@ const Navbar = () => {
                   <div className="flex items-center gap-2 mb-8 pb-4 border-b border-border">
                     <Link to={getHomeRoute()} onClick={() => setIsOpen(false)} className="flex items-center gap-2">
                       <img 
-                        src="/placeholder.svg" 
+                        src="/Asset 2Tyala copie.png" 
                         alt="Tyala Logo" 
                         className="h-6 w-auto"
                       />
