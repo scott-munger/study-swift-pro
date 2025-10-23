@@ -67,11 +67,29 @@ const HeroSection = () => {
   };
 
   const handleStartNow = () => {
-    navigate('/login');
-    toast({
-      title: "Connexion requise",
-      description: "Veuillez vous connecter pour accéder aux fonctionnalités",
-    });
+    if (user) {
+      // Utilisateur déjà connecté, rediriger vers le dashboard approprié
+      if (user.role === 'ADMINISTRATOR') {
+        navigate('/admin/dashboard-modern');
+      } else if (user.role === 'TUTOR') {
+        navigate('/tutor/dashboard');
+      } else if (user.role === 'STUDENT') {
+        navigate('/student/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+      toast({
+        title: "Bienvenue !",
+        description: `Bon retour, ${user.firstName} !`,
+      });
+    } else {
+      // Utilisateur non connecté, rediriger vers la page de connexion
+      navigate('/login');
+      toast({
+        title: "Connexion requise",
+        description: "Veuillez vous connecter pour accéder aux fonctionnalités",
+      });
+    }
   };
 
   const handleFindTutor = () => {
@@ -148,7 +166,7 @@ const HeroSection = () => {
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 sm:mb-12">
               <Button variant="hero" size="lg" onClick={handleStartNow} className="w-full sm:w-auto">
-                Commencer Maintenant
+                {user ? "Accéder au Dashboard" : "Commencer Maintenant"}
                 <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
               <Button variant="outline" size="lg" className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10" onClick={handleFindTutor}>
