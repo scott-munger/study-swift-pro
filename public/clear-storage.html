@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nettoyage du Stockage - TYALA</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Nettoyage du Stockage TYALA</h1>
+        <p>Cette page nettoie complètement le localStorage et sessionStorage pour éviter qu'un utilisateur soit connecté par défaut.</p>
+        
+        <div class="status" id="status">
+            Cliquez sur le bouton pour nettoyer le stockage
+        </div>
+        
+        <button onclick="clearStorage()">Nettoyer le Stockage</button>
+        <button onclick="checkStorage()">Vérifier le Stockage</button>
+        <button onclick="goToApp()">Aller à l'Application</button>
+        
+        <div id="details" style="margin-top: 20px; text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; display: none;">
+            <h3>Détails du Stockage :</h3>
+            <div id="storageDetails"></div>
+        </div>
+    </div>
+
+    <script>
+        function clearStorage() {
+            console.log('🧹 Nettoyage du localStorage et sessionStorage...');
+            
+            // Nettoyer localStorage
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            localStorage.removeItem('adminUser');
+            localStorage.removeItem('adminToken');
+            localStorage.removeItem('rememberMe');
+            
+            // Nettoyer sessionStorage
+            sessionStorage.removeItem('user');
+            sessionStorage.removeItem('token');
+            sessionStorage.clear();
+            
+            // Nettoyer aussi les cookies si nécessaire
+            document.cookie.split(";").forEach(function(c) { 
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+            });
+            
+            document.getElementById('status').innerHTML = '✅ Stockage nettoyé avec succès !';
+            document.getElementById('status').style.background = 'rgba(76, 175, 80, 0.3)';
+            
+            console.log('✅ Nettoyage terminé');
+        }
+        
+        function checkStorage() {
+            const details = document.getElementById('details');
+            const storageDetails = document.getElementById('storageDetails');
+            
+            let html = '<h4>localStorage :</h4><ul>';
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                html += `<li>${key}: ${localStorage.getItem(key)}</li>`;
+            }
+            html += '</ul>';
+            
+            html += '<h4>sessionStorage :</h4><ul>';
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                html += `<li>${key}: ${sessionStorage.getItem(key)}</li>`;
+            }
+            html += '</ul>';
+            
+            if (localStorage.length === 0 && sessionStorage.length === 0) {
+                html = '<p style="color: #4CAF50;">✅ Aucune donnée persistée trouvée</p>';
+            }
+            
+            storageDetails.innerHTML = html;
+            details.style.display = 'block';
+        }
+        
+        function goToApp() {
+            window.location.href = '/';
+        }
+        
+        // Vérifier automatiquement au chargement
+        window.onload = function() {
+            checkStorage();
+        };
+    </script>
+</body>
+</html>

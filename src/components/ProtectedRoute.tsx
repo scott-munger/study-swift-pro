@@ -13,25 +13,10 @@ const ProtectedRoute = ({
   redirectTo = "/" 
 }: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
-  // Récupération résiliente du rôle et de l'état d'authentification
-  const storageUser = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
-    } catch {
-      return null;
-    }
-  })();
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  const tokenPayload = (() => {
-    try {
-      if (!token) return null;
-      return JSON.parse(atob(token.split('.')[1]));
-    } catch {
-      return null;
-    }
-  })();
-  const effectiveRole: string | undefined = user?.role || storageUser?.role || tokenPayload?.role;
-  const isAuthenticated = !!user || !!token;
+  
+  // Utiliser uniquement le contexte d'authentification, pas le localStorage
+  const effectiveRole: string | undefined = user?.role;
+  const isAuthenticated = !!user;
 
   // Attendre que le chargement soit terminé avant de vérifier l'authentification
   if (loading) {

@@ -164,25 +164,25 @@ const Flashcards = () => {
     try {
       const token = localStorage.getItem('token');
       const user = localStorage.getItem('user');
-      console.log('🔍 loadAvailableSubjects - Token:', token ? 'Présent' : 'Absent');
-      console.log('🔍 loadAvailableSubjects - User:', user ? 'Présent' : 'Absent');
+      console.log('loadAvailableSubjects - Token:', token ? 'Présent' : 'Absent');
+      console.log('loadAvailableSubjects - User:', user ? 'Présent' : 'Absent');
       
       if (user) {
         try {
           const userData = JSON.parse(user);
-          console.log('🔍 loadAvailableSubjects - User data:', {
+          console.log('loadAvailableSubjects - User data:', {
             email: userData.email,
             role: userData.role,
             firstName: userData.firstName
           });
         } catch (e) {
-          console.log('🔍 loadAvailableSubjects - Erreur parsing user:', e);
+          console.log('loadAvailableSubjects - Erreur parsing user:', e);
         }
       }
       
       // Essayer d'abord l'endpoint avec authentification si un token existe
       if (token) {
-        console.log('🔍 Tentative avec authentification:', API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS);
+        console.log('Tentative avec authentification:', API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS);
         try {
           const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS_FLASHCARDS, {
             headers: {
@@ -190,16 +190,16 @@ const Flashcards = () => {
             }
           });
 
-          console.log('🔍 Réponse authentifiée:', response.status, response.statusText);
+          console.log('Réponse authentifiée:', response.status, response.statusText);
           
           if (response.ok) {
             const subjects = await response.json();
-            console.log('🔍 Matières reçues (authentifiées):', subjects);
-            console.log('🔍 Nombre de matières reçues:', subjects.length);
+            console.log('Matières reçues (authentifiées):', subjects);
+            console.log('Nombre de matières reçues:', subjects.length);
             
             // Debug: vérifier les propriétés des matières
             if (subjects.length > 0) {
-              console.log('🔍 Première matière (debug):', {
+              console.log('Première matière (debug):', {
                 name: subjects[0].name,
                 totalFlashcards: subjects[0].totalFlashcards,
                 completedFlashcards: subjects[0].completedFlashcards,
@@ -208,30 +208,31 @@ const Flashcards = () => {
             }
             
             setAvailableSubjects(subjects);
-            console.log('🔍 Matières définies dans le state (authentifiées):', subjects.length);
-            console.log('🔍 Première matière (détail):', subjects[0]);
+            console.log('Matières définies dans le state (authentifiées):', subjects.length);
+            console.log('Première matière (détail):', subjects[0]);
             return; // Succès, on sort de la fonction
           } else {
-            console.log('🔍 Échec de l\'authentification, fallback vers endpoint public');
+            console.log('Échec de l\'authentification, fallback vers endpoint public');
           }
         } catch (authError) {
-          console.log('🔍 Erreur d\'authentification, fallback vers endpoint public:', authError);
+          console.log('Erreur d\'authentification, fallback vers endpoint public:', authError);
         }
       }
       
       // Fallback vers l'endpoint public
-      console.log('🔍 Chargement des matières depuis endpoint public:', API_CONFIG.ENDPOINTS.SUBJECTS);
+      console.log('Chargement des matières depuis endpoint public:', API_CONFIG.ENDPOINTS.SUBJECTS);
       const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECTS);
 
-      console.log('🔍 Réponse publique reçue:', response.status, response.statusText);
+      console.log('Réponse publique reçue:', response.status, response.statusText);
       
       if (response.ok) {
         const subjects = await response.json();
-        console.log('🔍 Matières reçues (publiques):', subjects);
-        console.log('🔍 Nombre de matières reçues:', subjects.length);
+        console.log('Matières reçues (publiques):', subjects);
+        console.log('Nombre de matières reçues:', subjects.length);
         
         // Filtrer les matières côté frontend selon le profil utilisateur
         const filteredSubjects = filterSubjectsByProfile(subjects);
+        console.log('Matières filtrées selon le profil:', filteredSubjects.length);
         
         // Ajouter les statistiques de flashcards pour chaque matière
         const subjectsWithStats = await Promise.all(
@@ -263,15 +264,15 @@ const Flashcards = () => {
         );
         
         setAvailableSubjects(subjectsWithStats);
-        console.log('🔍 Matières filtrées avec statistiques et définies dans le state:', subjectsWithStats.length);
-        console.log('🔍 Première matière avec stats (détail):', subjectsWithStats[0]);
+        console.log('Matières filtrées avec statistiques et définies dans le state:', subjectsWithStats.length);
+        console.log('Première matière avec stats (détail):', subjectsWithStats[0]);
       } else {
-        console.error('🔍 Erreur de réponse publique:', response.status, response.statusText);
+        console.error('Erreur de réponse publique:', response.status, response.statusText);
         const errorText = await response.text();
-        console.error('🔍 Détails de l\'erreur:', errorText);
+        console.error('Détails de l\'erreur:', errorText);
       }
     } catch (error) {
-      console.error('🔍 Erreur lors du chargement des matières:', error);
+      console.error('Erreur lors du chargement des matières:', error);
     }
   };
 
@@ -280,17 +281,17 @@ const Flashcards = () => {
     // Récupérer les informations du profil
     const currentUser = user || (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null);
     
-    console.log('🔍 filterSubjectsByProfile - Utilisateur:', currentUser);
-    console.log('🔍 filterSubjectsByProfile - Nombre de matières à filtrer:', subjects.length);
+    console.log('Filtrage des matières - Utilisateur:', currentUser);
+    console.log('Filtrage des matières - Nombre de matières à filtrer:', subjects.length);
     
     if (!currentUser) {
-      console.log('🔍 filterSubjectsByProfile - Pas d\'utilisateur, retour de toutes les matières');
+      console.log('Filtrage des matières - Pas d\'utilisateur, retour de toutes les matières');
       return subjects; // Retourner toutes les matières si pas d'utilisateur
     }
 
     // Si c'est un tuteur ou admin, donner accès à toutes les matières
     if (currentUser.role === 'TUTOR' || currentUser.role === 'ADMIN') {
-      console.log('🔍 filterSubjectsByProfile - Utilisateur TUTOR/ADMIN, retour de toutes les matières');
+      console.log('Filtrage des matières - Utilisateur TUTOR/ADMIN, retour de toutes les matières');
       return subjects;
     }
 
@@ -298,12 +299,12 @@ const Flashcards = () => {
     const userClass = currentUser.userClass;
     const userSection = currentUser.section;
     
-    console.log('🔍 filterSubjectsByProfile - Classe utilisateur:', userClass);
-    console.log('🔍 filterSubjectsByProfile - Section utilisateur:', userSection);
+    console.log('Filtrage des matières - Classe utilisateur:', userClass);
+    console.log('Filtrage des matières - Section utilisateur:', userSection);
     
     // Si pas de classe définie, retourner toutes les matières
     if (!userClass) {
-      console.log('🔍 filterSubjectsByProfile - Pas de classe définie, retour de toutes les matières');
+      console.log('Filtrage des matières - Pas de classe définie, retour de toutes les matières');
       return subjects;
     }
 
@@ -314,7 +315,7 @@ const Flashcards = () => {
     };
     
     const expectedLevel = classToLevel[userClass as keyof typeof classToLevel];
-    console.log('🔍 filterSubjectsByProfile - Niveau attendu:', expectedLevel);
+    console.log('Filtrage des matières - Niveau attendu:', expectedLevel);
     
     const filteredSubjects = subjects.filter(subject => {
       // Vérifier d'abord le niveau
@@ -326,7 +327,7 @@ const Flashcards = () => {
       
       // Si la matière n'a pas de section spécifique (matières générales), l'étudiant y a accès
       if (!subject.section) {
-        console.log(`🔍 filterSubjectsByProfile - Matière générale: ${subject.name} (${subject.level})`);
+        console.log(`Filtrage des matières - Matière générale: ${subject.name} (${subject.level})`);
         return true;
       }
       
@@ -334,16 +335,16 @@ const Flashcards = () => {
       const sectionMatches = subject.section === userSection;
       
       if (sectionMatches) {
-        console.log(`🔍 filterSubjectsByProfile - Matière de section: ${subject.name} (${subject.level}, ${subject.section})`);
+        console.log(`Filtrage des matières - Matière de section: ${subject.name} (${subject.level}, ${subject.section})`);
       } else {
-        console.log(`🔍 filterSubjectsByProfile - Matière non accessible: ${subject.name} (${subject.level}, ${subject.section}) - Étudiant en ${userSection}`);
+        console.log(`Filtrage des matières - Matière non accessible: ${subject.name} (${subject.level}, ${subject.section}) - Étudiant en ${userSection}`);
       }
       
       return sectionMatches;
     });
     
-    console.log('🔍 filterSubjectsByProfile - Nombre de matières filtrées:', filteredSubjects.length);
-    console.log('🔍 filterSubjectsByProfile - Matières accessibles:', filteredSubjects.map(s => `${s.name} (${s.section || 'Générale'})`));
+    console.log('Filtrage des matières - Nombre de matières filtrées:', filteredSubjects.length);
+    console.log('Filtrage des matières - Matières accessibles:', filteredSubjects.map(s => `${s.name} (${s.section || 'Générale'})`));
     
     return filteredSubjects;
   };
@@ -1232,8 +1233,13 @@ const Flashcards = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Matières Disponibles</p>
                 <p className="text-3xl font-bold text-blue-600">
-                  {loadingStats ? '...' : (userStats?.userStats?.totalSubjects || availableSubjects.length || 0)}
+                  {loadingStats ? '...' : availableSubjects.length}
                 </p>
+                {user && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Pour {user.userClass}{user.section ? ` - ${user.section}` : ''}
+                  </p>
+                )}
             </div>
               <BookOpen className="w-8 h-8 text-blue-500" />
               </div>
@@ -1246,6 +1252,11 @@ const Flashcards = () => {
                 <p className="text-3xl font-bold text-green-600">
                   {loadingStats ? '...' : (userStats?.userStats?.totalFlashcards || 0)}
                 </p>
+                {user && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Dans vos matières
+                  </p>
+                )}
               </div>
               <BookMarked className="w-8 h-8 text-green-500" />
                 </div>
@@ -1338,11 +1349,6 @@ const Flashcards = () => {
                   <div>
                     <h3 className="text-lg md:text-xl font-bold text-gray-900">Matière</h3>
                     <p className="text-sm md:text-base text-gray-600">Sélectionnez la matière</p>
-                    {user && (
-                      <p className="text-xs text-blue-600 mt-1">
-                        📚 Matières de votre profil ({user.userClass}{user.section ? ` - ${user.section}` : ''})
-                      </p>
-                    )}
                   </div>
         </div>
 

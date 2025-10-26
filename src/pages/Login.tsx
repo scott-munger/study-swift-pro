@@ -57,7 +57,7 @@ const Login = () => {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]));
           userRole = payload.role;
-          console.log('🔐 Rôle détecté depuis token:', userRole);
+          console.log('Rôle détecté depuis token:', userRole);
         } catch (error) {
           console.error('Erreur de décodage du token:', error);
         }
@@ -68,7 +68,7 @@ const Login = () => {
         try {
           userData = JSON.parse(savedUser);
           userRole = userData.role;
-          console.log('🔐 Rôle détecté depuis localStorage:', userRole);
+          console.log('Rôle détecté depuis localStorage:', userRole);
         } catch (error) {
           console.error('Erreur de parsing des données utilisateur:', error);
         }
@@ -77,10 +77,10 @@ const Login = () => {
       // Essayer de récupérer le rôle depuis l'état React
       if (!userRole && user && user.role) {
         userRole = user.role;
-        console.log('🔐 Rôle détecté depuis AuthContext:', userRole);
+        console.log('Rôle détecté depuis AuthContext:', userRole);
       }
       
-      console.log('🔐 Rôle final pour redirection:', userRole);
+      console.log('Rôle final pour redirection:', userRole);
       
       // Rediriger selon le rôle
       if (userRole === 'ADMIN') {
@@ -90,21 +90,21 @@ const Login = () => {
         } else if (user) {
           localStorage.setItem('adminUser', JSON.stringify(user));
         }
-        console.log('🔐 Redirection admin vers /admin/dashboard-modern');
+        console.log('Redirection admin vers /admin/dashboard-modern');
         // Utiliser window.location pour forcer un vrai rechargement
         window.location.href = '/admin/dashboard-modern';
         return; // Arrêter l'exécution ici
       } else if (userRole === 'STUDENT') {
         // Rediriger les étudiants vers leur tableau de bord
-        console.log('🔐 Redirection étudiant vers /student/dashboard');
+        console.log('Redirection étudiant vers /student/dashboard');
         navigate('/student/dashboard');
       } else if (userRole === 'TUTOR') {
         // Rediriger les tuteurs vers leur profil
-        console.log('🔐 Redirection tuteur vers /profile');
+        console.log('Redirection tuteur vers /profile');
         navigate('/profile');
       } else {
         // Pour les autres rôles, rediriger vers la page d'accueil
-        console.log('🔐 Redirection par défaut vers /');
+        console.log('Redirection par défaut vers /');
         navigate('/');
       }
       
@@ -240,15 +240,15 @@ const Login = () => {
         {/* Features */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-6 sm:mt-8">
           <Card className="p-3 sm:p-4 bg-gradient-card/50 border-border text-center">
-            <h3 className="text-sm sm:text-base font-semibold text-foreground mb-1 sm:mb-2">For Students</h3>
+            <h3 className="text-sm sm:text-base font-semibold text-foreground mb-1 sm:mb-2">Pour les Étudiants</h3>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Access flashcards, practice tests, and study materials
+              Accédez aux flashcards, tests de pratique et matériels d'étude
             </p>
           </Card>
           <Card className="p-3 sm:p-4 bg-gradient-card/50 border-border text-center">
-            <h3 className="text-sm sm:text-base font-semibold text-foreground mb-1 sm:mb-2">For Tutors</h3>
+            <h3 className="text-sm sm:text-base font-semibold text-foreground mb-1 sm:mb-2">Pour les Tuteurs</h3>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Connect with students and share your expertise
+              Connectez-vous avec les étudiants et partagez votre expertise
             </p>
           </Card>
         </div>

@@ -36,25 +36,12 @@ const Navbar = () => {
 
   // Vérifier si l'utilisateur est admin - logique simplifiée
   const isAdmin = (() => {
-    // Vérifier via le token d'abord
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.role === 'ADMIN') {
-          return true;
-        }
-      } catch (e) {
-        // Ignore parsing errors
-      }
-    }
-    
     // Si pas d'utilisateur connecté, pas d'admin
     if (!user) {
       return false;
     }
     
-    // Vérifier via le rôle de l'utilisateur connecté (priorité)
+    // Vérifier via le rôle de l'utilisateur connecté
     if (user.role === 'ADMIN') {
       return true;
     }

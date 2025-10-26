@@ -868,11 +868,11 @@ const Forum = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-hero py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
+    <div className="min-h-screen bg-gradient-hero py-4 sm:py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+        <div className="mb-4 sm:mb-6 lg:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3 sm:gap-4">
+            <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-foreground">
               Forum <span className="bg-gradient-primary bg-clip-text text-transparent">Étudiant</span>
             </h1>
             
@@ -883,10 +883,10 @@ const Forum = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className="lg:hidden flex items-center space-x-1"
+                className="lg:hidden flex items-center space-x-1 px-2 sm:px-3"
               >
                 <Menu className="w-4 h-4" />
-                <span>Menu</span>
+                <span className="hidden xs:inline">Menu</span>
               </Button>
               
               <Button
@@ -894,7 +894,7 @@ const Forum = () => {
                 size="sm"
                 onClick={refreshData}
                 disabled={loading}
-                className="flex items-center space-x-1"
+                className="flex items-center space-x-1 px-2 sm:px-3"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">Actualiser</span>
@@ -916,23 +916,23 @@ const Forum = () => {
         </div>
 
         {/* Forum Stats - Optimisées mobile */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4 mb-4 sm:mb-6 lg:mb-8">
+          <Card className="p-2 sm:p-3 lg:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Total Posts</p>
-                <p className="text-lg sm:text-2xl font-bold text-primary">{posts.length}</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-primary">{posts.length}</p>
               </div>
-              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
+              <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
             </div>
           </Card>
-          <Card className="p-3 sm:p-4 bg-gradient-card border-border">
+          <Card className="p-2 sm:p-3 lg:p-4 bg-gradient-card border-border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Aujourd'hui</p>
-                <p className="text-lg sm:text-2xl font-bold text-green-600">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-green-600">{posts.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString()).length}</p>
               </div>
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-green-600" />
             </div>
           </Card>
         </div>
@@ -1087,12 +1087,12 @@ const Forum = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 xl:gap-8">
           {/* Contenu Principal du Forum */}
           <div className="lg:col-span-3">
             {/* Recherche et Création de Post */}
-            <Card className="p-4 sm:p-6 mb-4 sm:mb-6 bg-gradient-card border-border">
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <Card className="p-3 sm:p-4 lg:p-6 mb-3 sm:mb-4 lg:mb-6 bg-gradient-card border-border">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -1154,12 +1154,12 @@ const Forum = () => {
                     const canEdit = user && (user.id === post.author.id);
                     
                     return (
-                      <Card key={post.id} className="p-4 sm:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
+                      <Card key={post.id} className="p-3 sm:p-4 lg:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
                     {/* En-tête avec profil et boutons */}
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-start gap-2 sm:gap-3">
+                      <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                         <Avatar 
-                          className="w-8 h-8 sm:w-10 sm:h-10 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                          className="w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all flex-shrink-0"
                           onClick={() => {
                             console.log('👤 Clic sur profil:', post.author);
                             setSelectedUserProfile(post.author);
@@ -1176,16 +1176,18 @@ const Forum = () => {
                                 {post.author.firstName[0]}{post.author.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base" 
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2 mb-1">
+                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base line-clamp-2 flex-1" 
                                     onClick={() => handleJoinDiscussion(post)}>
                                   {post.title}
                                 </h3>
-                            {post.isPinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-primary flex-shrink-0" />}
-                                {post.isLocked && <Lock className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />}
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {post.isPinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />}
+                              {post.isLocked && <Lock className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />}
+                            </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground mt-1">
+                          <div className="flex flex-wrap items-center gap-1 sm:gap-2 lg:gap-4 text-xs text-muted-foreground">
                                 <span 
                                   className="truncate cursor-pointer hover:text-primary hover:underline"
                                   onClick={() => {
@@ -1211,7 +1213,7 @@ const Forum = () => {
                         </div>
                       </div>
                       {canEdit && (
-                        <div className="flex gap-1 sm:gap-2">
+                        <div className="flex gap-1 sm:gap-2 flex-shrink-0">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1240,7 +1242,7 @@ const Forum = () => {
 
                     {/* Contenu du post (texte + images) */}
                     <div className="mb-3">
-                      <p className="text-muted-foreground text-xs sm:text-sm mb-3 line-clamp-3">
+                      <p className="text-muted-foreground text-xs sm:text-sm mb-3 line-clamp-2 sm:line-clamp-3">
                         {post.content}
                       </p>
                       {post.images && post.images.length > 0 && (
@@ -1254,29 +1256,29 @@ const Forum = () => {
                     
                     <div className="pt-4 border-t border-border">
                       {/* Section mobile - disposition verticale */}
-                      <div className="flex flex-col sm:hidden space-y-3">
+                      <div className="flex flex-col sm:hidden space-y-2">
                         <div className="flex items-center gap-2">
                           <Button
                             variant={isLiked ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleLikePost(post.id)}
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-1 px-2 py-1 h-8"
                           >
-                            <ThumbsUp className="w-4 h-4" />
-                            <span>{post._count.likes}</span>
+                            <ThumbsUp className="w-3 h-3" />
+                            <span className="text-xs">{post._count.likes}</span>
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm" 
                             onClick={() => handleJoinDiscussion(post)}
-                            className="flex-1 relative"
+                            className="flex-1 relative h-8 px-2"
                           >
-                            <MessageSquare className="w-4 h-4 mr-2" />
-                            Rejoindre la Discussion
+                            <MessageSquare className="w-3 h-3 mr-1" />
+                            <span className="text-xs">Discussion</span>
                             {post._count.replies > 0 && (
                               <Badge 
                                 variant="destructive" 
-                                className="ml-2 h-5 min-w-[20px] flex items-center justify-center"
+                                className="ml-1 h-4 min-w-[16px] flex items-center justify-center text-xs"
                               >
                                 {post._count.replies}
                               </Badge>

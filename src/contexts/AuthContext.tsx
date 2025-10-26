@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { clearAllStorage } from '@/utils/clearStorage';
 
 export interface User {
   id: number;
@@ -54,52 +55,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Vérifier si l'utilisateur a explicitement demandé à rester connecté
-    const rememberMe = localStorage.getItem('rememberMe');
-    const savedUser = localStorage.getItem('user');
-    const savedToken = localStorage.getItem('token');
-    const sessionUser = sessionStorage.getItem('user');
-    const sessionToken = sessionStorage.getItem('token');
+    // Nettoyer complètement le localStorage et sessionStorage au démarrage
+    // pour éviter qu'un utilisateur soit connecté par défaut
+    clearAllStorage();
     
-    // Ne restaurer l'utilisateur que si "Se souvenir de moi" est activé
-    if (rememberMe === 'true' && savedUser && savedToken) {
-      try {
-        // Vérifier que le token est valide et non expiré
-        const payload = JSON.parse(atob(savedToken.split('.')[1]));
-        const currentTime = Date.now() / 1000;
-        
-        if (payload.exp && payload.exp < currentTime) {
-          // Token expiré, nettoyer le localStorage
-          console.log('Token expiré, déconnexion automatique');
-          localStorage.removeItem('user');
-          localStorage.removeItem('token');
-          localStorage.removeItem('adminUser');
-          localStorage.removeItem('rememberMe');
-        } else {
-          // Token valide, charger l'utilisateur
-          const parsedUser = JSON.parse(savedUser);
-          setUser(parsedUser);
-        }
-      } catch (error) {
-        console.error('Erreur parsing utilisateur ou token:', error);
-        // Nettoyer le localStorage en cas d'erreur
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
-        localStorage.removeItem('adminUser');
-        localStorage.removeItem('rememberMe');
-      }
-    } else if (sessionUser && sessionToken) {
-      // Session en cours (non "se souvenir de moi") → restaurer depuis sessionStorage
-      try {
-        const parsedUser = JSON.parse(sessionUser);
-        setUser(parsedUser);
-      } catch (e) {
-        sessionStorage.removeItem('user');
-        sessionStorage.removeItem('token');
-      }
-    } else {
-      // Pas de restauration automatique depuis localStorage si rememberMe !== 'true'
-    }
+    // S'assurer qu'aucun utilisateur n'est connecté par défaut
+    setUser(null);
     
     // Délai minimal pour éviter les redirections flash
     const timer = setTimeout(() => {
@@ -124,11 +85,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
 
-      console.log('📡 Réponse API login:', response.status, response.statusText);
+      console.log('Réponse API login:', response.status, response.statusText);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Login réussi:', data.user.email, data.user.role);
+        console.log('Login réussi:', data.user.email, data.user.role);
         setUser(data.user);
         
         // Toujours persister dans les deux stockages pour éviter les 401
@@ -151,11 +112,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
 
-      console.log('📡 Réponse API demo:', demoResponse.status, demoResponse.statusText);
+      console.log('Réponse API demo:', demoResponse.status, demoResponse.statusText);
 
       if (demoResponse.ok) {
         const demoData = await demoResponse.json();
-        console.log('✅ Login démo réussi:', demoData.user.email, demoData.user.role);
+        console.log('Login démo réussi:', demoData.user.email, demoData.user.role);
         setUser(demoData.user);
         
         // Toujours persister dans les deux stockages
@@ -226,18 +187,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    console.log('🔍 AuthContext - Déconnexion en cours...');
+    console.log('Déconnexion complète en cours...');
     setUser(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
-    localStorage.removeItem('adminUser');
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('rememberMe');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-    sessionStorage.clear();
-    console.log('🔍 AuthContext - localStorage et sessionStorage nettoyés');
-    // La redirection sera gérée par les composants qui utilisent logout
+    clearAllStorage();
+    console.log('Déconnexion complète effectuée - toutes les données nettoyées');
   };
 
 
@@ -268,11 +221,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify(profileData)
       });
 
-      console.log('📡 Réponse reçue:', response.status, response.statusText);
+      console.log('Réponse reçue:', response.status, response.statusText);
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Mise à jour réussie:', result);
+        console.log('Mise à jour réussie:', result);
         setUser(result.user);
         localStorage.setItem('user', JSON.stringify(result.user));
         return true;

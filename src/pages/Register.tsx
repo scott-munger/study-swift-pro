@@ -449,9 +449,8 @@ const Register = () => {
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {formData.accountType === "student" 
-                      ? "Parlez-nous de votre niveau académique" 
-                      : "Parlez-nous de votre expérience d'enseignement"
-                    }
+                      ? "Renseignez votre niveau d'études et votre filière" 
+                      : "Décrivez votre expérience et vos spécialités"}
                   </p>
                 </div>
 

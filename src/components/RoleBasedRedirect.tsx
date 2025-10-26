@@ -13,23 +13,23 @@ const RoleBasedRedirect: React.FC = () => {
 
   // Vérifier si on est sur /dashboard
   const currentPath = window.location.pathname;
-  console.log('🔍 RoleBasedRedirect - Current path:', currentPath);
+  console.log('RoleBasedRedirect - Current path:', currentPath);
   
   if (currentPath !== '/dashboard') {
-    console.log('🔍 RoleBasedRedirect - Pas sur /dashboard, retour null');
+    console.log('RoleBasedRedirect - Pas sur /dashboard, retour null');
     return null;
   }
 
   useEffect(() => {
-    console.log('🔍 RoleBasedRedirect - useEffect déclenché');
+    console.log('RoleBasedRedirect - useEffect déclenché');
     if (!authLoading && !adminLoading) {
       if (!user) {
-        console.log('🔍 RoleBasedRedirect - Pas d\'utilisateur, redirection vers login');
+        console.log('RoleBasedRedirect - Pas d\'utilisateur, redirection vers login');
         navigate('/login');
         return;
       }
 
-      console.log('🔍 RoleBasedRedirect - Redirection depuis /dashboard pour:', user.role);
+      console.log('RoleBasedRedirect - Redirection depuis /dashboard pour:', user.role);
       // Déterminer le rôle et rediriger
       if (user.role === 'ADMIN' || isAdmin) {
         navigate('/admin/dashboard-modern', { replace: true });
