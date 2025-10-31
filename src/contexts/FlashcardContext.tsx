@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { offlineStorage } from '@/lib/offlineStorage';
 
 export interface Flashcard {
   id: number;
@@ -53,7 +54,7 @@ export const FlashcardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
 
-  // Charger toutes les flashcards
+  // Charger toutes les flashcards (avec support offline)
   const refreshFlashcards = async () => {
     if (!user) {
       return;
@@ -68,24 +69,49 @@ export const FlashcardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Utiliser l'endpoint public pour tous les utilisateurs
       const endpoint = 'http://localhost:8081/api/flashcards';
 
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const flashcardsData = data.flashcards || data;
-        setFlashcards(flashcardsData);
-      } else {
-        console.error('❌ FlashcardContext - Erreur lors du rechargement:', response.status);
+        if (response.ok) {
+          const data = await response.json();
+          const flashcardsData = data.flashcards || data;
+          setFlashcards(flashcardsData);
+          
+          // Sauvegarder en cache pour usage offline
+          await offlineStorage.saveFlashcards(flashcardsData);
+          console.log('✅ Flashcards mises en cache pour usage offline');
+        } else {
+          console.error('❌ FlashcardContext - Erreur lors du rechargement:', response.status);
+          // Charger depuis le cache en cas d'erreur
+          await loadFromCache();
+        }
+      } catch (fetchError) {
+        console.log('⚠️ Mode offline - Chargement depuis le cache');
+        // En cas d'erreur réseau, charger depuis le cache
+        await loadFromCache();
       }
     } catch (error) {
       console.error('❌ FlashcardContext - Erreur lors du rechargement:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Charger depuis le cache offline
+  const loadFromCache = async () => {
+    try {
+      const cachedFlashcards = await offlineStorage.getFlashcards();
+      if (cachedFlashcards.length > 0) {
+        setFlashcards(cachedFlashcards);
+        console.log(`✅ ${cachedFlashcards.length} flashcards chargées depuis le cache`);
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement cache:', error);
     }
   };
 

@@ -12,9 +12,7 @@ const FlashcardSection = () => {
               <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-4 sm:mb-6">
                 Flashcards Intelligentes pour
                 <br />
-                <span className="bg-gradient-primary bg-clip-text text-transparent">
-                  un Apprentissage Plus Rapide
-                </span>
+                un Apprentissage Plus Rapide
               </h2>
               <p className="text-base sm:text-lg lg:text-xl text-muted-foreground">
                 Maîtrisez le contenu de vos examens avec notre système de flashcards intelligent. 

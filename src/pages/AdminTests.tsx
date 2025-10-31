@@ -219,59 +219,49 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6`;
         return;
       }
 
-      // Pour l'instant, on utilise des données simulées pour les questions
-      // En attendant que l'endpoint API soit corrigé
-      const mockQuestions = [
-        {
-          id: 1,
-          question: "Quelle est la capitale de la France ?",
-          type: "MULTIPLE_CHOICE",
-          correctAnswer: "Paris",
-          explanation: "Paris est la capitale de la France depuis le 6ème siècle.",
-          difficulty: "EASY",
-          concept: "Géographie",
-          options: ["Paris", "Lyon", "Marseille", "Toulouse"]
-        },
-        {
-          id: 2,
-          question: "Combien font 2 + 2 ?",
-          type: "MULTIPLE_CHOICE",
-          correctAnswer: "4",
-          explanation: "2 + 2 = 4 en arithmétique de base.",
-          difficulty: "EASY",
-          concept: "Mathématiques",
-          options: ["3", "4", "5", "6"]
-        },
-        {
-          id: 3,
-          question: "Expliquez le processus de la photosynthèse chez les plantes vertes.",
-          type: "ELABORATION",
-          correctAnswer: "La photosynthèse est le processus par lequel les plantes vertes utilisent la lumière du soleil pour convertir le dioxyde de carbone et l'eau en glucose et en oxygène.",
-          explanation: "Ce processus se déroule dans les chloroplastes et implique deux phases : la phase claire (photolyse de l'eau) et la phase sombre (cycle de Calvin).",
-          difficulty: "HARD",
-          concept: "Biologie",
-          options: null
-        },
-        {
-          id: 4,
-          question: "La Terre tourne autour du Soleil.",
-          type: "TRUE_FALSE",
-          correctAnswer: "Vrai",
-          explanation: "La Terre effectue une révolution autour du Soleil en 365,25 jours.",
-          difficulty: "EASY",
-          concept: "Astronomie",
-          options: null
+      // Charger les vraies questions depuis l'API
+      try {
+        const questionsResponse = await fetch(`http://localhost:8081/api/tests/${testId}/questions`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (questionsResponse.ok) {
+          const questionsData = await questionsResponse.json();
+          setSelectedTest(test);
+          setQuestions(questionsData);
+          setShowViewModal(true);
+          
+          toast({
+            title: "Test chargé",
+            description: `${questionsData.length} question(s) chargée(s) pour "${test.title}"`
+          });
+        } else {
+          // Si pas de questions, afficher quand même le test
+          setSelectedTest(test);
+          setQuestions([]);
+          setShowViewModal(true);
+          
+          toast({
+            title: "Test sans questions",
+            description: "Ce test n'a pas encore de questions. Ajoutez-en depuis l'interface d'édition.",
+            variant: "destructive"
+          });
         }
-      ];
-      
-      setSelectedTest(test);
-      setQuestions(mockQuestions);
-      setShowViewModal(true);
-      
-      toast({
-        title: "Info",
-        description: "Affichage des données de test (questions simulées en attendant la correction de l'API)"
-      });
+      } catch (questionsError) {
+        console.error('Erreur chargement questions:', questionsError);
+        // Afficher le test même si les questions ne chargent pas
+        setSelectedTest(test);
+        setQuestions([]);
+        setShowViewModal(true);
+        
+        toast({
+          title: "Erreur chargement questions",
+          description: "Impossible de charger les questions du test",
+          variant: "destructive"
+        });
+      }
     } catch (error) {
       toast({
         title: "Erreur",

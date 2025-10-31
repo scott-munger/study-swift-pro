@@ -1,0 +1,62 @@
+{
+  "name": "Tyala - Plateforme d'Apprentissage",
+  "short_name": "Tyala",
+  "description": "Plateforme d'apprentissage avec flashcards, examens et tuteurs - Fonctionne hors ligne",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/tyala-favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/tyala-favicon.ico",
+      "sizes": "192x192",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/tyala-favicon.ico",
+      "sizes": "512x512",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "fr-HT",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "scope": "/",
+  "shortcuts": [
+    {
+      "name": "Flashcards",
+      "short_name": "Flashcards",
+      "description": "Accéder aux flashcards (fonctionne hors ligne)",
+      "url": "/flashcards",
+      "icons": [{ "src": "/tyala-favicon.ico", "sizes": "96x96" }]
+    },
+    {
+      "name": "Examens",
+      "short_name": "Examens",
+      "description": "Passer un examen (fonctionne hors ligne)",
+      "url": "/knowledge-tests",
+      "icons": [{ "src": "/tyala-favicon.ico", "sizes": "96x96" }]
+    },
+    {
+      "name": "Tuteurs",
+      "short_name": "Tuteurs",
+      "description": "Trouver un tuteur",
+      "url": "/tutors",
+      "icons": [{ "src": "/tyala-favicon.ico", "sizes": "96x96" }]
+    }
+  ],
+  "offline_enabled": true,
+  "related_applications": []
+}
+
+
+

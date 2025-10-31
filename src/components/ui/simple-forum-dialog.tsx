@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, BookOpen } from 'lucide-react';
 import ImageUpload from './ImageUpload';
+import { useToast } from '@/hooks/use-toast';
 
 interface SimpleForumDialogProps {
   trigger?: React.ReactNode;
@@ -35,6 +36,7 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({
   subjects = [],
   showSubjectSelector = true
 }) => {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(initialData?.title || '');
   const [content, setContent] = useState(initialData?.content || '');
@@ -61,12 +63,20 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({
     e.preventDefault();
     
     if (!title.trim() || !content.trim()) {
-      alert('Veuillez remplir le titre et le contenu');
+      toast({
+        title: "Champs requis",
+        description: "Veuillez remplir le titre et le contenu",
+        variant: "destructive"
+      });
       return;
     }
 
     if (showSubjectSelector && !subjectId) {
-      alert('Veuillez sélectionner une matière');
+      toast({
+        title: "Matière requise",
+        description: "Veuillez sélectionner une matière pour votre post",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -90,7 +100,11 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({
       setImages([]);
     } catch (error) {
       console.error('Erreur lors de l\'enregistrement du post:', error);
-      alert('Erreur lors de l\'enregistrement du post');
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de l'enregistrement du post",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }

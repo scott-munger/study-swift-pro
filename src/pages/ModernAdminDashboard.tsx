@@ -663,6 +663,19 @@ const ModernAdminDashboard = () => {
               </Button>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tuteurs</CardTitle>
+              <CardDescription>Gérez les tuteurs et leurs informations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => navigate('/admin/tutors')} className="w-full bg-primary hover:bg-primary/90">
+                <Users className="w-4 h-4 mr-2" />
+                Gérer les Tuteurs
+              </Button>
+            </CardContent>
+          </Card>
             </div>
           </TabsContent>
 

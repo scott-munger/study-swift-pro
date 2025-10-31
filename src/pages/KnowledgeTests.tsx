@@ -5,11 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Progress } from '../components/ui/progress';
-import { Clock, BookOpen, Target, Users, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Clock, BookOpen, Target, Users, CheckCircle, XCircle, Upload, Share2, Play, WifiOff } from 'lucide-react';
 import { toast } from '../hooks/use-toast';
 import { API_CONFIG } from '../config/api';
 import { importTestsFromCSV, generateTestImportTemplate, ImportTestData, ImportError, importFlashcardsFromCSV, generateFlashcardImportTemplate, ImportFlashcardData, importQuestionsFromCSV, generateQuestionImportTemplate, ImportQuestionData } from '../lib/csvUtils';
 import { CsvImportDialog } from '../components/ui/CsvImportDialog';
+import SocialShareButton from '../components/ui/SocialShareButton';
+import { useOffline } from '../hooks/useOffline';
 
 interface KnowledgeTest {
   id: number;
@@ -58,10 +61,13 @@ interface TestResult {
 const KnowledgeTests: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { isOnline, cacheTests, getCachedTests } = useOffline();
   const [tests, setTests] = useState<KnowledgeTest[]>([]);
   const [userResults, setUserResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [selectedTest, setSelectedTest] = useState<KnowledgeTest | null>(null);
 
   // Liste complète des matières avec leurs niveaux et sections
   const allSubjects = [
@@ -129,31 +135,49 @@ const KnowledgeTests: React.FC = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch(API_CONFIG.ENDPOINTS.KNOWLEDGE_TESTS(parseInt(subjectId)), {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      try {
+        const response = await fetch(API_CONFIG.ENDPOINTS.KNOWLEDGE_TESTS(parseInt(subjectId)), {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
 
-      if (response.ok) {
-        const testsData = await response.json();
-        console.log(`Tests récupérés pour la matière ${subjectId}:`, testsData);
-        
-        // Filtrer les tests selon la classe de l'utilisateur
-        const filteredTests = testsData.filter((test: KnowledgeTest) => {
-          // Vérifier si le niveau correspond à la classe de l'utilisateur
-          const levelMatch = test.subject.level === user?.userClass;
-          return levelMatch;
-        });
-        
-        console.log(`Tests filtrés pour la classe ${user?.userClass}:`, filteredTests);
-        setTests(filteredTests);
-      } else {
-        toast({
-          title: "Erreur",
-          description: "Impossible de charger les tests",
-          variant: "destructive"
-        });
+        if (response.ok) {
+          const testsData = await response.json();
+          console.log(`Tests récupérés pour la matière ${subjectId}:`, testsData);
+          
+          // Filtrer les tests selon la classe de l'utilisateur
+          const filteredTests = testsData.filter((test: KnowledgeTest) => {
+            // Vérifier si le niveau correspond à la classe de l'utilisateur
+            const levelMatch = test.subject.level === user?.userClass;
+            return levelMatch;
+          });
+          
+          console.log(`Tests filtrés pour la classe ${user?.userClass}:`, filteredTests);
+          setTests(filteredTests);
+          
+          // Sauvegarder en cache pour usage offline
+          await cacheTests(filteredTests);
+          console.log('✅ Tests mis en cache pour usage offline');
+          
+          // Si il n'y a qu'un seul test, ouvrir automatiquement le modal
+          if (filteredTests.length === 1) {
+            setSelectedTest(filteredTests[0]);
+            setShowTestModal(true);
+          }
+        } else {
+          toast({
+            title: "Erreur",
+            description: "Impossible de charger les tests",
+            variant: "destructive"
+          });
+          // Charger depuis le cache en cas d'erreur
+          await loadTestsFromCache(parseInt(subjectId));
+        }
+      } catch (fetchError) {
+        console.log('⚠️ Mode offline - Chargement depuis le cache');
+        // En cas d'erreur réseau, charger depuis le cache
+        await loadTestsFromCache(parseInt(subjectId));
       }
     } catch (error) {
       console.error('Erreur lors du chargement des tests:', error);
@@ -167,13 +191,54 @@ const KnowledgeTests: React.FC = () => {
     }
   };
 
+  // Charger depuis le cache offline
+  const loadTestsFromCache = async (subjectId: number) => {
+    try {
+      const cachedTests = await getCachedTests(subjectId);
+      if (cachedTests.length > 0) {
+        // Filtrer selon la classe de l'utilisateur
+        const filteredTests = cachedTests.filter((test: KnowledgeTest) => {
+          const levelMatch = test.subject.level === user?.userClass;
+          return levelMatch;
+        });
+        
+        setTests(filteredTests);
+        console.log(`✅ ${filteredTests.length} tests chargés depuis le cache`);
+        
+        toast({
+          title: "Mode hors ligne",
+          description: `${filteredTests.length} test(s) disponible(s) hors ligne`,
+        });
+      } else {
+        toast({
+          title: "Aucun test en cache",
+          description: "Connectez-vous à Internet pour télécharger les tests",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement cache:', error);
+    }
+  };
+
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubject(subjectId);
     loadTestsForSubject(subjectId);
   };
 
   const startTest = (testId: number) => {
-    navigate(`/knowledge-test/${testId}`);
+    const test = tests.find(t => t.id === testId);
+    if (test) {
+      setSelectedTest(test);
+      setShowTestModal(true);
+    }
+  };
+
+  const confirmStartTest = () => {
+    if (selectedTest) {
+      setShowTestModal(false);
+      navigate(`/knowledge-test/${selectedTest.id}`);
+    }
   };
 
   const getDifficultyColor = (difficulty: string) => {
@@ -624,9 +689,20 @@ const KnowledgeTests: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Indicateur offline */}
+      {!isOnline && (
+        <div className="mb-4 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg flex items-center gap-3">
+          <WifiOff className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-orange-900 dark:text-orange-200">Mode hors ligne</p>
+            <p className="text-xs text-orange-700 dark:text-orange-300">Vous pouvez passer les tests sauvegardés. Les résultats seront synchronisés lors de la reconnexion.</p>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Tests de Connaissances</h1>
-        <p className="text-gray-600">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Tests de Connaissances</h1>
+        <p className="text-gray-600 dark:text-gray-400">
           Évaluez vos connaissances dans chaque matière avec nos tests adaptés au programme de votre classe
         </p>
       </div>
@@ -789,12 +865,23 @@ const KnowledgeTests: React.FC = () => {
                         <span className="text-sm">{test._count.results} tentatives</span>
                       </div>
                     </div>
-                    <Button 
-                      onClick={() => startTest(test.id)}
-                      className="w-full"
-                    >
-                      Commencer le test
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => startTest(test.id)}
+                        className="flex-1"
+                      >
+                        Commencer le test
+                      </Button>
+                      <SocialShareButton
+                        url={window.location.href}
+                        title={`Test de connaissances: ${test.title}`}
+                        description={`${test.description} | ${test._count.questions} questions | ${test.timeLimit} min`}
+                        author="Tyala Platform"
+                        size="sm"
+                        variant="outline"
+                        className="hover:bg-blue-50 hover:text-blue-600"
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -848,6 +935,144 @@ const KnowledgeTests: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmation du test */}
+      <Dialog open={showTestModal} onOpenChange={setShowTestModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              {selectedTest?.title}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {selectedTest?.description}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedTest && (
+            <div className="space-y-6">
+              {/* Message informatif si c'est le seul test */}
+              {tests.length === 1 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <h4 className="font-semibold text-blue-900">Test unique disponible</h4>
+                      <p className="text-sm text-blue-700">
+                        Il n'y a qu'un seul test disponible pour cette matière. Vous pouvez le commencer directement.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Informations du test */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Questions</p>
+                      <p className="font-semibold text-lg">{selectedTest._count.questions}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Durée</p>
+                      <p className="font-semibold text-lg">{selectedTest.timeLimit} min</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-orange-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Score requis</p>
+                      <p className="font-semibold text-lg">{selectedTest.passingScore}%</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-purple-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Tentatives</p>
+                      <p className="font-semibold text-lg">{selectedTest._count.results}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Informations sur la matière */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                    <BookOpen className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-blue-900">
+                      {selectedTest.subject.name}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-blue-600 border-blue-300">
+                        {selectedTest.subject.level}
+                      </Badge>
+                      {selectedTest.subject.section && (
+                        <Badge variant="outline" className="text-blue-600 border-blue-300">
+                          {selectedTest.subject.section}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions importantes */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  Instructions importantes
+                </h4>
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  <li>• Vous avez {selectedTest.timeLimit} minutes pour compléter le test</li>
+                  <li>• Vous devez obtenir au moins {selectedTest.passingScore}% pour réussir</li>
+                  <li>• Une fois commencé, le test ne peut pas être interrompu</li>
+                  <li>• Assurez-vous d'avoir une connexion internet stable</li>
+                </ul>
+              </div>
+
+              {/* Bouton de partage */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">Partager ce test</h4>
+                  <p className="text-sm text-gray-600">Invitez d'autres étudiants à participer</p>
+                </div>
+                <SocialShareButton
+                  url={window.location.href}
+                  title={`Test de connaissances: ${selectedTest.title}`}
+                  description={`${selectedTest.description} | ${selectedTest._count.questions} questions | ${selectedTest.timeLimit} min`}
+                  author="Tyala Platform"
+                  size="sm"
+                  variant="outline"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowTestModal(false)}
+              className="flex-1"
+            >
+              Annuler
+            </Button>
+            <Button 
+              onClick={confirmStartTest}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Commencer le test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

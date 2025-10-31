@@ -14,9 +14,26 @@ const ProtectedRoute = ({
 }: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
   
-  // Utiliser uniquement le contexte d'authentification, pas le localStorage
-  const effectiveRole: string | undefined = user?.role;
-  const isAuthenticated = !!user;
+  // Vérifier le rôle depuis le contexte ou localStorage
+  let effectiveRole: string | undefined = user?.role;
+  let isAuthenticated = !!user;
+  
+  // Si pas d'utilisateur dans le contexte, vérifier localStorage
+  if (!user) {
+    const savedUser = localStorage.getItem('user');
+    const savedToken = localStorage.getItem('token');
+    
+    if (savedUser && savedToken) {
+      try {
+        const userData = JSON.parse(savedUser);
+        effectiveRole = userData.role;
+        isAuthenticated = true;
+        console.log('ProtectedRoute - Rôle depuis localStorage:', effectiveRole);
+      } catch (error) {
+        console.error('ProtectedRoute - Erreur parsing user data:', error);
+      }
+    }
+  }
 
   // Attendre que le chargement soit terminé avant de vérifier l'authentification
   if (loading) {
@@ -30,7 +47,7 @@ const ProtectedRoute = ({
     );
   }
 
-  // Vérifier si l'utilisateur est connecté (via contexte ou token)
+  // Vérifier si l'utilisateur est connecté
   if (!isAuthenticated) {
     // Rediriger vers login seulement si on n'y est pas déjà
     const currentPath = window.location.pathname;

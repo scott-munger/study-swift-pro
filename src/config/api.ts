@@ -1,5 +1,8 @@
 // Configuration API centralisée
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5173/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081/api';
+
+// Export de l'URL de base pour un usage simple
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
 
 export const API_CONFIG = {
   BASE_URL: API_BASE_URL,
@@ -14,8 +17,6 @@ export const API_CONFIG = {
     
     // Matières
     SUBJECTS: `${API_BASE_URL}/subjects`,
-    SUBJECTS_FLASHCARDS: `${API_BASE_URL}/subjects-flashcards`,
-    SUBJECT_FLASHCARDS: (id: number) => `${API_BASE_URL}/subject-flashcards/${id}`,
     SUBJECT_CHAPTERS: (id: number) => `${API_BASE_URL}/subject-chapters/${id}`,
     
     // Flashcards

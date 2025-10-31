@@ -5,6 +5,9 @@ import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescri
 import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye, ClipboardCheck, Image } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
+import NotificationBell from "@/components/ui/NotificationBell";
+import { NotificationCenter } from "@/components/ui/NotificationCenter";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -88,9 +91,10 @@ const Navbar = () => {
     } else if (user?.role === 'STUDENT') {
       return [
         { name: "Accueil", href: "/" },
-        { name: "Mon Tableau de Bord", href: "/student/dashboard" },
+        { name: "Dashboard", href: "/student/dashboard" },
         { name: "Flashcards", href: "/flashcards" },
-        { name: "Tests de Connaissances", href: "/knowledge-tests" },
+        { name: "Examens", href: "/knowledge-tests" },
+        { name: "Tuteurs", href: "/tutors" },
         { name: "Forum", href: "/forum" },
       ];
     } else {
@@ -159,21 +163,21 @@ const Navbar = () => {
 
   // Fonction pour obtenir la classe CSS spéciale pour les liens admin
   const getAdminLinkClass = (item: any, isActive: boolean) => {
-    // Si c'est un lien admin, appliquer le style admin simple
+    // Si c'est un lien admin, appliquer le style admin moderne avec border-bottom
     if (item.admin) {
       return isActive 
-        ? "text-white bg-purple-600 shadow-md border border-purple-500" 
-        : "text-purple-200 hover:text-white hover:bg-purple-700 hover:border-purple-400 border border-transparent";
+        ? "text-white border-b-2 border-purple-400 transition-all duration-300" 
+        : "text-purple-200 hover:text-white hover:border-b-2 hover:border-purple-300 border-b-2 border-transparent transition-all duration-300";
     }
     
-    // Style normal pour les autres rôles
+    // Style normal pour les autres rôles - Border-bottom bleu moderne
     return isActive
-      ? "text-white bg-primary shadow-md border border-primary/20"
-      : "text-muted-foreground hover:text-foreground hover:bg-gray-100 border border-transparent";
+      ? "text-primary dark:text-blue-400 border-b-2 border-primary dark:border-blue-400 font-medium transition-all duration-300"
+      : "text-muted-foreground hover:text-primary dark:hover:text-blue-400 hover:border-b-2 hover:border-primary/50 dark:hover:border-blue-400/50 border-b-2 border-transparent transition-all duration-300";
   };
 
   return (
-    <nav className={`${isAdmin ? 'bg-purple-800 border-b border-purple-600' : 'bg-gradient-card border-b border-border'} backdrop-blur-sm sticky top-0 z-50`}>
+    <nav className={`${isAdmin ? 'bg-purple-800 dark:bg-purple-900 border-b border-purple-600 dark:border-purple-700' : 'bg-white dark:bg-card border-b border-border'} backdrop-blur-sm sticky top-0 z-50 shadow-sm`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -186,7 +190,7 @@ const Navbar = () => {
                   className="h-8 w-auto"
                 />
                 {isAdmin && (
-                  <span className="text-xs bg-yellow-400 text-purple-900 px-2 py-1 rounded font-bold">
+                  <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
                     ADMIN
                   </span>
                 )}
@@ -201,7 +205,7 @@ const Navbar = () => {
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`flex items-center px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg ${getAdminLinkClass(item, isActive(item.href))}`}
+                  className={`flex items-center px-3 pb-4 pt-5 text-sm font-medium ${getAdminLinkClass(item, isActive(item.href))}`}
                 >
                   {getNavIcon(item.name, item.icon)}
                   {item.name}
@@ -234,6 +238,12 @@ const Navbar = () => {
                   )}
                 </div>
                 
+                {/* Toggle de thème */}
+                <ThemeToggle />
+                
+                {/* Centre de notifications moderne */}
+                <NotificationCenter />
+                
                 <Link to={isAdmin ? "/admin/dashboard-modern?tab=profile" : "/"}>
                   <Button variant="ghost" size="sm">
                     <User className="w-4 h-4 mr-2" />
@@ -247,6 +257,9 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                {/* Toggle de thème - Visible même non connecté */}
+                <ThemeToggle />
+                
                 <Link to="/login">
                   <Button variant="ghost" size="sm">
                     Connexion
@@ -286,7 +299,7 @@ const Navbar = () => {
                         className="h-6 w-auto"
                       />
                       {isAdmin && (
-                        <span className="text-xs bg-yellow-400 text-purple-900 px-2 py-1 rounded font-bold">
+                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
                           ADMIN
                         </span>
                       )}
@@ -309,6 +322,12 @@ const Navbar = () => {
                   </div>
                   
                   <div className="pt-6 border-t border-border space-y-3">
+                    {/* Toggle de thème - Toujours visible */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-muted rounded-lg">
+                      <span className="text-sm font-medium">Mode d'affichage</span>
+                      <ThemeToggle />
+                    </div>
+                    
                     {isLoggedIn ? (
                       <>
                         <Link to="/profile" onClick={() => setIsOpen(false)}>

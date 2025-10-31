@@ -6,14 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn, UserPlus, Menu, X } from "lucide-react";
+import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn, UserPlus, Menu, X, MoreVertical, Heart, Share2, Bookmark } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import ForumPostDetail from "@/components/ui/forum-post-detail";
 import SimpleForumDialog from "@/components/ui/simple-forum-dialog";
 import ForumImageGallery from "@/components/ui/ForumImageGallery";
 import CreateGroupDialog from "@/components/ui/CreateGroupDialog";
-import GroupDetailDialog from "@/components/ui/GroupDetailDialog";
+import ModernGroupChat from "@/components/ui/ModernGroupChat";
 import UserProfileDialog from "@/components/ui/UserProfileDialog";
 
 interface ForumPost {
@@ -101,12 +101,31 @@ const Forum = () => {
   const [editingPost, setEditingPost] = useState<ForumPost | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [editDialogOpenForId, setEditDialogOpenForId] = useState<number | null>(null);
+  const [activeShareMenu, setActiveShareMenu] = useState<number | null>(null);
   const [studyGroups, setStudyGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(null);
   const [showUserProfile, setShowUserProfile] = useState(false);
+  const [activePostMenu, setActivePostMenu] = useState<number | null>(null);
 
   const [selectedSubject, setSelectedSubject] = useState("All");
+
+  // Fermer les menus quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeShareMenu !== null) {
+        setActiveShareMenu(null);
+      }
+      if (activePostMenu !== null) {
+        setActivePostMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeShareMenu, activePostMenu]);
 
   // États pour les statistiques dynamiques
   const [forumStats, setForumStats] = useState({
@@ -250,51 +269,129 @@ const Forum = () => {
   };
 
   // Charger les groupes d'étude
-  const loadStudyGroups = async () => {
+  const loadStudyGroups = async (forceRefresh = false) => {
     try {
+      console.log('🔄 Chargement des groupes d\'étude...', forceRefresh ? '(rafraîchissement forcé)' : '');
+      const token = localStorage.getItem('token');
+      
+      // Préparer les headers
+      const headers: any = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('🔑 Token trouvé, appel de l\'API avec authentification...');
+      } else {
+        console.log('⚠️ Aucun token, tentative de chargement sans authentification...');
+      }
+
       const response = await fetch('http://localhost:8081/api/study-groups', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+        headers
       });
+      
+      console.log('📡 Réponse API groupes:', response.status, response.statusText);
+      
       if (response.ok) {
         const groups = await response.json();
+        console.log('✅ Groupes reçus:', groups.length, 'groupes');
+        console.log('📋 Détails des groupes:', groups);
         setStudyGroups(groups);
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Erreur API groupes:', errorData);
+        // En cas d'erreur, essayer de charger des groupes de démonstration
+        console.log('🔄 Tentative de chargement de groupes de démonstration...');
+        setStudyGroups([
+          {
+            id: 1,
+            name: 'Groupe de Démonstration',
+            description: 'Groupe d\'exemple pour tester l\'interface',
+            subject: { name: 'Mathématiques' },
+            creator: { firstName: 'Admin', lastName: 'Demo' },
+            _count: { members: 5 },
+            isMember: false,
+            isCreator: false
+          }
+        ]);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des groupes:', error);
+      console.error('❌ Erreur lors du chargement des groupes:', error);
+      // En cas d'erreur réseau, charger des groupes de démonstration
+      console.log('🔄 Chargement de groupes de démonstration en cas d\'erreur...');
+      setStudyGroups([
+        {
+          id: 1,
+          name: 'Groupe de Démonstration',
+          description: 'Groupe d\'exemple pour tester l\'interface',
+          subject: { name: 'Mathématiques' },
+          creator: { firstName: 'Admin', lastName: 'Demo' },
+          _count: { members: 5 },
+          isMember: false,
+          isCreator: false
+        }
+      ]);
     }
   };
 
   // Rejoindre un groupe
   const handleJoinGroup = async (groupId: number) => {
     try {
+      const token = localStorage.getItem('token');
+      console.log('🔑 Token pour rejoindre le groupe:', token ? 'Présent' : 'Absent');
+      
+      if (!token) {
+        toast({
+          title: "Erreur d'authentification",
+          description: "Vous devez être connecté pour rejoindre un groupe",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/join`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
+      
+      console.log('📡 Réponse rejoindre groupe:', response.status, response.statusText);
       
       if (response.ok) {
         toast({
           title: "Succès !",
           description: "Vous avez rejoint le groupe avec succès"
         });
-        loadStudyGroups();
+        loadStudyGroups(true);
       } else {
         const error = await response.json();
-        toast({
-          title: "Erreur",
-          description: error.error || "Impossible de rejoindre le groupe",
-          variant: "destructive"
-        });
+        console.error('❌ Erreur rejoindre groupe:', error);
+        
+        if (response.status === 401 || response.status === 403) {
+          toast({
+            title: "Session expirée",
+            description: "Veuillez vous reconnecter",
+            variant: "destructive"
+          });
+          // Rediriger vers login
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+        } else {
+          toast({
+            title: "Erreur",
+            description: error.error || "Impossible de rejoindre le groupe",
+            variant: "destructive"
+          });
+        }
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('❌ Erreur réseau:', error);
       toast({
-        title: "Erreur",
-        description: "Une erreur est survenue",
+        title: "Erreur de connexion",
+        description: "Vérifiez votre connexion internet",
         variant: "destructive"
       });
     }
@@ -303,29 +400,63 @@ const Forum = () => {
   // Quitter un groupe
   const handleLeaveGroup = async (groupId: number) => {
     try {
+      const token = localStorage.getItem('token');
+      console.log('🔑 Token pour quitter le groupe:', token ? 'Présent' : 'Absent');
+      
+      if (!token) {
+        toast({
+          title: "Erreur d'authentification",
+          description: "Vous devez être connecté pour quitter un groupe",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/leave`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
+      
+      console.log('📡 Réponse quitter groupe:', response.status, response.statusText);
       
       if (response.ok) {
         toast({
           title: "Succès !",
-          description: "Vous avez quitté le groupe"
+          description: "Vous avez quitté le groupe avec succès"
         });
-        loadStudyGroups();
+        loadStudyGroups(true);
       } else {
         const error = await response.json();
-        toast({
-          title: "Erreur",
-          description: error.error || "Impossible de quitter le groupe",
-          variant: "destructive"
-        });
+        console.error('❌ Erreur quitter groupe:', error);
+        
+        if (response.status === 401 || response.status === 403) {
+          toast({
+            title: "Session expirée",
+            description: "Veuillez vous reconnecter",
+            variant: "destructive"
+          });
+          // Rediriger vers login
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+        } else {
+          toast({
+            title: "Erreur",
+            description: error.error || "Impossible de quitter le groupe",
+            variant: "destructive"
+          });
+        }
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('❌ Erreur réseau:', error);
+      toast({
+        title: "Erreur de connexion",
+        description: "Vérifiez votre connexion internet",
+        variant: "destructive"
+      });
     }
   };
 
@@ -345,7 +476,13 @@ const Forum = () => {
       // Charger les statistiques du forum
       await loadForumStats();
       await loadOnlineUsers();
-      await loadStudyGroups();
+      
+      // Charger les groupes d'étude (même si pas connecté)
+      try {
+        await loadStudyGroups();
+      } catch (error) {
+        console.error('Erreur lors du chargement des groupes:', error);
+      }
       
       setLoading(false);
     };
@@ -358,10 +495,40 @@ const Forum = () => {
     const interval = setInterval(() => {
       loadForumStats();
       loadOnlineUsers();
+        loadStudyGroups(true); // Recharger aussi les groupes avec rafraîchissement forcé
     }, 30000); // Rafraîchir toutes les 30 secondes
 
     return () => clearInterval(interval);
   }, []);
+
+  // Recharger les groupes quand l'utilisateur se connecte
+  useEffect(() => {
+    if (user) {
+      console.log('👤 Utilisateur connecté, rechargement des groupes...');
+      loadStudyGroups(true);
+    }
+  }, [user]);
+
+  // Logger quand selectedGroup change
+  useEffect(() => {
+    if (selectedGroup) {
+      console.log('📋 Groupe sélectionné:', selectedGroup.name, selectedGroup.id);
+    } else {
+      console.log('📋 Aucun groupe sélectionné');
+    }
+  }, [selectedGroup]);
+
+  // Fermer le menu d'actions quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activePostMenu && !(event.target as Element).closest('.post-actions-menu')) {
+        setActivePostMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activePostMenu]);
 
   // Fonction pour rafraîchir les données
   const refreshData = async () => {
@@ -396,6 +563,16 @@ const Forum = () => {
 
   const handleCreatePost = async (data: { title: string; content: string; subjectId?: number; images?: File[] }) => {
     if (!user) return;
+    
+    // Validation : Vérifier si la matière est sélectionnée
+    if (!data.subjectId) {
+      toast({
+        title: "Matière requise",
+        description: "Veuillez sélectionner une matière pour créer votre post",
+        variant: "destructive"
+      });
+      return;
+    }
     
     const newPost: ForumPost = {
       id: Date.now(),
@@ -999,7 +1176,10 @@ const Forum = () => {
                       <div 
                         key={group.id} 
                         className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-all cursor-pointer hover:shadow-md"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('🖱️ Clic sur le groupe:', group.name, group.id);
                           setSelectedGroup(group);
                           setShowMobileMenu(false);
                         }}
@@ -1212,29 +1392,186 @@ const Forum = () => {
                               </div>
                         </div>
                       </div>
-                      {canEdit && (
-                        <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                      {/* Menu d'actions professionnel */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Bouton de partage avec menu déroulant */}
+                        <div className="relative">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setEditingPost(post);
-                              setEditDialogOpenForId(post.id);
-                            }}
-                            className="p-1 sm:p-2"
+                            onClick={() => setActiveShareMenu(activeShareMenu === post.id ? null : post.id)}
+                            className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            title="Partager"
                           >
-                            <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <Share2 className="w-4 h-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeletePost(post.id)}
-                            className="text-red-600 hover:text-red-700 p-1 sm:p-2"
-                          >
-                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                          </Button>
+                          
+                          {/* Menu de partage */}
+                          {activeShareMenu === post.id && (
+                            <div className="absolute right-0 top-9 z-50 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 animate-in slide-in-from-top-2 duration-200">
+                              <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                                Partager sur les réseaux sociaux
+                              </div>
+                              
+                              {/* Facebook */}
+                              <button
+                                onClick={() => {
+                                  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`;
+                                  window.open(url, '_blank', 'width=600,height=400');
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">f</span>
+                                </div>
+                                <span>Facebook</span>
+                              </button>
+                              
+                              {/* Twitter */}
+                              <button
+                                onClick={() => {
+                                  const text = `"${post.title}" - ${post.author.firstName} ${post.author.lastName}`;
+                                  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
+                                  window.open(url, '_blank', 'width=600,height=400');
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-sky-500 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">𝕏</span>
+                                </div>
+                                <span>Twitter/X</span>
+                              </button>
+                              
+                              {/* WhatsApp */}
+                              <button
+                                onClick={() => {
+                                  const text = `"${post.title}" - ${post.author.firstName} ${post.author.lastName}\n${window.location.href}`;
+                                  const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+                                  window.open(url, '_blank');
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-green-500 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">W</span>
+                                </div>
+                                <span>WhatsApp</span>
+                              </button>
+                              
+                              {/* LinkedIn */}
+                              <button
+                                onClick={() => {
+                                  const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`;
+                                  window.open(url, '_blank', 'width=600,height=400');
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-blue-700 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">in</span>
+                                </div>
+                                <span>LinkedIn</span>
+                              </button>
+                              
+                              {/* Telegram */}
+                              <button
+                                onClick={() => {
+                                  const text = `"${post.title}" - ${post.author.firstName} ${post.author.lastName}\n${window.location.href}`;
+                                  const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(text)}`;
+                                  window.open(url, '_blank');
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-blue-500 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">T</span>
+                                </div>
+                                <span>Telegram</span>
+                              </button>
+                              
+                              <div className="border-t border-gray-100 my-1"></div>
+                              
+                              {/* Copier le lien */}
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(window.location.href);
+                                  toast({
+                                    title: "Lien copié",
+                                    description: "Le lien du post a été copié dans le presse-papiers",
+                                  });
+                                  setActiveShareMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <div className="w-5 h-5 bg-gray-500 rounded flex items-center justify-center">
+                                  <span className="text-white text-xs">📋</span>
+                                </div>
+                                <span>Copier le lien</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
+
+                        {/* Bouton de sauvegarde */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            toast({
+                              title: "Fonctionnalité à venir",
+                              description: "La sauvegarde de posts sera bientôt disponible",
+                            });
+                          }}
+                          className="h-8 w-8 p-0 hover:bg-yellow-50 hover:text-yellow-600 transition-colors"
+                          title="Sauvegarder"
+                        >
+                          <Bookmark className="w-4 h-4" />
+                        </Button>
+
+                        {/* Menu d'actions pour l'auteur */}
+                        {canEdit && (
+                          <div className="relative post-actions-menu">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setActivePostMenu(activePostMenu === post.id ? null : post.id)}
+                              className="h-8 w-8 p-0 hover:bg-gray-100 transition-colors"
+                              title="Plus d'actions"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                            
+                            {/* Menu déroulant */}
+                            {activePostMenu === post.id && (
+                              <div className="absolute right-0 top-9 z-50 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 animate-in slide-in-from-top-2 duration-200">
+                                <button
+                                  onClick={() => {
+                                    setEditingPost(post);
+                                    setEditDialogOpenForId(post.id);
+                                    setActivePostMenu(null);
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                  Modifier le post
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleDeletePost(post.id);
+                                    setActivePostMenu(null);
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Supprimer le post
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Séparateur */}
@@ -1254,67 +1591,61 @@ const Forum = () => {
                       )}
                     </div>
                     
-                    <div className="pt-4 border-t border-border">
-                      {/* Section mobile - disposition verticale */}
-                      <div className="flex flex-col sm:hidden space-y-2">
-                        <div className="flex items-center gap-2">
+                    {/* Actions du post - Design professionnel */}
+                    <div className="pt-4 border-t border-gray-100">
+                      <div className="flex items-center justify-between">
+                        {/* Actions principales */}
+                        <div className="flex items-center gap-1">
+                          {/* Bouton Like avec animation */}
                           <Button
-                            variant={isLiked ? "default" : "outline"}
+                            variant="ghost"
                             size="sm"
                             onClick={() => handleLikePost(post.id)}
-                            className="flex items-center gap-1 px-2 py-1 h-8"
+                            className={`flex items-center gap-2 px-3 py-2 h-9 rounded-full transition-all duration-200 ${
+                              isLiked 
+                                ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-red-600'
+                            }`}
                           >
-                            <ThumbsUp className="w-3 h-3" />
-                            <span className="text-xs">{post._count.likes}</span>
+                            <Heart className={`w-4 h-4 transition-transform duration-200 ${isLiked ? 'fill-current scale-110' : ''}`} />
+                            <span className="text-sm font-medium">{post._count.likes}</span>
                           </Button>
+
+                          {/* Bouton Commentaire */}
                           <Button 
-                            variant="outline" 
+                            variant="ghost" 
                             size="sm" 
                             onClick={() => handleJoinDiscussion(post)}
-                            className="flex-1 relative h-8 px-2"
+                            className="flex items-center gap-2 px-3 py-2 h-9 rounded-full text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-200"
                           >
-                            <MessageSquare className="w-3 h-3 mr-1" />
-                            <span className="text-xs">Discussion</span>
+                            <MessageSquare className="w-4 h-4" />
+                            <span className="text-sm font-medium">Commenter</span>
                             {post._count.replies > 0 && (
                               <Badge 
-                                variant="destructive" 
-                                className="ml-1 h-4 min-w-[16px] flex items-center justify-center text-xs"
+                                variant="secondary" 
+                                className="ml-1 h-5 min-w-[20px] flex items-center justify-center text-xs bg-blue-100 text-blue-700"
                               >
                                 {post._count.replies}
                               </Badge>
                             )}
                           </Button>
                         </div>
-                      </div>
-                      
-                      {/* Section desktop - disposition horizontale */}
-                      <div className="hidden sm:flex items-center gap-3">
-                        <Button
-                          variant={isLiked ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleLikePost(post.id)}
-                          className="flex items-center gap-2"
-                        >
-                          <ThumbsUp className="w-4 h-4" />
-                          <span>{post._count.likes}</span>
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleJoinDiscussion(post)}
-                          className="flex items-center gap-2"
-                        >
-                          <MessageSquare className="w-4 h-4" />
-                          Rejoindre la Discussion
-                          {post._count.replies > 0 && (
-                            <Badge 
-                              variant="destructive" 
-                              className="ml-2 h-5 min-w-[20px] flex items-center justify-center"
-                            >
-                              {post._count.replies}
-                            </Badge>
+
+                        {/* Indicateur de statut */}
+                        <div className="flex items-center gap-2">
+                          {post.isPinned && (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs">
+                              <Pin className="w-3 h-3" />
+                              <span>Épinglé</span>
+                            </div>
                           )}
-                        </Button>
+                          {post.isLocked && (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded-full text-xs">
+                              <Lock className="w-3 h-3" />
+                              <span>Verrouillé</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </Card>
@@ -1420,14 +1751,49 @@ const Forum = () => {
             <Card className="p-4 bg-gradient-card border-border">
               <h3 className="font-semibold text-foreground mb-4 flex items-center justify-between">
                 <span>Groupes d'Étude</span>
-                <Badge variant="secondary">{studyGroups.length}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{studyGroups.length}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => loadStudyGroups()}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Actualiser
+                  </Button>
+                </div>
               </h3>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {studyGroups.slice(0, 5).map((group) => (
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-600">Chargement des groupes...</span>
+                  </div>
+                ) : studyGroups.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-2">Aucun groupe d'étude disponible</p>
+                    <p className="text-sm text-gray-500">Créez un nouveau groupe pour commencer</p>
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-xs text-yellow-800">
+                        Debug: Token = {localStorage.getItem('token') ? 'Présent' : 'Absent'} | 
+                        User = {user ? 'Connecté' : 'Non connecté'} | 
+                        Loading = {loading ? 'Oui' : 'Non'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  studyGroups.slice(0, 5).map((group) => (
                   <div 
                     key={group.id} 
                     className="p-3 bg-white/50 rounded-lg border border-gray-200 hover:border-blue-300 transition-all cursor-pointer hover:shadow-md"
-                    onClick={() => setSelectedGroup(group)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('🖱️ Clic sur le groupe (desktop):', group.name, group.id);
+                      setSelectedGroup(group);
+                    }}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <h4 className="font-medium text-sm line-clamp-1">{group.name}</h4>
@@ -1473,12 +1839,7 @@ const Forum = () => {
                       )}
                     </div>
                   </div>
-                ))}
-                {studyGroups.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    Aucun groupe pour le moment.<br />
-                    Créez-en un !
-                  </p>
+                  ))
                 )}
               </div>
             </Card>
@@ -1536,7 +1897,7 @@ const Forum = () => {
 
       {/* Dialog détails du groupe */}
       {selectedGroup && (
-        <GroupDetailDialog
+        <ModernGroupChat
           group={selectedGroup}
           open={!!selectedGroup}
           onClose={() => setSelectedGroup(null)}
@@ -1555,7 +1916,7 @@ const Forum = () => {
                   title: "Succès !",
                   description: "Groupe supprimé avec succès"
                 });
-                loadStudyGroups();
+                loadStudyGroups(true);
               } else {
                 const error = await response.json();
                 toast({

@@ -91,8 +91,7 @@ const Login = () => {
           localStorage.setItem('adminUser', JSON.stringify(user));
         }
         console.log('Redirection admin vers /admin/dashboard-modern');
-        // Utiliser window.location pour forcer un vrai rechargement
-        window.location.href = '/admin/dashboard-modern';
+        navigate('/admin/dashboard-modern');
         return; // Arrêter l'exécution ici
       } else if (userRole === 'STUDENT') {
         // Rediriger les étudiants vers leur tableau de bord

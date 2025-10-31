@@ -278,7 +278,7 @@ const SimpleAdminDashboard = () => {
       }
     });
     
-    console.log('📚 Réponse matières:', response.status, response.statusText);
+    console.log('Réponse matières:', response.status, response.statusText);
     
     if (response.ok) {
       const data = await response.json();

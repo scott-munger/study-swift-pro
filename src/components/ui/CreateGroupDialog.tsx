@@ -46,6 +46,7 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   const [description, setDescription] = useState('');
   const [userClass, setUserClass] = useState<string>('');
   const [section, setSection] = useState<string>('');
+  const [subjectId, setSubjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Sections disponibles pour la classe sélectionnée
@@ -79,6 +80,7 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           description: description.trim() || undefined,
           userClass,
           section: section || undefined,
+          subjectId: subjectId || 21, // Utiliser le subjectId sélectionné ou 21 par défaut
           isPrivate: false
         })
       });
@@ -89,7 +91,11 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
         setDescription('');
         setUserClass('');
         setSection('');
-        onGroupCreated();
+        setSubjectId(null);
+        // Forcer le rafraîchissement des groupes
+        setTimeout(() => {
+          onGroupCreated();
+        }, 500);
       } else {
         const error = await response.json();
         alert(error.error || 'Erreur lors de la création du groupe');
@@ -198,6 +204,31 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               </p>
             </div>
           )}
+
+          <div>
+            <Label htmlFor="group-subject" className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              Matière
+            </Label>
+            <Select 
+              value={subjectId?.toString() || ''} 
+              onValueChange={(v) => setSubjectId(parseInt(v))}
+            >
+              <SelectTrigger id="group-subject" className="mt-2">
+                <SelectValue placeholder="Sélectionnez une matière" />
+              </SelectTrigger>
+              <SelectContent>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id.toString()}>
+                    {subject.name} {subject.level && `(${subject.level})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Matière associée au groupe (optionnel)
+            </p>
+          </div>
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>

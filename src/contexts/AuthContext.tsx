@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { clearAllStorage } from '@/utils/clearStorage';
+import { clearUserStorage } from '@/utils/clearStorage';
 
 export interface User {
   id: number;
@@ -55,19 +55,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Nettoyer complètement le localStorage et sessionStorage au démarrage
-    // pour éviter qu'un utilisateur soit connecté par défaut
-    clearAllStorage();
+    console.log('🔐 AuthContext - Chargement initial...');
     
-    // S'assurer qu'aucun utilisateur n'est connecté par défaut
-    setUser(null);
+    // Charger l'utilisateur depuis localStorage de manière simple
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
     
-    // Délai minimal pour éviter les redirections flash
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 50);
+    if (token && savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        console.log('🔐 AuthContext - Utilisateur chargé:', userData.email);
+        setUser(userData);
+      } catch (error) {
+        console.error('Erreur parsing utilisateur:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+      }
+    } else {
+      setUser(null);
+    }
     
-    return () => clearTimeout(timer);
+    // Terminer le chargement immédiatement
+    setLoading(false);
   }, []);
 
   const login = async (email: string, password: string, rememberMe: boolean = false): Promise<boolean> => {
@@ -189,8 +199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     console.log('Déconnexion complète en cours...');
     setUser(null);
-    clearAllStorage();
-    console.log('Déconnexion complète effectuée - toutes les données nettoyées');
+    clearUserStorage();
+    console.log('Déconnexion complète effectuée - données utilisateur nettoyées');
   };
 
 
@@ -274,19 +284,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshUser = async (): Promise<void> => {
-    try {
-      const response = await fetch('http://localhost:8081/api/profile', {
-        headers: getAuthHeaders()
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-      }
-    } catch (error) {
-      console.error('Erreur lors du rafraîchissement du profil:', error);
-    }
+    // Fonction simplifiée - ne fait rien pour éviter les déconnexions
+    console.log('🔐 refreshUser - Fonction désactivée pour éviter les déconnexions');
   };
 
   const uploadProfilePhoto = async (photo: File): Promise<boolean> => {
@@ -340,24 +339,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Charger l'utilisateur au démarrage si un token existe
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    
-    if (token && savedUser) {
-      try {
-        const userData = JSON.parse(savedUser);
-        setUser(userData);
-        // Vérifier que le token est toujours valide
-        refreshUser();
-      } catch (error) {
-        console.error('Erreur lors du chargement de l\'utilisateur:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-    }
-  }, []);
 
   const value = {
     user,

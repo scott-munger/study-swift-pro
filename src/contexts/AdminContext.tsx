@@ -194,9 +194,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Charger les statistiques
   const refreshStats = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       if (!token) {
-        console.error('Aucun token d\'authentification trouvé');
+        console.log('Aucun token admin trouvé - opération non effectuée');
         return;
       }
 
@@ -230,9 +230,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Charger les activités
   const refreshActivities = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       if (!token) {
-        console.error('Aucun token d\'authentification trouvé');
+        console.log('Aucun token admin trouvé - opération non effectuée');
         return;
       }
 
@@ -304,7 +304,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD Users
   const getUsers = async () => {
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'GET',
         headers: {
@@ -327,7 +327,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const createUser = async (userData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'POST',
         headers: {
@@ -352,7 +352,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateUser = async (userId: number, userData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
         method: 'PUT',
         headers: {
@@ -377,7 +377,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteUser = async (userId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
@@ -400,7 +400,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const changeUserPassword = async (userId: number, newPassword: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/users/${userId}/password`, {
         method: 'PUT',
         headers: {
@@ -420,7 +420,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD Tutors
   const createTutor = async (tutorData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/tutors', {
         method: 'POST',
         headers: {
@@ -445,7 +445,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateTutor = async (tutorId: number, tutorData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/tutors/${tutorId}`, {
         method: 'PUT',
         headers: {
@@ -470,7 +470,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteTutor = async (tutorId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/tutors/${tutorId}`, {
         method: 'DELETE',
         headers: {
@@ -494,7 +494,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD Forum
   const moderatePost = async (postId: number, action: string, data?: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
         method: 'PUT',
         headers: {
@@ -519,7 +519,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD Subjects
   const getSubjects = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/subjects', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -539,7 +539,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const createSubject = async (subjectData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:8081/api/admin/subjects', {
         method: 'POST',
         headers: {
@@ -564,7 +564,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateSubject = async (subjectId: number, subjectData: any) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
         method: 'PUT',
         headers: {
@@ -589,7 +589,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteSubject = async (subjectId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
@@ -613,7 +613,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD Flashcards
   const getFlashcards = async (subjectId?: number, page: number = 1) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const url = new URL('http://localhost:8081/api/admin/flashcards');
       if (subjectId) url.searchParams.append('subjectId', subjectId.toString());
       url.searchParams.append('page', page.toString());
@@ -637,7 +637,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteFlashcard = async (flashcardId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {

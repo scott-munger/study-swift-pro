@@ -10,12 +10,13 @@ import {
   BookOpen, Clock, Trophy, RotateCcw, ChevronRight, Play, Eye, EyeOff, 
   CheckCircle, XCircle, User, Brain, Target, Zap, Star, TrendingUp,
   BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn,
-  ClipboardCheck
+  ClipboardCheck, Share2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFlashcards } from "@/contexts/FlashcardContext";
 import Timer from "@/components/ui/timer";
+import SocialShareButton from "@/components/ui/SocialShareButton";
 import { API_CONFIG } from "@/config/api";
 
 const Flashcards = () => {
@@ -1663,17 +1664,30 @@ const Flashcards = () => {
                     </div>
                       </div>
                     
-                    {/* Timer */}
-                    {!showAnswer && !timeUp && (
+                    {/* Timer et bouton de partage */}
+                    <div className="flex items-center gap-2">
+                      {!showAnswer && !timeUp && (
                         <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
                           <TimerIcon className="w-4 h-4 text-blue-600" />
-                        <Timer 
-                          duration={30} 
-                          onTimeUp={handleTimeUp}
+                          <Timer 
+                            duration={30} 
+                            onTimeUp={handleTimeUp}
                             className="text-blue-600 font-bold text-sm"
-                        />
-                      </div>
-                    )}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Bouton de partage */}
+                      <SocialShareButton
+                        url={window.location.href}
+                        title={`Flashcard: ${currentCardData.question}`}
+                        description={`Difficulté: ${currentCardData.difficulty || 'Moyen'} | Matière: ${selectedSubject}`}
+                        author="Tyala Platform"
+                        size="sm"
+                        variant="ghost"
+                        className="hover:bg-blue-50 hover:text-blue-600"
+                      />
+                    </div>
                     </div>
                     
                     <div className="bg-white/80 backdrop-blur-sm rounded-lg md:rounded-xl p-4 md:p-6 shadow-lg">

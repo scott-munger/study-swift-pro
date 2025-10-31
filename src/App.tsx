@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AdminProvider } from "@/contexts/AdminContext";
 import { FlashcardProvider } from "@/contexts/FlashcardContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { PWAInstallBanner } from "@/components/ui/PWAInstallBanner";
 import Navbar from "./components/layout/Navbar";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -23,32 +25,41 @@ import AdminTests from "./pages/AdminTests";
 import AdminFlashcardsCRUD from "./pages/AdminFlashcardsCRUD";
 import ModernAdminDashboard from "./pages/ModernAdminDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
+import ModernStudentDashboard from "./pages/ModernStudentDashboard";
 import KnowledgeTests from "./pages/KnowledgeTests";
 import KnowledgeTest from "./pages/KnowledgeTest";
 import RoleBasedRedirect from "./components/RoleBasedRedirect";
 import ProtectedRoute from "./components/ProtectedRoute";
-import Profile from "./pages/Profile";
+import ModernProfile from "./pages/ModernProfile";
+import TestLogin from "./pages/TestLogin";
+import FindTutors from "./pages/FindTutors";
+import AdminTutors from "./pages/AdminTutors";
+import BecomeTutor from "./pages/BecomeTutor";
+import Messages from "./pages/Messages";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <AdminProvider>
-        <FlashcardProvider>
-          <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter future={{ v7_relativeSplatPath: true }}>
-            <Navbar />
-            <Routes>
+    <TooltipProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AdminProvider>
+            <FlashcardProvider>
+              <Toaster />
+              <Sonner />
+              <PWAInstallBanner />
+              <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+                <Navbar />
+              <Routes>
               <Route path="/" element={
                 <ProtectedRoute allowedRoles={['STUDENT','TUTOR','ADMIN']} redirectTo="/login">
                   <Index />
                 </ProtectedRoute>
               } />
               <Route path="/login" element={<Login />} />
+              <Route path="/test-login" element={<TestLogin />} />
               <Route path="/register" element={<Register />} />
               
               <Route path="/flashcards" element={
@@ -68,85 +79,110 @@ const App = () => (
               } />
               <Route path="/forum" element={<Forum />} />
               
+              {/* Route Tuteurs */}
+              <Route path="/tutors" element={
+                <ProtectedRoute allowedRoles={['STUDENT', 'TUTOR', 'ADMIN']} redirectTo="/login">
+                  <FindTutors />
+                </ProtectedRoute>
+              } />
+              
+              {/* Route Messages */}
+              <Route path="/messages" element={
+                <ProtectedRoute allowedRoles={['STUDENT', 'TUTOR', 'ADMIN']} redirectTo="/login">
+                  <Messages />
+                </ProtectedRoute>
+              } />
+              
+              {/* Route Devenir Tuteur */}
+              <Route path="/become-tutor" element={
+                <ProtectedRoute allowedRoles={['STUDENT', 'TUTOR', 'ADMIN']} redirectTo="/login">
+                  <BecomeTutor />
+                </ProtectedRoute>
+              } />
+              
               {/* Routes basées sur les rôles */}
               <Route path="/dashboard" element={<RoleBasedRedirect />} />
               <Route path="/profile" element={
                 <ProtectedRoute redirectTo="/login">
-                  <Profile />
+                  <ModernProfile />
                 </ProtectedRoute>
               } />
               <Route path="/student/dashboard" element={
                 <ProtectedRoute allowedRoles={['STUDENT']} redirectTo="/">
-                  <StudentDashboard />
+                  <ModernStudentDashboard />
                 </ProtectedRoute>
               } />
               
               {/* Routes admin */}
               <Route path="/admin" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <Admin />
                 </ProtectedRoute>
               } />
               <Route path="/admin/dashboard" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <ModernAdminDashboard />
                 </ProtectedRoute>
               } />
               <Route path="/admin/dashboard-modern" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <ModernAdminDashboard />
                 </ProtectedRoute>
               } />
               <Route path="/admin/moderation" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminModeration />
                 </ProtectedRoute>
               } />
               <Route path="/admin/users" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminUsersFixed />
                 </ProtectedRoute>
               } />
               <Route path="/admin/users-unified" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminUsersUnified />
                 </ProtectedRoute>
               } />
               <Route path="/admin/subjects" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminSubjects />
                 </ProtectedRoute>
               } />
               <Route path="/admin/flashcards" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminFlashcards />
                 </ProtectedRoute>
               } />
               <Route path="/admin/forum-images" element={
-                <ProtectedRoute redirectTo="/login">
+                <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
                   <AdminForumImages />
                 </ProtectedRoute>
               } />
         <Route path="/admin/tests" element={
-          <ProtectedRoute redirectTo="/login">
+          <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
             <AdminTests />
           </ProtectedRoute>
         } />
         <Route path="/admin/flashcards-crud" element={
-          <ProtectedRoute redirectTo="/login">
+          <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
             <AdminFlashcardsCRUD />
           </ProtectedRoute>
         } />
-              
-              
+        <Route path="/admin/tutors" element={
+          <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
+            <AdminTutors />
+          </ProtectedRoute>
+        } />
               
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-          </TooltipProvider>
-        </FlashcardProvider>
-      </AdminProvider>
-    </AuthProvider>
+              </Routes>
+            </BrowserRouter>
+          </FlashcardProvider>
+        </AdminProvider>
+      </AuthProvider>
+    </ThemeProvider>
+    </TooltipProvider>
   </QueryClientProvider>
 );
 

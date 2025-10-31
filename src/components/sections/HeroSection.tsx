@@ -93,10 +93,10 @@ const HeroSection = () => {
   };
 
   const handleFindTutor = () => {
+    navigate('/tutors');
     toast({
-      title: "Fonctionnalité en développement",
-      description: "La recherche de tuteurs sera bientôt disponible",
-      variant: "destructive"
+      title: "Recherche de tuteurs",
+      description: "Découvrez nos tuteurs experts",
     });
   };
 

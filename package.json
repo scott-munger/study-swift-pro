@@ -68,6 +68,7 @@
     "multer": "^2.0.2",
     "mysql2": "^3.14.5",
     "next-themes": "^0.3.0",
+    "node-fetch": "^3.3.2",
     "prisma": "^6.16.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",

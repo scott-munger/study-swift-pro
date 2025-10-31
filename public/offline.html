@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hors ligne - Tyala</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 500px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    
+    .icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    
+    p {
+      color: #666;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+    
+    .features {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 30px;
+      text-align: left;
+    }
+    
+    .feature {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    .feature:last-child {
+      margin-bottom: 0;
+    }
+    
+    .feature-icon {
+      background: #667eea;
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-center;
+      margin-right: 15px;
+      font-size: 20px;
+    }
+    
+    .feature-text {
+      flex: 1;
+    }
+    
+    .feature-title {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    
+    .feature-desc {
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    .status {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 20px;
+    }
+    
+    .status.offline {
+      background: #fee;
+      color: #c33;
+    }
+    
+    .status.online {
+      background: #efe;
+      color: #3c3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>Vous êtes hors ligne</h1>
+    <p>Pas de connexion Internet détectée. Mais ne vous inquiétez pas, certaines fonctionnalités restent disponibles !</p>
+    
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🎴</div>
+        <div class="feature-text">
+          <div class="feature-title">Flashcards</div>
+          <div class="feature-desc">Accédez à vos flashcards sauvegardées</div>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">📝</div>
+        <div class="feature-text">
+          <div class="feature-title">Examens</div>
+          <div class="feature-desc">Passez vos tests hors ligne</div>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <div class="feature-text">
+          <div class="feature-title">Dashboard</div>
+          <div class="feature-desc">Consultez vos statistiques</div>
+        </div>
+      </div>
+    </div>
+    
+    <button class="btn" onclick="location.reload()">Réessayer</button>
+    
+    <div class="status offline" id="status">
+      ⚠️ Hors ligne
+    </div>
+  </div>
+  
+  <script>
+    // Vérifier le statut de connexion
+    function updateOnlineStatus() {
+      const status = document.getElementById('status');
+      if (navigator.onLine) {
+        status.className = 'status online';
+        status.textContent = '✓ En ligne - Cliquez sur Réessayer';
+      } else {
+        status.className = 'status offline';
+        status.textContent = '⚠️ Hors ligne';
+      }
+    }
+    
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+    
+    // Auto-reload quand la connexion revient
+    window.addEventListener('online', () => {
+      setTimeout(() => {
+        location.reload();
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
+
+
+

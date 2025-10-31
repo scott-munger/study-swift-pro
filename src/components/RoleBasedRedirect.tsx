@@ -20,28 +20,68 @@ const RoleBasedRedirect: React.FC = () => {
     return null;
   }
 
+  // Vérifier si on a un utilisateur admin connecté
+  const token = localStorage.getItem('token');
+  const savedUser = localStorage.getItem('user');
+  
+  if (token && savedUser) {
+    try {
+      const userData = JSON.parse(savedUser);
+      if (userData.role === 'ADMIN') {
+        console.log('RoleBasedRedirect - Admin détecté, redirection vers dashboard admin');
+        navigate('/admin/dashboard-modern', { replace: true });
+        return null;
+      }
+    } catch (error) {
+      console.error('RoleBasedRedirect - Erreur parsing user data:', error);
+    }
+  }
+
   useEffect(() => {
-    console.log('RoleBasedRedirect - useEffect déclenché');
+    console.log('RoleBasedRedirect - useEffect déclenché', {
+      user: user ? { email: user.email, role: user.role } : null,
+      authLoading,
+      adminLoading
+    });
+    
+    // Attendre que le chargement soit terminé
     if (!authLoading && !adminLoading) {
-      if (!user) {
-        console.log('RoleBasedRedirect - Pas d\'utilisateur, redirection vers login');
+      // Vérifier localStorage en priorité
+      const savedUser = localStorage.getItem('user');
+      const savedToken = localStorage.getItem('token');
+      
+      let currentUser = user;
+      if (!currentUser && savedUser && savedToken) {
+        try {
+          currentUser = JSON.parse(savedUser);
+          console.log('RoleBasedRedirect - Utilisateur depuis localStorage:', currentUser.email);
+        } catch (error) {
+          console.error('RoleBasedRedirect - Erreur parsing:', error);
+        }
+      }
+      
+      // Seulement rediriger vers login si vraiment aucun utilisateur
+      if (!currentUser && !savedUser) {
+        console.log('RoleBasedRedirect - Aucun utilisateur trouvé, redirection vers login');
         navigate('/login');
         return;
       }
 
-      console.log('RoleBasedRedirect - Redirection depuis /dashboard pour:', user.role);
-      // Déterminer le rôle et rediriger
-      if (user.role === 'ADMIN' || isAdmin) {
-        navigate('/admin/dashboard-modern', { replace: true });
-      } else if (user.role === 'STUDENT') {
-        navigate('/student/dashboard');
-      } else if (user.role === 'TUTOR') {
-        navigate('/profile');
-      } else {
-        navigate('/');
+      // Rediriger selon le rôle
+      if (currentUser) {
+        console.log('RoleBasedRedirect - Redirection pour:', currentUser.role);
+        if (currentUser.role === 'ADMIN') {
+          navigate('/admin/dashboard-modern', { replace: true });
+        } else if (currentUser.role === 'STUDENT') {
+          navigate('/student/dashboard');
+        } else if (currentUser.role === 'TUTOR') {
+          navigate('/profile');
+        } else {
+          navigate('/');
+        }
       }
     }
-  }, [user, isAdmin, authLoading, adminLoading, navigate]);
+  }, [user, authLoading, adminLoading, navigate]);
 
   if (authLoading || adminLoading) {
     return (

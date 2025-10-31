@@ -55,22 +55,22 @@ const BenefitsSection = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
           {benefits.map((benefit, index) => {
             const Icon = benefit.icon;
-            const iconBgColor = benefit.color === 'primary' ? 'bg-[#00aaff]' : 'bg-[#80ff00]';
-            const iconTextColor = benefit.color === 'primary' ? 'text-white' : 'text-black';
+            const iconBgColor = benefit.color === 'primary' ? 'bg-[#00aaff]/10' : 'bg-[#80ff00]/10';
+            const iconColor = benefit.color === 'primary' ? 'text-[#00aaff]' : 'text-[#80ff00]';
             return (
               <div
                 key={index}
-                className="group p-6 sm:p-8 bg-gradient-card shadow-soft rounded-xl border border-border hover:shadow-primary transition-all duration-300 hover:-translate-y-1 sm:hover:-translate-y-2"
+                className="group relative p-6 sm:p-8 bg-card border border-border/50 rounded-2xl hover:border-border transition-all duration-300"
               >
                 <div className="mb-4 sm:mb-6">
-                  <div className={`inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 ${iconBgColor} rounded-lg group-hover:shadow-glow transition-all duration-300`}>
-                    <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${iconTextColor}`} />
+                  <div className={`inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 ${iconBgColor} rounded-xl transition-all duration-300`}>
+                    <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${iconColor}`} />
                   </div>
                 </div>
                 <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-3 sm:mb-4">
                   {benefit.title}
                 </h3>
-                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                <p className="text-sm sm:text-base text-muted-foreground/80 leading-relaxed">
                   {benefit.description}
                 </p>
               </div>
