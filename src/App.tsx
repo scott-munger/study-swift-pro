@@ -24,6 +24,7 @@ import AdminForumImages from "./pages/AdminForumImages";
 import AdminTests from "./pages/AdminTests";
 import AdminFlashcardsCRUD from "./pages/AdminFlashcardsCRUD";
 import ModernAdminDashboard from "./pages/ModernAdminDashboard";
+import AdminDashboardSidebar from "./pages/AdminDashboardSidebar";
 import StudentDashboard from "./pages/StudentDashboard";
 import ModernStudentDashboard from "./pages/ModernStudentDashboard";
 import KnowledgeTests from "./pages/KnowledgeTests";
@@ -117,7 +118,7 @@ const App = () => (
               } />
               <Route path="/admin/dashboard" element={
                 <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
-                  <ModernAdminDashboard />
+                  <AdminDashboardSidebar />
                 </ProtectedRoute>
               } />
               <Route path="/admin/dashboard-modern" element={
