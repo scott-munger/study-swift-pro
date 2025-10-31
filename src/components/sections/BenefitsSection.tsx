@@ -3,37 +3,43 @@ const benefits = [
     emoji: "⚡",
     title: "Apprentissage Ultra-Rapide",
     description: "Accélérez votre processus d'étude avec notre système de flashcards optimisé et nos algorithmes d'apprentissage adaptatifs.",
-    gradient: "from-yellow-400 via-orange-500 to-red-500"
+    gradient: "from-[#FFD700] via-[#FFA500] to-[#FF6B35]",
+    glowColor: "rgba(255, 165, 0, 0.4)"
   },
   {
     emoji: "🎯",
     title: "Préparation Ciblée aux Examens",
     description: "Concentrez-vous exactement sur ce que vous devez savoir pour votre classe d'examen et vos matières spécifiques.",
-    gradient: "from-blue-400 via-cyan-500 to-teal-500"
+    gradient: "from-[#00AAFF] via-[#0099FF] to-[#0066FF]",
+    glowColor: "rgba(0, 170, 255, 0.4)"
   },
   {
     emoji: "🧠",
     title: "Suivi Intelligent des Progrès",
     description: "Surveillez vos progrès d'apprentissage avec des analyses détaillées et des recommandations personnalisées.",
-    gradient: "from-purple-400 via-pink-500 to-red-500"
+    gradient: "from-[#B24BF3] via-[#E056FD] to-[#FF6EC7]",
+    glowColor: "rgba(224, 86, 253, 0.4)"
   },
   {
     emoji: "👥",
     title: "Réseau de Tuteurs Experts",
     description: "Connectez-vous avec des tuteurs vérifiés qui se spécialisent dans vos matières d'examen et vos besoins d'apprentissage.",
-    gradient: "from-green-400 via-emerald-500 to-teal-500"
+    gradient: "from-[#10B981] via-[#34D399] to-[#6EE7B7]",
+    glowColor: "rgba(52, 211, 153, 0.4)"
   },
   {
     emoji: "🕐",
     title: "Accessibilité 24h/24",
     description: "Étudiez n'importe quand, n'importe où avec notre plateforme optimisée mobile et nos capacités hors ligne.",
-    gradient: "from-indigo-400 via-blue-500 to-cyan-500"
+    gradient: "from-[#6366F1] via-[#8B5CF6] to-[#A78BFA]",
+    glowColor: "rgba(139, 92, 246, 0.4)"
   },
   {
     emoji: "🏆",
     title: "Taux de Réussite Prouvé",
     description: "Rejoignez des milliers d'étudiants qui ont atteint leurs objectifs d'examen avec notre plateforme.",
-    gradient: "from-amber-400 via-yellow-500 to-orange-500"
+    gradient: "from-[#F59E0B] via-[#FBBF24] to-[#FCD34D]",
+    glowColor: "rgba(251, 191, 36, 0.4)"
   }
 ];
 
@@ -68,10 +74,21 @@ const BenefitsSection = () => {
               
               {/* Contenu */}
               <div className="relative z-10">
-                {/* Icône 3D avec gradient background */}
+                {/* Icône 3D avec gradient background et effet glow */}
                 <div className="mb-6 sm:mb-8">
-                  <div className={`inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-br ${benefit.gradient} shadow-lg transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 group-hover:shadow-xl`}>
-                    <span className="text-4xl sm:text-5xl filter drop-shadow-lg" style={{ textShadow: '0 4px 8px rgba(0,0,0,0.2)' }}>
+                  <div 
+                    className={`inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-br ${benefit.gradient} shadow-lg transition-all duration-500 group-hover:scale-110 group-hover:rotate-3`}
+                    style={{
+                      boxShadow: `0 10px 40px ${benefit.glowColor}, 0 0 0 1px rgba(255,255,255,0.1) inset`
+                    }}
+                  >
+                    <span 
+                      className="text-4xl sm:text-5xl filter drop-shadow-lg transform transition-transform duration-500 group-hover:scale-110" 
+                      style={{ 
+                        textShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.5))'
+                      }}
+                    >
                       {benefit.emoji}
                     </span>
                   </div>

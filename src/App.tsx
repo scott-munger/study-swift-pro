@@ -53,11 +53,7 @@ const App = () => (
               <BrowserRouter future={{ v7_relativeSplatPath: true }}>
                 <Navbar />
               <Routes>
-              <Route path="/" element={
-                <ProtectedRoute allowedRoles={['STUDENT','TUTOR','ADMIN']} redirectTo="/login">
-                  <Index />
-                </ProtectedRoute>
-              } />
+              <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
               <Route path="/test-login" element={<TestLogin />} />
               <Route path="/register" element={<Register />} />
