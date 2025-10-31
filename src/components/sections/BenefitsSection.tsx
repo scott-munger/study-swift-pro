@@ -62,28 +62,28 @@ const BenefitsSection = () => {
           </p>
         </div>
 
-        {/* Grille moderne 2 colonnes avec cartes 3D */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 lg:gap-10">
+        {/* Grille moderne 3 colonnes compactes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6 max-w-6xl mx-auto">
           {benefits.map((benefit, index) => (
             <div
               key={index}
-              className="group relative bg-gradient-to-br from-card/80 to-card backdrop-blur-sm border border-border/50 rounded-3xl p-8 sm:p-10 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:shadow-primary/5 hover:border-border"
+              className="group relative bg-gradient-to-br from-card/80 to-card backdrop-blur-sm border border-border/50 rounded-2xl p-6 sm:p-7 lg:p-6 transition-all duration-500 hover:scale-[1.03] hover:shadow-xl hover:shadow-primary/5 hover:border-border"
             >
               {/* Effet de brillance au hover */}
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               
               {/* Contenu */}
               <div className="relative z-10">
                 {/* Icône 3D avec gradient background et effet glow */}
-                <div className="mb-6 sm:mb-8">
+                <div className="mb-4 sm:mb-5">
                   <div 
-                    className={`inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-br ${benefit.gradient} shadow-lg transition-all duration-500 group-hover:scale-110 group-hover:rotate-3`}
+                    className={`inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br ${benefit.gradient} shadow-md transition-all duration-500 group-hover:scale-110 group-hover:rotate-3`}
                     style={{
-                      boxShadow: `0 10px 40px ${benefit.glowColor}, 0 0 0 1px rgba(255,255,255,0.1) inset`
+                      boxShadow: `0 8px 30px ${benefit.glowColor}, 0 0 0 1px rgba(255,255,255,0.1) inset`
                     }}
                   >
                     <span 
-                      className="text-4xl sm:text-5xl filter drop-shadow-lg transform transition-transform duration-500 group-hover:scale-110" 
+                      className="text-2xl sm:text-3xl filter drop-shadow-lg transform transition-transform duration-500 group-hover:scale-110" 
                       style={{ 
                         textShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.5))'
@@ -95,18 +95,18 @@ const BenefitsSection = () => {
                 </div>
 
                 {/* Titre */}
-                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground mb-3 sm:mb-4 transition-colors duration-300">
+                <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2 sm:mb-3 transition-colors duration-300">
                   {benefit.title}
                 </h3>
 
                 {/* Description */}
-                <p className="text-sm sm:text-base lg:text-lg text-muted-foreground/80 leading-relaxed">
+                <p className="text-sm text-muted-foreground/80 leading-relaxed">
                   {benefit.description}
                 </p>
               </div>
 
               {/* Petit gradient accent en bas */}
-              <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${benefit.gradient} rounded-b-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
+              <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${benefit.gradient} rounded-b-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
             </div>
           ))}
         </div>
