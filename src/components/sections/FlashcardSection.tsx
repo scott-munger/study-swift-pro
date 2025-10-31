@@ -9,12 +9,12 @@ const FlashcardSection = () => {
           {/* Content */}
           <div className="space-y-6 sm:space-y-8 order-2 lg:order-1">
             <div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-4 sm:mb-6">
+              <h2 className="text-2xl sm:text-3xl md:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
                 Flashcards Intelligentes pour
                 <br />
                 un Apprentissage Plus Rapide
               </h2>
-              <p className="text-base sm:text-lg lg:text-xl text-muted-foreground">
+              <p className="text-sm sm:text-base lg:text-lg text-muted-foreground/80">
                 Maîtrisez le contenu de vos examens avec notre système de flashcards intelligent. 
                 Les algorithmes d'apprentissage adaptatif s'ajustent à votre rythme et se concentrent sur les domaines à améliorer.
               </p>
