@@ -43,7 +43,7 @@ const BenefitsSection = () => {
   return (
     <section className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-12 sm:mb-16">
+        <div className="text-center mb-16 sm:mb-20 lg:mb-24">
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-4 sm:mb-6">
             Pourquoi Choisir Notre Plateforme ?
           </h2>
@@ -52,27 +52,46 @@ const BenefitsSection = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+        {/* Design professionnel en liste avec séparateurs */}
+        <div className="max-w-5xl mx-auto space-y-0">
           {benefits.map((benefit, index) => {
             const Icon = benefit.icon;
-            const iconBgColor = benefit.color === 'primary' ? 'bg-[#00aaff]/10' : 'bg-[#80ff00]/10';
             const iconColor = benefit.color === 'primary' ? 'text-[#00aaff]' : 'text-[#80ff00]';
+            const isLast = index === benefits.length - 1;
+            
             return (
               <div
                 key={index}
-                className="group relative p-6 sm:p-8 bg-card border border-border/50 rounded-2xl hover:border-border transition-all duration-300"
+                className={`group relative py-8 sm:py-10 lg:py-12 ${!isLast ? 'border-b border-border/30' : ''}`}
               >
-                <div className="mb-4 sm:mb-6">
-                  <div className={`inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 ${iconBgColor} rounded-xl transition-all duration-300`}>
-                    <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${iconColor}`} />
+                <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 lg:gap-12">
+                  {/* Numéro + Icône */}
+                  <div className="flex items-start gap-4 sm:gap-6">
+                    {/* Numéro */}
+                    <div className="flex-shrink-0">
+                      <span className="inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 text-lg sm:text-xl font-bold text-muted-foreground/30 transition-colors duration-300 group-hover:text-muted-foreground/50">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                    </div>
+                    
+                    {/* Icône */}
+                    <div className="flex-shrink-0">
+                      <div className="relative">
+                        <Icon className={`h-8 w-8 sm:h-10 sm:w-10 lg:h-12 lg:w-12 ${iconColor} transition-all duration-300 group-hover:scale-110`} strokeWidth={1.5} />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Contenu */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl sm:text-2xl lg:text-3xl font-semibold text-foreground mb-3 sm:mb-4 transition-colors duration-300 group-hover:text-foreground/90">
+                      {benefit.title}
+                    </h3>
+                    <p className="text-base sm:text-lg text-muted-foreground/70 leading-relaxed max-w-3xl">
+                      {benefit.description}
+                    </p>
                   </div>
                 </div>
-                <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-3 sm:mb-4">
-                  {benefit.title}
-                </h3>
-                <p className="text-sm sm:text-base text-muted-foreground/80 leading-relaxed">
-                  {benefit.description}
-                </p>
               </div>
             );
           })}
