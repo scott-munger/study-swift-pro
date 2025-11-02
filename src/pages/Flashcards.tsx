@@ -359,26 +359,21 @@ const Flashcards = () => {
       const allFlashcards = getFlashcardsBySubject(subjectId);
       console.log('🔍 Flashcards trouvées dans le contexte:', allFlashcards.length);
       
-      // Filtrer par chapitre selon l'option sélectionnée
-      let filteredFlashcards = allFlashcards;
+      // Filtrer par chapitre - uniquement si un chapitre est sélectionné
+      let filteredFlashcards: any[] = [];
       
-      if (chapterId === null || chapterId === 'all') {
-        // Option "Tous les chapitres" : afficher toutes les flashcards
-        filteredFlashcards = allFlashcards;
-        console.log('🔍 Mode "Tous les chapitres":', filteredFlashcards.length);
-      } else if (chapterId === 'none') {
-        // Option "Sans chapitre" : afficher uniquement les flashcards sans chapitre
-        filteredFlashcards = allFlashcards.filter((card: any) => card.chapterId === null);
-        console.log('🔍 Mode "Sans chapitre":', filteredFlashcards.length);
-      } else if (chapterId) {
+      if (chapterId && chapterId !== 'none' && chapterId !== 'all' && chapterId !== null) {
         // Chapitre spécifique : afficher UNIQUEMENT les flashcards de ce chapitre
         const targetChapterId = typeof chapterId === 'string' ? parseInt(chapterId) : chapterId;
         filteredFlashcards = allFlashcards.filter((card: any) => {
           const cardChapterId = card.chapterId;
-          console.log('🔍 Comparaison chapitre:', { cardChapterId, targetChapterId, match: cardChapterId === targetChapterId });
           return cardChapterId === targetChapterId;
         });
-        console.log('🔍 Flashcards filtrées par chapitre:', filteredFlashcards.length);
+        console.log('🔍 Flashcards filtrées par chapitre:', filteredFlashcards.length, 'pour chapitre ID:', targetChapterId);
+      } else {
+        // Si aucun chapitre n'est sélectionné, ne pas afficher de flashcards
+        console.log('⚠️ Aucun chapitre sélectionné, aucune flashcard affichée');
+        filteredFlashcards = [];
       }
       
       setSubjectFlashcards(filteredFlashcards);
@@ -509,37 +504,30 @@ const Flashcards = () => {
 
   // Fonction pour calculer le nombre de cartes disponibles pour l'étude interactive
   const getAvailableCardsCount = () => {
-    if (!selectedSubject) return 0;
+    if (!selectedSubject || !selectedChapter) return 0;
     
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
-    if (!subject) return 0;
+    const subjectId = parseInt(selectedSubject);
+    if (!subjectId) return 0;
     
     // Utiliser les flashcards du contexte
-    const allFlashcards = getFlashcardsBySubject(subject.id);
+    const allFlashcards = getFlashcardsBySubject(subjectId);
     
-    // Filtrer par chapitre selon l'option sélectionnée (synchronisé avec loadSubjectFlashcards)
-    let filteredCards = allFlashcards;
-    
-    if (selectedChapter === null || selectedChapter === 'all') {
-      // Tous les chapitres
-      filteredCards = allFlashcards;
-    } else if (selectedChapter === 'none') {
-      // Sans chapitre uniquement
-      filteredCards = allFlashcards.filter(card => card.chapterId === null);
-    } else {
-      // Chapitre spécifique uniquement
+    // Filtrer uniquement par chapitre sélectionné (plus d'option "Tous les chapitres" ou "Sans chapitre")
+    if (selectedChapter && selectedChapter !== 'none' && selectedChapter !== 'all' && selectedChapter !== null) {
       const targetChapterId = typeof selectedChapter === 'string' ? parseInt(selectedChapter) : selectedChapter;
-      filteredCards = allFlashcards.filter(card => card.chapterId === targetChapterId);
+      const filteredCards = allFlashcards.filter(card => card.chapterId === targetChapterId);
+      return filteredCards.length;
     }
     
-    return filteredCards.length;
+    return 0;
   };
 
   // Fonction pour calculer le nombre de cartes à réviser (basé sur les tentatives)
   const getReviewCardsCount = () => {
     if (!selectedSubject) return 0;
     
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    const subjectId = parseInt(selectedSubject);
+    const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
     if (!subject) return 0;
     
     // Pour l'instant, on prend 30% des cartes disponibles comme cartes à réviser
@@ -560,11 +548,21 @@ const Flashcards = () => {
   const loadChapters = async (subjectId: number) => {
     try {
       console.log('🔍 Chargement des chapitres pour la matière:', subjectId);
-      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_CHAPTERS(subjectId));
       
+      // Utiliser les chapitres déjà chargés depuis availableSubjects (qui incluent questionCount)
+      const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === subjectId.toString());
+      
+      if (subject && subject.chapters) {
+        console.log('🔍 Chapitres trouvés dans availableSubjects:', subject.chapters.length, 'avec questions');
+        setAvailableChapters(subject.chapters || []);
+        return;
+      }
+      
+      // Fallback : charger depuis l'API si pas trouvé dans availableSubjects
+      const response = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_CHAPTERS(subjectId));
       if (response.ok) {
         const data = await response.json();
-        console.log('🔍 Chapitres reçus:', data.chapters);
+        console.log('🔍 Chapitres reçus depuis API:', data.chapters);
         setAvailableChapters(data.chapters || []);
       } else {
         console.log('🔍 Aucun chapitre trouvé pour cette matière');
@@ -609,7 +607,8 @@ const Flashcards = () => {
         // Charger les données depuis l'API avec authentification
         await Promise.all([
           loadUserStats(),
-          loadAvailableSubjects()
+          loadAvailableSubjects(),
+          refreshFlashcards() // Charger les flashcards
         ]);
       } else {
         console.log('🔍 useEffect - Pas d\'utilisateur connecté, chargement des matières publiques');
@@ -627,21 +626,29 @@ const Flashcards = () => {
 
   // Effet pour charger les chapitres quand une matière est sélectionnée
   useEffect(() => {
-    if (selectedSubject) {
+    if (selectedSubject && availableSubjects.length > 0) {
       const subjectId = parseInt(selectedSubject);
       if (subjectId) {
-        loadChapters(subjectId);
+        // Utiliser les chapitres depuis availableSubjects si disponibles (qui incluent questionCount)
+        const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
+        if (subject && subject.chapters) {
+          console.log('🔍 Utilisation des chapitres depuis availableSubjects:', subject.chapters.length, 'avec questions');
+          setAvailableChapters(subject.chapters || []);
+        } else {
+          // Fallback : charger depuis l'API
+          loadChapters(subjectId);
+        }
       }
     } else {
       setAvailableChapters([]);
       setSelectedChapter(null);
     }
-  }, [selectedSubject]);
+  }, [selectedSubject, availableSubjects]);
 
   // Effet pour charger les flashcards quand un chapitre est sélectionné
   useEffect(() => {
     console.log('🔍 useEffect flashcards - selectedSubject:', selectedSubject, 'selectedChapter:', selectedChapter);
-    if (selectedSubject && selectedChapter) {
+    if (selectedSubject && selectedChapter && selectedChapter !== 'all' && selectedChapter !== 'none') {
       const subjectId = parseInt(selectedSubject);
       console.log('🔍 useEffect flashcards - subjectId parsé:', subjectId);
       if (subjectId) {
@@ -1003,7 +1010,8 @@ const Flashcards = () => {
   const getAvailableFlashcards = () => {
     if (!userStats || !selectedSubject) return subjectFlashcards;
     
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    const subjectId = parseInt(selectedSubject);
+    const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
     if (!subject) return subjectFlashcards;
     
     // Si toutes les flashcards sont complétées, retourner un tableau vide
@@ -1019,7 +1027,8 @@ const Flashcards = () => {
   const areAllFlashcardsCompleted = () => {
     if (!selectedSubject) return false;
     
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    const subjectId = parseInt(selectedSubject);
+    const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
     if (!subject) return false;
     
     return (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0);
@@ -1036,22 +1045,33 @@ const Flashcards = () => {
         return;
       }
 
-      // Vérifier s'il y a des flashcards disponibles pour cette matière
+      // Vérifier qu'un chapitre est sélectionné
+      if (!selectedChapter || selectedChapter === 'all' || selectedChapter === 'none') {
+        toast({
+          title: "Sélectionnez un chapitre",
+          description: "Veuillez d'abord choisir un chapitre pour commencer les flashcards.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Vérifier s'il y a des flashcards disponibles pour ce chapitre
       if (subjectFlashcards.length === 0) {
         toast({
           title: "Aucune flashcard disponible",
-          description: "Il n'y a pas encore de flashcards pour cette matière.",
+          description: "Il n'y a pas encore de flashcards pour ce chapitre.",
           variant: "destructive"
         });
         return;
       }
 
       // Vérifier si toutes les flashcards sont déjà complétées
-      const subject = availableSubjects.find(s => s.name === selectedSubject);
+      const subjectId = parseInt(selectedSubject);
+      const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
       if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
         toast({
           title: "Toutes les flashcards sont complétées !",
-          description: `Vous avez déjà terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
+          description: `Vous avez déjà terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${subject.name}. Félicitations ! 🎉`,
           variant: "default"
         });
         return;
@@ -1068,7 +1088,7 @@ const Flashcards = () => {
       const availableCount = subject ? (subject.totalFlashcards || 0) - (subject.completedFlashcards || 0) : subjectFlashcards.length;
       toast({
         title: "Session de flashcards démarrée",
-        description: `${availableCount} flashcards restantes pour ${selectedSubject}`,
+        description: `${availableCount} flashcards restantes pour ${subject?.name || selectedSubject}`,
       });
     } catch (err) {
       console.error('Error starting flashcards:', err);
@@ -1078,11 +1098,12 @@ const Flashcards = () => {
 
   const handleNextCard = () => {
     // Vérifier si toutes les flashcards sont complétées
-    const subject = availableSubjects.find(s => s.name === selectedSubject);
+    const subjectId = parseInt(selectedSubject);
+    const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
     if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
       toast({
         title: "Toutes les flashcards sont complétées !",
-          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject}. Félicitations ! 🎉`,
+          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${subject.name}. Félicitations ! 🎉`,
         variant: "default"
       });
       setShowDemo(false);
@@ -1127,11 +1148,12 @@ const Flashcards = () => {
     // Vérifier si toutes les flashcards sont maintenant complétées
     setTimeout(async () => {
       await loadUserStats(); // Recharger les statistiques
-      const subject = availableSubjects.find(s => s.name === selectedSubject);
+      const subjectId = parseInt(selectedSubject);
+      const subject = availableSubjects.find(s => s.id === subjectId || s.id.toString() === selectedSubject);
       if (subject && (subject.completedFlashcards || 0) >= (subject.totalFlashcards || 0)) {
         toast({
           title: "🎉 Félicitations !",
-          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${selectedSubject} !`,
+          description: `Vous avez terminé toutes les ${subject.totalFlashcards || 0} flashcards de ${subject.name} !`,
           variant: "default"
         });
         setShowDemo(false);
@@ -1369,6 +1391,11 @@ const Flashcards = () => {
                         <Badge variant="outline" className="text-xs">
                           {subject.totalFlashcards || 0} cartes
                         </Badge>
+                        {subject.totalQuestions > 0 && (
+                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
+                            {subject.totalQuestions || 0} questions
+                          </Badge>
+                        )}
                         {subject.accuracy > 0 && (
                           <Badge variant="secondary" className="text-xs">
                             {subject.accuracy}%
@@ -1382,7 +1409,7 @@ const Flashcards = () => {
             </Select>
 
           {selectedSubject && (() => {
-            const subject = availableSubjects.find(s => s.name === selectedSubject);
+            const subject = availableSubjects.find(s => s.id.toString() === selectedSubject || s.name === selectedSubject);
             return subject ? (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                 <div className="grid grid-cols-2 gap-4">
@@ -1391,8 +1418,12 @@ const Flashcards = () => {
                     <p className="text-lg font-bold text-blue-800">{subject.totalFlashcards || 0}</p>
                   </div>
                   <div className="text-center">
+                    <p className="text-xs text-blue-600">Total Questions</p>
+                    <p className="text-lg font-bold text-blue-800">{subject.totalQuestions || 0}</p>
+                  </div>
+                  <div className="text-center">
                     <p className="text-xs text-blue-600">Progression</p>
-                    <p className="text-lg font-bold text-blue-800">{subject.progress}%</p>
+                    <p className="text-lg font-bold text-blue-800">{subject.progress || 0}%</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Complétées</p>
@@ -1411,16 +1442,6 @@ const Flashcards = () => {
                     </div>
                   )}
                 </div>
-                {(subject.totalFlashcards || 0) - (subject.completedFlashcards || 0) === 0 && (
-                  <div className="mt-3 p-3 bg-green-100 rounded-lg">
-                    <div className="flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                      <p className="text-sm font-medium text-green-800">
-                        🎉 Toutes les flashcards sont complétées !
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
             ) : null;
           })()}
@@ -1441,39 +1462,30 @@ const Flashcards = () => {
                 
                 {selectedSubject ? (
               <Select 
-                value={selectedChapter?.toString() || "all"} 
+                value={selectedChapter?.toString() || ""} 
                 onValueChange={(value) => {
-                  if (value === 'all') setSelectedChapter(null);
-                  else if (value === 'none') setSelectedChapter('none');
-                  else setSelectedChapter(parseInt(value));
+                  setSelectedChapter(parseInt(value));
                 }}
               >
                     <SelectTrigger className="h-10 md:h-12 text-base md:text-lg">
                   <SelectValue placeholder="Choisissez un chapitre" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">
-                    📚 Tous les chapitres ({getFlashcardsBySubject(parseInt(selectedSubject)).length} flashcards)
-                  </SelectItem>
-                  
-                  <SelectItem value="none">
-                    📝 Sans chapitre ({getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === null).length} flashcards)
-                  </SelectItem>
-                  
-                  {availableChapters.length > 0 && (
-                    <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border-t border-b my-1">
-                      CHAPITRES
+                  {availableChapters.length > 0 ? (
+                    availableChapters.map((chapter: any) => {
+                      const chapterFlashcards = getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === chapter.id);
+                      const questionCount = chapter.questionCount || 0;
+                      return (
+                        <SelectItem key={chapter.id} value={chapter.id.toString()}>
+                          📖 {chapter.name} ({chapterFlashcards.length} cartes, {questionCount} questions)
+                        </SelectItem>
+                      );
+                    })
+                  ) : (
+                    <div className="px-2 py-1.5 text-sm text-gray-500">
+                      Aucun chapitre disponible pour cette matière
                     </div>
                   )}
-                  
-                  {availableChapters.map((chapter) => {
-                    const chapterFlashcards = getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === chapter.id);
-                    return (
-                      <SelectItem key={chapter.id} value={chapter.id.toString()}>
-                        📖 {chapter.name} ({chapterFlashcards.length} flashcards)
-                      </SelectItem>
-                    );
-                  })}
                 </SelectContent>
               </Select>
                 ) : (
@@ -1638,11 +1650,18 @@ const Flashcards = () => {
             {(() => {
               const currentCardData = subjectFlashcards[currentCard];
               
-              if (!currentCardData) {
+              if (!currentCardData || subjectFlashcards.length === 0) {
                 return (
                   <div className="text-center p-4">
-                    <p className="text-red-600 mb-2">Aucune carte trouvée pour "{selectedSubject}"</p>
-                    <p className="text-sm text-gray-600">Chargement des flashcards...</p>
+                    <p className="text-red-600 mb-2">Aucune carte trouvée pour ce chapitre</p>
+                    <p className="text-sm text-gray-600">Sélectionnez un chapitre avec des flashcards disponibles.</p>
+                    <Button 
+                      onClick={(e) => { e.preventDefault(); setShowDemo(false); }} 
+                      variant="outline" 
+                      className="mt-4"
+                    >
+                      Retour à la sélection
+                    </Button>
                   </div>
                 );
               }

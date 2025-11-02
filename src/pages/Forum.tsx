@@ -9,11 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, Users, Search, Plus, ThumbsUp, Clock, Pin, TrendingUp, Edit, Trash2, Lock, Bell, RefreshCw, LogIn, UserPlus, Menu, X, MoreVertical, Heart, Share2, Bookmark } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_URL } from "@/config/api";
 import ForumPostDetail from "@/components/ui/forum-post-detail";
 import SimpleForumDialog from "@/components/ui/simple-forum-dialog";
 import ForumImageGallery from "@/components/ui/ForumImageGallery";
 import CreateGroupDialog from "@/components/ui/CreateGroupDialog";
-import ModernGroupChat from "@/components/ui/ModernGroupChat";
 import UserProfileDialog from "@/components/ui/UserProfileDialog";
 
 interface ForumPost {
@@ -103,7 +103,6 @@ const Forum = () => {
   const [editDialogOpenForId, setEditDialogOpenForId] = useState<number | null>(null);
   const [activeShareMenu, setActiveShareMenu] = useState<number | null>(null);
   const [studyGroups, setStudyGroups] = useState<any[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(null);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [activePostMenu, setActivePostMenu] = useState<number | null>(null);
@@ -164,8 +163,8 @@ const Forum = () => {
   const loadDataFromAPI = async (showToast: boolean = true) => {
     try {
       const [postsRes, subjectsRes] = await Promise.all([
-        fetch('http://localhost:8081/api/forum/posts-temp'),
-        fetch('http://localhost:8081/api/subjects')
+        fetch(`${API_URL}/api/forum/posts-temp`),
+        fetch(`${API_URL}/api/subjects`)
       ]);
       
       if (postsRes.ok && subjectsRes.ok) {
@@ -176,7 +175,7 @@ const Forum = () => {
         const postsWithReplies = await Promise.all(
           postsData.map(async (post: any) => {
             try {
-              const repliesRes = await fetch(`http://localhost:8081/api/forum/posts/${post.id}/replies`);
+              const repliesRes = await fetch(`${API_URL}/api/forum/posts/${post.id}/replies`);
               if (repliesRes.ok) {
                 const replies = await repliesRes.json();
                 return {
@@ -245,7 +244,7 @@ const Forum = () => {
   // Fonction pour charger les statistiques du forum
   const loadForumStats = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/forum/stats');
+      const response = await fetch(`${API_URL}/api/forum/stats`);
       if (response.ok) {
         const stats = await response.json();
         setForumStats(stats);
@@ -258,7 +257,7 @@ const Forum = () => {
   // Fonction pour charger les utilisateurs en ligne
   const loadOnlineUsers = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/forum/online-users');
+      const response = await fetch(`${API_URL}/api/forum/online-users`);
       if (response.ok) {
         const users = await response.json();
         setOnlineUsers(users);
@@ -286,7 +285,7 @@ const Forum = () => {
         console.log('⚠️ Aucun token, tentative de chargement sans authentification...');
       }
 
-      const response = await fetch('http://localhost:8081/api/study-groups', {
+      const response = await fetch(`${API_URL}/api/study-groups`, {
         headers
       });
       
@@ -298,39 +297,25 @@ const Forum = () => {
         console.log('📋 Détails des groupes:', groups);
         setStudyGroups(groups);
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
         console.error('❌ Erreur API groupes:', errorData);
-        // En cas d'erreur, essayer de charger des groupes de démonstration
-        console.log('🔄 Tentative de chargement de groupes de démonstration...');
-        setStudyGroups([
-          {
-            id: 1,
-            name: 'Groupe de Démonstration',
-            description: 'Groupe d\'exemple pour tester l\'interface',
-            subject: { name: 'Mathématiques' },
-            creator: { firstName: 'Admin', lastName: 'Demo' },
-            _count: { members: 5 },
-            isMember: false,
-            isCreator: false
-          }
-        ]);
+        // En cas d'erreur, initialiser avec un tableau vide (pas de données de test)
+        setStudyGroups([]);
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger les groupes d'étude",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement des groupes:', error);
-      // En cas d'erreur réseau, charger des groupes de démonstration
-      console.log('🔄 Chargement de groupes de démonstration en cas d\'erreur...');
-      setStudyGroups([
-        {
-          id: 1,
-          name: 'Groupe de Démonstration',
-          description: 'Groupe d\'exemple pour tester l\'interface',
-          subject: { name: 'Mathématiques' },
-          creator: { firstName: 'Admin', lastName: 'Demo' },
-          _count: { members: 5 },
-          isMember: false,
-          isCreator: false
-        }
-      ]);
+      // En cas d'erreur réseau, initialiser avec un tableau vide (pas de données de test)
+      setStudyGroups([]);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les groupes d'étude",
+        variant: "destructive"
+      });
     }
   };
 
@@ -349,7 +334,7 @@ const Forum = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/join`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${groupId}/join`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -412,7 +397,7 @@ const Forum = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/api/study-groups/${groupId}/leave`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${groupId}/leave`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -509,14 +494,6 @@ const Forum = () => {
     }
   }, [user]);
 
-  // Logger quand selectedGroup change
-  useEffect(() => {
-    if (selectedGroup) {
-      console.log('📋 Groupe sélectionné:', selectedGroup.name, selectedGroup.id);
-    } else {
-      console.log('📋 Aucun groupe sélectionné');
-    }
-  }, [selectedGroup]);
 
   // Fermer le menu d'actions quand on clique ailleurs
   useEffect(() => {
@@ -543,7 +520,7 @@ const Forum = () => {
   // Fonction pour charger les réponses d'un post depuis l'API
   const loadRepliesForPost = async (postId: number) => {
     try {
-      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}/replies`);
+      const response = await fetch(`${API_URL}/api/forum/posts/${postId}/replies`);
       if (response.ok) {
         const replies = await response.json();
         setPosts(prev => prev.map(post => 
@@ -600,7 +577,7 @@ const Forum = () => {
     // Persister dans la base
     try {
       const token = localStorage.getItem('token');
-      const resp = await fetch('http://localhost:8081/api/forum/posts', {
+      const resp = await fetch(`${API_URL}/api/forum/posts`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -625,7 +602,7 @@ const Forum = () => {
           });
           
           try {
-            const imageResp = await fetch(`http://localhost:8081/api/forum/posts/${saved.id}/images`, {
+            const imageResp = await fetch(`${API_URL}/api/forum/posts/${saved.id}/images`, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${token}`
@@ -677,7 +654,7 @@ const Forum = () => {
   const handleEditPost = async (postId: number, data: { title: string; content: string; subjectId?: number }) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/forum/posts/${postId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -736,7 +713,16 @@ const Forum = () => {
   const handleDeletePost = async (postId: number) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}`, {
+      if (!token) {
+        toast({
+          title: "Erreur",
+          description: "Vous devez être connecté pour supprimer un post",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/forum/posts/${postId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -774,7 +760,7 @@ const Forum = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}/like`, {
+      const response = await fetch(`${API_URL}/api/forum/posts/${postId}/like`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -823,7 +809,7 @@ const Forum = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/posts/${postId}/replies`, {
+      const response = await fetch(`${API_URL}/api/forum/posts/${postId}/replies`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -899,7 +885,7 @@ const Forum = () => {
   const handleEditReply = async (postId: number, replyId: number, content: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/replies/${replyId}`, {
+      const response = await fetch(`${API_URL}/api/forum/replies/${replyId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -954,7 +940,7 @@ const Forum = () => {
   const handleDeleteReply = async (postId: number, replyId: number) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/forum/replies/${replyId}`, {
+      const response = await fetch(`${API_URL}/api/forum/replies/${replyId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1114,24 +1100,26 @@ const Forum = () => {
           </Card>
         </div>
 
-        {/* Menu Mobile - Overlay */}
+        {/* Menu Mobile - Overlay - Responsive Mobile Pro */}
         {showMobileMenu && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setShowMobileMenu(false)}>
-            <div className="fixed right-0 top-0 h-full w-80 bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4 border-b">
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-in fade-in-0" onClick={() => setShowMobileMenu(false)}>
+            <div className="fixed right-0 top-0 h-full w-[85vw] sm:w-80 max-w-sm bg-white dark:bg-slate-900 shadow-xl overflow-y-auto animate-in slide-in-from-right" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Menu Forum</h2>
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Menu Forum</h2>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowMobileMenu(false)}
+                    className="h-9 w-9 p-0 touch-manipulation"
+                    title="Fermer"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
                   </Button>
                 </div>
               </div>
               
-              <div className="p-4 space-y-6">
+              <div className="p-3 sm:p-4 space-y-4 sm:space-y-6 pb-safe">
                 {/* Actions Rapides */}
                 <div>
                   <h3 className="font-semibold text-foreground mb-4">Actions Rapides</h3>
@@ -1180,7 +1168,12 @@ const Forum = () => {
                           e.preventDefault();
                           e.stopPropagation();
                           console.log('🖱️ Clic sur le groupe:', group.name, group.id);
-                          setSelectedGroup(group);
+                          // Rediriger vers Messages avec le groupe sélectionné
+                          navigate('/messages', {
+                            state: {
+                              groupId: group.id
+                            }
+                          });
                           setShowMobileMenu(false);
                         }}
                       >
@@ -1331,15 +1324,18 @@ const Forum = () => {
                 ) : (
                   filteredPosts.map(post => {
                     const isLiked = post.likes.some(like => like.userId === user?.id);
-                    const canEdit = user && (user.id === post.author.id);
+                    // Vérifier si l'utilisateur peut modifier/supprimer (auteur ou admin)
+                    const canEdit = user && post && (
+                      user.id === post.author.id || user.role === 'ADMIN'
+                    );
                     
                     return (
-                      <Card key={post.id} className="p-3 sm:p-4 lg:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow">
-                    {/* En-tête avec profil et boutons */}
-                    <div className="flex items-start justify-between mb-3">
+                      <Card key={post.id} className="p-2.5 sm:p-3 md:p-4 lg:p-6 bg-gradient-card border-border hover:shadow-lg transition-shadow touch-manipulation">
+                    {/* En-tête avec profil et boutons - Responsive Mobile Pro */}
+                    <div className="flex items-start justify-between mb-2.5 sm:mb-3 gap-2 sm:gap-3">
                       <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                         <Avatar 
-                          className="w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all flex-shrink-0"
+                          className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all flex-shrink-0 touch-manipulation active:scale-95"
                           onClick={() => {
                             console.log('👤 Clic sur profil:', post.author);
                             setSelectedUserProfile(post.author);
@@ -1347,7 +1343,7 @@ const Forum = () => {
                           }}
                         >
                           <AvatarImage 
-                            src={post.author.profilePhoto ? `http://localhost:8081/api/profile/photos/${post.author.profilePhoto}` : undefined} 
+                            src={post.author.profilePhoto ? `${API_URL}/api/profile/photos/${post.author.profilePhoto}` : undefined} 
                             alt={`${post.author.firstName} ${post.author.lastName}`}
                             onError={() => console.log('❌ Erreur chargement photo:', post.author.profilePhoto)}
                             onLoad={() => console.log('✅ Photo chargée:', post.author.profilePhoto)}
@@ -1357,19 +1353,19 @@ const Forum = () => {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-2 mb-1">
-                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base line-clamp-2 flex-1" 
+                          <div className="flex items-start gap-1.5 sm:gap-2 mb-1">
+                                <h3 className="font-semibold text-foreground cursor-pointer hover:text-primary text-sm sm:text-base md:text-lg line-clamp-2 flex-1 touch-manipulation" 
                                     onClick={() => handleJoinDiscussion(post)}>
                                   {post.title}
                                 </h3>
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              {post.isPinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />}
-                              {post.isLocked && <Lock className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />}
+                              {post.isPinned && <Pin className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 text-primary" />}
+                              {post.isLocked && <Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 text-red-500" />}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-1 sm:gap-2 lg:gap-4 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-[10px] sm:text-xs text-muted-foreground">
                                 <span 
-                                  className="truncate cursor-pointer hover:text-primary hover:underline"
+                                  className="truncate cursor-pointer hover:text-primary hover:underline touch-manipulation"
                                   onClick={() => {
                                     setSelectedUserProfile(post.author);
                                     setShowUserProfile(true);
@@ -1377,11 +1373,11 @@ const Forum = () => {
                                 >
                                   par {post.author.firstName} {post.author.lastName}
                                 </span>
-                                <Badge variant={post.author.role === "TUTOR" ? "secondary" : "outline"} className="text-xs">
+                                <Badge variant={post.author.role === "TUTOR" ? "secondary" : "outline"} className="text-[10px] sm:text-xs px-1.5 py-0.5">
                                   {post.author.role === "TUTOR" ? "Tuteur" : "Étudiant"}
                             </Badge>
                                 {post.subject && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant="outline" className="text-[10px] sm:text-xs px-1.5 py-0.5">
                                     {post.subject.name}
                             </Badge>
                                 )}
@@ -1392,23 +1388,23 @@ const Forum = () => {
                               </div>
                         </div>
                       </div>
-                      {/* Menu d'actions professionnel */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* Bouton de partage avec menu déroulant */}
+                      {/* Menu d'actions professionnel - Touch targets optimisés */}
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                        {/* Bouton de partage avec menu déroulant - Optimisé mobile */}
                         <div className="relative">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setActiveShareMenu(activeShareMenu === post.id ? null : post.id)}
-                            className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            className="h-9 w-9 sm:h-8 sm:w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors touch-manipulation active:scale-95"
                             title="Partager"
                           >
-                            <Share2 className="w-4 h-4" />
+                            <Share2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                           </Button>
                           
-                          {/* Menu de partage */}
+                          {/* Menu de partage - Responsive mobile */}
                           {activeShareMenu === post.id && (
-                            <div className="absolute right-0 top-9 z-50 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 animate-in slide-in-from-top-2 duration-200">
+                            <div className="absolute right-0 top-10 sm:top-9 z-50 w-[calc(100vw-3rem)] sm:w-56 max-w-xs bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 py-2 animate-in slide-in-from-top-2 duration-200">
                               <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
                                 Partager sur les réseaux sociaux
                               </div>
@@ -1574,12 +1570,12 @@ const Forum = () => {
                       </div>
                     </div>
 
-                    {/* Séparateur */}
-                    <div className="border-t border-border mb-3"></div>
+                    {/* Séparateur - Responsive mobile */}
+                    <div className="border-t border-border dark:border-slate-700 mb-2 sm:mb-3"></div>
 
-                    {/* Contenu du post (texte + images) */}
-                    <div className="mb-3">
-                      <p className="text-muted-foreground text-xs sm:text-sm mb-3 line-clamp-2 sm:line-clamp-3">
+                    {/* Contenu du post (texte + images) - Optimisé mobile */}
+                    <div className="mb-2.5 sm:mb-3">
+                      <p className="text-muted-foreground text-xs sm:text-sm mb-2 sm:mb-3 line-clamp-2 sm:line-clamp-3 leading-relaxed">
                         {post.content}
                       </p>
                       {post.images && post.images.length > 0 && (
@@ -1591,39 +1587,41 @@ const Forum = () => {
                       )}
                     </div>
                     
-                    {/* Actions du post - Design professionnel */}
-                    <div className="pt-4 border-t border-gray-100">
-                      <div className="flex items-center justify-between">
-                        {/* Actions principales */}
-                        <div className="flex items-center gap-1">
-                          {/* Bouton Like avec animation */}
+                    {/* Actions du post - Design professionnel - Responsive Mobile Pro */}
+                    <div className="pt-3 sm:pt-4 border-t border-gray-100 dark:border-slate-700">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                        {/* Actions principales - Touch targets optimisés */}
+                        <div className="flex items-center gap-1 sm:gap-2 flex-1">
+                          {/* Bouton Like avec animation - Optimisé mobile */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleLikePost(post.id)}
-                            className={`flex items-center gap-2 px-3 py-2 h-9 rounded-full transition-all duration-200 ${
+                            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 h-10 sm:h-9 rounded-full transition-all duration-200 touch-manipulation active:scale-95 ${
                               isLiked 
-                                ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                : 'text-gray-600 hover:bg-gray-50 hover:text-red-600'
+                                ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30' 
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-red-600 dark:hover:text-red-400'
                             }`}
+                            title="Aimer"
                           >
-                            <Heart className={`w-4 h-4 transition-transform duration-200 ${isLiked ? 'fill-current scale-110' : ''}`} />
-                            <span className="text-sm font-medium">{post._count.likes}</span>
+                            <Heart className={`w-4 h-4 sm:w-4 sm:h-4 transition-transform duration-200 ${isLiked ? 'fill-current scale-110' : ''}`} />
+                            <span className="text-xs sm:text-sm font-medium">{post._count.likes}</span>
                           </Button>
 
-                          {/* Bouton Commentaire */}
+                          {/* Bouton Commentaire - Optimisé mobile */}
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             onClick={() => handleJoinDiscussion(post)}
-                            className="flex items-center gap-2 px-3 py-2 h-9 rounded-full text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-200"
+                            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 h-10 sm:h-9 rounded-full text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 touch-manipulation active:scale-95"
+                            title="Commenter"
                           >
-                            <MessageSquare className="w-4 h-4" />
-                            <span className="text-sm font-medium">Commenter</span>
+                            <MessageSquare className="w-4 h-4 sm:w-4 sm:h-4" />
+                            <span className="text-xs sm:text-sm font-medium hidden xs:inline">Commenter</span>
                             {post._count.replies > 0 && (
                               <Badge 
                                 variant="secondary" 
-                                className="ml-1 h-5 min-w-[20px] flex items-center justify-center text-xs bg-blue-100 text-blue-700"
+                                className="ml-0.5 sm:ml-1 h-5 min-w-[20px] flex items-center justify-center text-[10px] sm:text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
                               >
                                 {post._count.replies}
                               </Badge>
@@ -1631,18 +1629,18 @@ const Forum = () => {
                           </Button>
                         </div>
 
-                        {/* Indicateur de statut */}
-                        <div className="flex items-center gap-2">
+                        {/* Indicateur de statut - Responsive mobile */}
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                           {post.isPinned && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 rounded-full text-[10px] sm:text-xs">
                               <Pin className="w-3 h-3" />
-                              <span>Épinglé</span>
+                              <span className="hidden sm:inline">Épinglé</span>
                             </div>
                           )}
                           {post.isLocked && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-600 rounded-full text-xs">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-400 rounded-full text-[10px] sm:text-xs">
                               <Lock className="w-3 h-3" />
-                              <span>Verrouillé</span>
+                              <span className="hidden sm:inline">Verrouillé</span>
                             </div>
                           )}
                         </div>
@@ -1792,7 +1790,12 @@ const Forum = () => {
                       e.preventDefault();
                       e.stopPropagation();
                       console.log('🖱️ Clic sur le groupe (desktop):', group.name, group.id);
-                      setSelectedGroup(group);
+                      // Rediriger vers Messages avec le groupe sélectionné
+                      navigate('/messages', {
+                        state: {
+                          groupId: group.id
+                        }
+                      });
                     }}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -1895,47 +1898,6 @@ const Forum = () => {
           onDeleteReply={(replyId: number) => handleDeleteReply(selectedPost?.id || 0, replyId)}
         />
 
-      {/* Dialog détails du groupe */}
-      {selectedGroup && (
-        <ModernGroupChat
-          group={selectedGroup}
-          open={!!selectedGroup}
-          onClose={() => setSelectedGroup(null)}
-          onLeave={() => handleLeaveGroup(selectedGroup.id)}
-          onDelete={async () => {
-            try {
-              const response = await fetch(`http://localhost:8081/api/study-groups/${selectedGroup.id}`, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-              });
-              
-              if (response.ok) {
-                toast({
-                  title: "Succès !",
-                  description: "Groupe supprimé avec succès"
-                });
-                loadStudyGroups(true);
-              } else {
-                const error = await response.json();
-                toast({
-                  title: "Erreur",
-                  description: error.error || "Impossible de supprimer le groupe",
-                  variant: "destructive"
-                });
-              }
-            } catch (error) {
-              console.error('Erreur:', error);
-              toast({
-                title: "Erreur",
-                description: "Une erreur est survenue",
-                variant: "destructive"
-              });
-            }
-          }}
-        />
-      )}
 
       {/* Dialog profil utilisateur */}
       <UserProfileDialog

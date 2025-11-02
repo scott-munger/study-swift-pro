@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogPortal, DialogOverlay } from './dialog';
+import { Textarea } from './textarea';
+import { Label } from './label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 import { Button } from './enhanced-button';
 import { Input } from './input';
 import { ScrollArea } from './scroll-area';
@@ -37,13 +40,21 @@ import {
   Pin,
   FileText,
   RefreshCw,
-  Copy
+  Copy,
+  ArrowLeft,
+  Settings,
+  UserCog,
+  Shield,
+  AlertCircle,
+  Ban
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { AddMemberDialog } from './AddMemberDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { API_URL } from '@/config/api';
 
 interface GroupDetailDialogProps {
   group: any;
@@ -51,6 +62,8 @@ interface GroupDetailDialogProps {
   onClose: () => void;
   onLeave?: () => void;
   onDelete?: () => void;
+  inline?: boolean; // Mode inline sans Dialog
+  onBack?: () => void; // Bouton retour pour mobile
 }
 
 interface Message {
@@ -91,7 +104,9 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   open,
   onClose,
   onLeave,
-  onDelete
+  onDelete,
+  inline = false,
+  onBack
 }) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -124,10 +139,26 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
   const [showNewMessagesButton, setShowNewMessagesButton] = useState(false);
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
+  const [showMembersDialog, setShowMembersDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [showAdminsDialog, setShowAdminsDialog] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [groupSettings, setGroupSettings] = useState({
+    name: group?.name || '',
+    description: group?.description || '',
+    userClass: group?.userClass || '',
+    section: group?.section || ''
+  });
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [activePostMenu, setActivePostMenu] = useState<number | null>(null);
+  // États pour les dialogs de confirmation
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRemoveMemberConfirm, setShowRemoveMemberConfirm] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{id: number; name: string} | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -140,6 +171,26 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
   // Emojis populaires pour les réactions
   const popularEmojis = ['👍', '👎', '❤️', '😂', '😮', '😢', '😡', '🎉', '👏', '🔥', '💯', '✨'];
+
+  // Fonction helper pour obtenir l'URL correcte de l'audio
+  const getAudioUrl = (audioUrl: string): string => {
+    if (!audioUrl) return '';
+    
+    // Si c'est déjà une URL complète, la retourner
+    if (audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
+      return audioUrl;
+    }
+    
+    // Si c'est un chemin avec /uploads/audio-messages/, extraire le filename
+    if (audioUrl.includes('/uploads/audio-messages/')) {
+      const filename = audioUrl.split('/uploads/audio-messages/')[1];
+      return `${API_URL}/api/audio/${filename}`;
+    }
+    
+    // Si c'est juste un filename ou un chemin relatif, utiliser l'endpoint /api/audio
+    const filename = audioUrl.split('/').pop() || audioUrl;
+    return `${API_URL}/api/audio/${filename}`;
+  };
 
   // Gérer le bouton "Nouveaux messages" (auto-scroll désactivé)
   useEffect(() => {
@@ -154,9 +205,14 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   useEffect(() => {
     messages.forEach(msg => {
       if (msg.messageType === 'VOICE' && msg.audioUrl && !audioDuration[msg.id]) {
-        const audio = new Audio(`http://localhost:8081${msg.audioUrl}`);
+        // Construire l'URL correcte pour l'audio
+        const audioUrl = getAudioUrl(msg.audioUrl);
+        const audio = new Audio(audioUrl);
         audio.onloadedmetadata = () => {
           setAudioDuration(prev => ({ ...prev, [msg.id]: audio.duration }));
+        };
+        audio.onerror = (e) => {
+          console.error('Erreur préchargement audio:', msg.audioUrl, e);
         };
         // Charger seulement les métadonnées (pas l'audio complet)
         audio.preload = 'metadata';
@@ -265,15 +321,74 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const loadMessages = async (retryCount = 0) => {
     if (!group?.id) return;
     
+    // Déterminer l'endpoint selon le type de conversation
+    const isTutorChat = group.isTutorChat || false;
+    const endpoint = isTutorChat && group.conversationId
+      ? `${API_URL}/api/conversations/${group.conversationId}/messages`
+      : `${API_URL}/api/study-groups/${group.id}/messages`;
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+      const response = await fetch(endpoint, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
 
       if (response.ok) {
-        const data = await response.json();
+        let data = await response.json();
+        
+        // Pour les conversations tuteur, enrichir les messages avec la structure attendue
+        if (isTutorChat) {
+          data = data.map((msg: any) => {
+            // Transformer senderId/receiverId en userId et ajouter user
+            const isOwnMessage = msg.senderId === user?.id;
+            // Vérifier si c'est un message système TYALA (senderId = 0 OU userId = 0 OU user.firstName = 'TYALA')
+            const isSystemMessage = msg.senderId === 0 || msg.userId === 0 || msg.user?.id === 0 || msg.user?.firstName === 'TYALA' || msg.user?.email === 'system@tyala.com';
+            
+            // Déterminer l'utilisateur affiché pour le message
+            let messageUser;
+            if (isSystemMessage) {
+              // Message système - Afficher TYALA avec badge certifié (PRIORITÉ ABSOLUE)
+              messageUser = {
+                id: 0,
+                firstName: 'TYALA',
+                lastName: '',
+                profilePhoto: null,
+                email: 'system@tyala.com'
+              };
+            } else if (isOwnMessage) {
+              messageUser = {
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                profilePhoto: user.profilePhoto
+              };
+            } else {
+              // Message du tuteur ou autre utilisateur
+              // Utiliser directement msg.user s'il existe (enrichi par le backend)
+              if (msg.user && msg.user.id !== 0) {
+                messageUser = msg.user;
+              } else {
+                // Si senderId existe dans les membres du groupe, utiliser cet utilisateur
+                const senderMember = group.members?.find((m: any) => m.user?.id === msg.senderId);
+                messageUser = senderMember?.user || group.members?.[0]?.user || {
+                  id: msg.senderId,
+                  firstName: 'Tuteur',
+                  lastName: '',
+                  profilePhoto: null
+                };
+              }
+            }
+            
+            return {
+              ...msg,
+              userId: msg.senderId,
+              messageType: msg.messageType || 'TEXT',
+              user: messageUser
+            };
+          });
+        }
+        
         setMessages(data);
         
         // Extraire et organiser les réactions par message
@@ -292,14 +407,39 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           console.log('✅ Messages rechargés avec succès après', retryCount, 'tentatives');
         }
       } else if (response.status === 403) {
-        // Pas membre du groupe - ne pas afficher de toast à chaque rafraîchissement
+        // Accès refusé - ne pas afficher de toast à chaque rafraîchissement
         if (messages.length === 0) {
+          const errorData = await response.json().catch(() => ({ error: 'Accès refusé' }));
           toast({
             title: "Accès refusé",
-            description: "Vous devez être membre pour voir les messages",
+            description: errorData.error || "Vous n'avez pas accès à cette conversation",
             variant: "destructive"
           });
         }
+        // Fermer le chat si l'utilisateur n'a plus accès (groupe supprimé ou utilisateur retiré)
+        onClose?.();
+        
+        // Déclencher le callback onLeave pour recharger les conversations
+        if (onLeave) {
+          onLeave();
+        }
+        return;
+      } else if (response.status === 404) {
+        // Groupe/conversation non trouvé(e) - probablement supprimé(e)
+        console.log('❌ 404 - Groupe/conversation non trouvé(e), fermeture du chat');
+        toast({
+          title: "Introuvable",
+          description: "Cette conversation n'existe plus",
+          variant: "destructive"
+        });
+        // Fermer le chat IMMÉDIATEMENT si le groupe/conversation n'existe plus
+        onClose?.();
+        
+        // Déclencher le callback onLeave pour recharger les conversations
+        if (onLeave) {
+          onLeave();
+        }
+        return;
       } else if (response.status === 401) {
         // Token expiré
         toast({
@@ -353,7 +493,110 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
     if (!content.trim() && !audioBlob && !file) return;
     if (!group?.id) return;
 
-    console.log('📤 Frontend - Envoi message:', { content, type, hasAudioBlob: !!audioBlob, hasFile: !!file, groupId: group.id, retry: retryCount });
+    // Déterminer l'endpoint selon le type de conversation
+    const isTutorChat = group.isTutorChat || false;
+    const baseEndpoint = isTutorChat && group.conversationId
+      ? `${API_URL}/api/conversations/${group.conversationId}`
+      : `${API_URL}/api/study-groups/${group.id}`;
+
+    // Pour les conversations tuteur, déterminer le receiverId
+    let receiverId: number | undefined = undefined;
+    if (isTutorChat && group.conversationId && user?.id) {
+      // Méthode 1: Utiliser studentId et tutorUserId si disponibles
+      if (group.studentId && group.tutorUserId) {
+        if (user.id === group.studentId) {
+          // L'étudiant envoie au tuteur
+          receiverId = group.tutorUserId;
+        } else if (user.id === group.tutorUserId) {
+          // Le tuteur envoie à l'étudiant
+          receiverId = group.studentId;
+        }
+      }
+      
+      // Méthode 2: Fallback - utiliser creatorId (généralement l'userId du tuteur)
+      if (!receiverId && group.creatorId) {
+        if (user.id === group.creatorId) {
+          // Si on est le tuteur (creatorId), on envoie à l'étudiant
+          // Récupérer le studentId depuis l'API de manière synchrone
+          receiverId = group.studentId || undefined;
+        } else {
+          // Si on est l'étudiant, le receiverId est le creatorId (tuteur)
+          receiverId = group.creatorId;
+        }
+      }
+      
+      // Méthode 3: Dernier fallback - récupérer depuis members
+      if (!receiverId && group.members?.[0]?.user?.id) {
+        const otherUserId = group.members[0].user.id;
+        if (otherUserId !== user.id) {
+          receiverId = otherUserId;
+        }
+      }
+      
+      // Si toujours pas de receiverId, récupérer depuis l'API (fallback asynchrone)
+      if (!receiverId && group.conversationId) {
+        try {
+          const convResponse = await fetch(`${API_URL}/api/conversations`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          if (convResponse.ok) {
+            const conversations = await convResponse.json();
+            const conversation = conversations.find((c: any) => c.id === group.conversationId);
+            if (conversation) {
+              console.log('📋 Conversation trouvée dans l\'API:', conversation);
+              // Si on est l'étudiant, le receiverId est l'userId du tuteur
+              if (user.id === conversation.studentId && conversation.tutor?.user?.id) {
+                receiverId = conversation.tutor.user.id;
+              }
+              // Si on est le tuteur, le receiverId est le studentId
+              else if (conversation.tutor?.user?.id && user.id === conversation.tutor.user.id) {
+                receiverId = conversation.studentId;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Erreur lors de la récupération de la conversation:', error);
+        }
+      }
+    }
+
+    // Vérifier que receiverId est défini pour les conversations tuteur
+    if (isTutorChat && !receiverId) {
+      console.error('❌ Impossible de déterminer receiverId pour la conversation tuteur', {
+        conversationId: group.conversationId,
+        studentId: group.studentId,
+        tutorUserId: group.tutorUserId,
+        creatorId: group.creatorId,
+        userId: user?.id,
+        group: group
+      });
+      toast({
+        title: "Erreur",
+        description: "Impossible de déterminer le destinataire du message. Veuillez réessayer.",
+        variant: "destructive"
+      });
+      setSending(false);
+      return;
+    }
+
+    console.log('📤 Frontend - Envoi message:', { 
+      content: content?.substring(0, 50), 
+      type, 
+      hasAudioBlob: !!audioBlob, 
+      hasFile: !!file, 
+      isTutorChat, 
+      receiverId, 
+      userId: user?.id,
+      groupData: {
+        conversationId: group.conversationId,
+        studentId: group.studentId,
+        tutorUserId: group.tutorUserId,
+        creatorId: group.creatorId
+      },
+      retry: retryCount 
+    });
     
     setSending(true);
     try {
@@ -364,6 +607,9 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         const formData = new FormData();
         formData.append('content', content || 'Message vocal');
         formData.append('messageType', 'VOICE');
+        if (isTutorChat && receiverId) {
+          formData.append('receiverId', receiverId.toString());
+        }
         
         // Déterminer l'extension du fichier basée sur le type MIME
         const fileExtension = audioBlob.type.includes('webm') ? 'webm' : 
@@ -371,9 +617,10 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         
         formData.append('audio', audioBlob, `voice-${Date.now()}.${fileExtension}`);
 
-        console.log('🎤 Frontend - FormData préparé, envoi vers:', `http://localhost:8081/api/study-groups/${group.id}/messages`);
+        const endpoint = `${baseEndpoint}/messages${isTutorChat ? '/audio' : ''}`;
+        console.log('🎤 Frontend - FormData préparé, envoi vers:', endpoint);
 
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -412,11 +659,15 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         const formData = new FormData();
         formData.append('content', content || (type === 'IMAGE' ? '📷 Photo' : '📎 Fichier'));
         formData.append('messageType', type);
+        if (isTutorChat && receiverId) {
+          formData.append('receiverId', receiverId.toString());
+        }
         formData.append('file', file);
 
-        console.log('📎 Frontend - FormData préparé, envoi vers:', `http://localhost:8081/api/study-groups/${group.id}/messages`);
+        const endpoint = `${baseEndpoint}/messages${isTutorChat ? '/file' : ''}`;
+        console.log('📎 Frontend - FormData préparé, envoi vers:', endpoint);
 
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -452,23 +703,49 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         }
       } else {
         // Envoyer un message texte
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const endpoint = `${baseEndpoint}/messages`;
+        const body: any = { 
+          content: content.trim() || '', 
+          messageType: 'TEXT' 
+        };
+        // Pour les conversations tuteur, ajouter receiverId (requis)
+        if (isTutorChat) {
+          if (!receiverId) {
+            console.error('❌ receiverId manquant pour conversation tuteur');
+            toast({
+              title: "Erreur",
+              description: "Impossible de déterminer le destinataire",
+              variant: "destructive"
+            });
+            setSending(false);
+            return;
+          }
+          body.receiverId = receiverId;
+        }
+        
+        console.log('📝 Frontend - Envoi message texte:', { endpoint, body, receiverId });
+        
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           },
-          body: JSON.stringify({ 
-            content: content.trim(), 
-            messageType: 'TEXT' 
-          })
+          body: JSON.stringify(body)
         });
 
         if (response.ok) {
           setNewMessage('');
           await loadMessages();
         } else {
-          const errorData = await response.json();
+          const errorText = await response.text();
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: errorText || 'Erreur inconnue' };
+          }
+          console.error('❌ Frontend - Erreur envoi message texte:', errorData);
           
           // Retry automatique pour les erreurs temporaires
           if (response.status >= 500 && retryCount < 2) {
@@ -617,31 +894,53 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         });
       }
 
+      // Vérifier que l'URL est valide
+      if (!audioUrl || !audioUrl.startsWith('http')) {
+        console.error('❌ URL audio invalide:', audioUrl);
+        toast({
+          title: "Erreur",
+          description: "URL audio invalide",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('🎵 Lecture audio:', audioUrl, 'pour message:', messageId);
+
       // Lire l'audio
       const audio = new Audio(audioUrl);
       
       // Récupérer la durée quand elle est disponible
       audio.onloadedmetadata = () => {
+        console.log('✅ Métadonnées audio chargées:', audio.duration, 'secondes');
         setAudioDuration(prev => ({ ...prev, [messageId]: audio.duration }));
       };
       
       // Mettre à jour la progression pendant la lecture
       audio.ontimeupdate = () => {
+        if (audio.duration && !isNaN(audio.duration)) {
         const progress = (audio.currentTime / audio.duration) * 100;
         setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
+        }
       };
       
       audio.onended = () => {
+        console.log('✅ Audio terminé');
         setIsPlaying(null);
         setAudioElement(null);
         setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
       };
       
       audio.onerror = (e) => {
-        console.error('Erreur lecture audio:', e);
+        console.error('❌ Erreur lecture audio:', e, 'URL:', audioUrl);
+        console.error('Erreur audio détail:', {
+          error: audio.error,
+          code: audio.error?.code,
+          message: audio.error?.message
+        });
         toast({
           title: "Erreur",
-          description: "Impossible de lire le message vocal",
+          description: `Impossible de lire le message vocal: ${audio.error?.message || 'Format non supporté'}`,
           variant: "destructive"
         });
         setIsPlaying(null);
@@ -649,13 +948,24 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
       };
       
+      // Gestion des événements de chargement
+      audio.oncanplay = () => {
+        console.log('✅ Audio prêt à être lu');
+      };
+      
+      audio.oncanplaythrough = () => {
+        console.log('✅ Audio complètement chargé');
+      };
+      
       setAudioElement(audio);
       setIsPlaying(messageId);
+      
+      // Essayer de jouer l'audio
       audio.play().catch((error) => {
-        console.error('Erreur play audio:', error);
+        console.error('❌ Erreur play audio:', error, 'URL:', audioUrl);
         toast({
           title: "Erreur",
-          description: "Impossible de lire le message vocal",
+          description: `Impossible de lire le message vocal: ${error.message || 'Vérifiez votre connexion'}`,
           variant: "destructive"
         });
         setIsPlaying(null);
@@ -711,7 +1021,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   // Télécharger un fichier
   const downloadFile = (fileUrl: string, fileName: string) => {
     const link = document.createElement('a');
-    link.href = `http://localhost:8081/api/chat-files/${fileUrl}`;
+    link.href = `${API_URL}/api/chat-files/${fileUrl}`;
     link.download = fileName;
     link.target = '_blank';
     document.body.appendChild(link);
@@ -743,8 +1053,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const deleteMessage = async (messageId: number) => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, la suppression n'est pas supportée pour l'instant
+    if (isTutorChat) {
+      toast({
+        title: "Fonctionnalité non disponible",
+        description: "La suppression de messages n'est pas disponible pour les conversations tuteur",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -779,8 +1100,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const editMessage = async (messageId: number, newContent: string) => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, l'édition n'est pas supportée pour l'instant
+    if (isTutorChat) {
+      toast({
+        title: "Fonctionnalité non disponible",
+        description: "L'édition de messages n'est pas disponible pour les conversations tuteur",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -825,8 +1157,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const toggleReaction = async (messageId: number, emoji: string) => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, les réactions ne sont pas supportées pour l'instant
+    if (isTutorChat) {
+      toast({
+        title: "Fonctionnalité non disponible",
+        description: "Les réactions ne sont pas disponibles pour les conversations tuteur",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/reactions`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -875,7 +1218,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   };
 
   // Grouper les réactions par emoji
-  const getGroupedReactions = (messageId: number) => {
+  const getGroupedReactions = (messageId: number): Array<{ emoji: string; count: number; users: any[]; userReacted: boolean }> => {
     const reactions = messageReactions[messageId] || [];
     const grouped = reactions.reduce((acc, reaction) => {
       if (!acc[reaction.emoji]) {
@@ -892,7 +1235,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         acc[reaction.emoji].userReacted = true;
       }
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, { emoji: string; count: number; users: any[]; userReacted: boolean }>);
     
     return Object.values(grouped);
   };
@@ -941,7 +1284,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
   // Prévisualiser un fichier
   const previewFile = (fileUrl: string, fileType: string) => {
-    const fullUrl = `http://localhost:8081/api/chat-files/${fileUrl}`;
+    const fullUrl = `${API_URL}/api/chat-files/${fileUrl}`;
     
     if (fileType.startsWith('image/')) {
       // Ouvrir l'image dans un nouvel onglet
@@ -1018,8 +1361,12 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const loadPinnedMessages = async () => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, les messages épinglés ne sont pas supportés
+    if (isTutorChat) return;
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/pinned-messages`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/pinned-messages`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -1038,8 +1385,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const pinMessage = async (messageId: number) => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, l'épinglage n'est pas supporté
+    if (isTutorChat) {
+      toast({
+        title: "Fonctionnalité non disponible",
+        description: "L'épinglage de messages n'est pas disponible pour les conversations tuteur",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/pin`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/pin`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1075,8 +1433,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const unpinMessage = async (messageId: number) => {
     if (!group?.id) return;
     
+    const isTutorChat = group.isTutorChat || false;
+    // Pour les conversations tuteur, le désépinglage n'est pas supporté
+    if (isTutorChat) {
+      toast({
+        title: "Fonctionnalité non disponible",
+        description: "Le désépinglage de messages n'est pas disponible pour les conversations tuteur",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/pin`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/pin`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1132,25 +1501,286 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   };
 
   const handleLeaveGroup = () => {
-    if (window.confirm('Êtes-vous sûr de vouloir quitter ce groupe ?')) {
+    setShowLeaveConfirm(true);
+  };
+
+  const handleConfirmLeave = async () => {
+    if (!group?.id || isTutorChat) {
+      setShowLeaveConfirm(false);
+      return;
+    }
+    
+    try {
+      setShowLeaveConfirm(false);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/leave`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Vous avez quitté le groupe avec succès",
+        });
+        // Fermer le chat
+        onClose?.();
+        // Recharger les conversations (le groupe ne sera plus visible)
       onLeave?.();
-      onClose();
+      } else {
+        const errorData = await response.json();
+        toast({
+          title: "Erreur",
+          description: errorData.error || "Impossible de quitter le groupe",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sortie du groupe:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue",
+        variant: "destructive"
+      });
     }
   };
 
   const handleDeleteGroup = () => {
-    if (window.confirm('⚠️ ATTENTION : Voulez-vous vraiment supprimer ce groupe ? Cette action est irréversible !')) {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    setShowDeleteConfirm(false);
       onDelete?.();
       onClose();
+  };
+
+  const handleRemoveMemberClick = (userId: number, name: string) => {
+    setMemberToRemove({ id: userId, name });
+    setShowRemoveMemberConfirm(true);
+  };
+
+  const handleConfirmRemoveMember = () => {
+    if (memberToRemove) {
+      removeMember(memberToRemove.id);
+      setShowRemoveMemberConfirm(false);
+      setMemberToRemove(null);
     }
   };
 
+  // Charger les membres du groupe
+  const loadGroupMembers = async () => {
+    if (!group?.id || isTutorChat) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/members`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const members = await response.json();
+        setGroupMembers(members);
+      } else if (response.status === 404 || response.status === 403) {
+        // Le groupe n'existe plus ou l'utilisateur n'est plus membre
+        // Fermer le chat automatiquement et recharger les conversations
+        console.log(`⚠️ Groupe introuvable ou utilisateur plus membre (${response.status}), fermeture du chat`);
+        
+        // Fermer le chat immédiatement
+        onClose?.();
+        
+        // Déclencher le callback onLeave pour recharger les conversations
+        // Cela supprimera le groupe de la liste
+        if (onLeave) {
+          onLeave();
+        }
+        
+        return;
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des membres:', error);
+      // En cas d'erreur, ne pas charger les membres mais ne pas fermer le chat
+    }
+  };
+
+  // Retirer un membre du groupe
+  const removeMember = async (userId: number) => {
+    if (!group?.id || isTutorChat) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/members/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Membre retiré du groupe",
+        });
+        await loadGroupMembers();
+        await loadMessages(); // Recharger pour mettre à jour les données du groupe
+      } else {
+        const errorData = await response.json();
+        toast({
+          title: "Erreur",
+          description: errorData.error || "Impossible de retirer le membre",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors du retrait du membre:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Mettre à jour les paramètres du groupe
+  const updateGroupSettings = async () => {
+    if (!group?.id || isTutorChat) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(groupSettings)
+      });
+      
+      if (response.ok) {
+        const updatedGroup = await response.json();
+        console.log('✅ Groupe mis à jour:', updatedGroup);
+        
+        // Mettre à jour l'objet group local avec les nouvelles données
+        if (group) {
+          group.name = updatedGroup.name;
+          group.description = updatedGroup.description;
+          group.userClass = updatedGroup.userClass;
+          group.section = updatedGroup.section;
+        }
+        
+        // Mettre à jour groupSettings avec les nouvelles valeurs
+        setGroupSettings({
+          name: updatedGroup.name || '',
+          description: updatedGroup.description || '',
+          userClass: updatedGroup.userClass || '',
+          section: updatedGroup.section || ''
+        });
+        
+        toast({
+          title: "Succès",
+          description: "Paramètres du groupe mis à jour avec succès",
+        });
+        setShowSettingsDialog(false);
+        
+        // Recharger les messages pour mettre à jour les infos du groupe
+        await loadMessages();
+        
+        // Déclencher le callback onLeave pour recharger les conversations dans Messages.tsx
+        if (onLeave) {
+          onLeave();
+        }
+      } else {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Erreur inconnue' };
+        }
+        console.error('❌ Erreur mise à jour groupe:', errorData);
+        toast({
+          title: "Erreur",
+          description: errorData.error || "Impossible de mettre à jour les paramètres",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Mettre à jour le rôle d'un membre
+  const updateMemberRole = async (userId: number, role: 'MEMBER' | 'MODERATOR' | 'ADMIN') => {
+    if (!group?.id || isTutorChat) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/members/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ role })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Succès",
+          description: "Rôle mis à jour",
+        });
+        await loadGroupMembers();
+      } else {
+        const errorData = await response.json();
+        toast({
+          title: "Erreur",
+          description: errorData.error || "Impossible de mettre à jour le rôle",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du rôle:', error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Charger les membres au montage si c'est un groupe
+  useEffect(() => {
+    if (!group) return;
+    const isTutorChatLocal = group.isTutorChat || false;
+    const isCreatorLocal = group.creatorId === user?.id;
+    
+    if (!isTutorChatLocal && isCreatorLocal) {
+      // Charger les membres seulement si le groupe existe
+      loadGroupMembers().catch(error => {
+        console.error('Erreur lors du chargement des membres:', error);
+      });
+      setGroupSettings({
+        name: group.name || '',
+        description: group.description || '',
+        userClass: group.userClass || '',
+        section: group.section || ''
+      });
+    }
+  }, [group?.id, user?.id]); // Utiliser group?.id pour éviter les rechargements inutiles
+
   if (!group) return null;
 
+  const isTutorChat = group.isTutorChat || false;
   const isCreator = group.creatorId === user?.id;
   const isAdmin = user?.role === 'ADMIN';
   const isMember = true; // Dans un chat 1-à-1, l'utilisateur est toujours membre
-  const canAddMembers = false; // Pas d'ajout de membres dans un chat 1-à-1
+  const canAddMembers = !isTutorChat && (isCreator || isAdmin); // Seul le créateur peut ajouter des membres (pas pour les chats tuteur)
 
   // Formatage de la durée d'enregistrement
   const formatDuration = (seconds: number) => {
@@ -1179,52 +1809,163 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
     return null;
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(isOpen) => {
-      if (!isOpen) {
-        stopRecording();
-        onClose();
-      }
-    }}>
-      <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col">
-          {/* Header */}
-          <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
-            <div className="flex items-start justify-between">
-              <div className="flex-1 pr-12">
-                <DialogTitle className="text-2xl font-bold flex items-center gap-2 text-gray-900">
-                  <Users className="h-6 w-6 text-blue-600" />
-                  {group.name}
-                </DialogTitle>
-                <DialogDescription className="mt-1 text-gray-600">
-                  {group.description || 'Échangez avec les autres membres du groupe'}
-                </DialogDescription>
-                {/* Badges pour chat 1-à-1 */}
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <GraduationCap className="h-3 w-3" />
-                    {group.userClass}
-                  </Badge>
-                  {group.section && (
-                    <Badge variant={group.section === 'En ligne' ? 'default' : 'secondary'} className={group.section === 'En ligne' ? 'bg-green-600' : ''}>
-                      {group.section}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              {/* Pas de boutons groupe pour chat 1-à-1 */}
-              <div className="flex gap-2">
-                {/* Chat privé - pas besoin de recherche/épinglage/ajout */}
-              </div>
+  // Si inline, retourner tout le contenu sans Dialog
+  if (inline) {
+    return (
+      <div className="h-full flex flex-col bg-white dark:bg-slate-900 w-full overflow-hidden">
+        {/* Header */}
+        <div className="p-4 sm:p-6 pb-4 border-b border-gray-200 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 pr-12">
+              {onBack && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onBack}
+                  className="mb-2 lg:hidden"
+                >
+                  <ArrowLeft className="h-5 w-5 mr-2" />
+                  Retour
+                </Button>
+              )}
+              <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+                {group.name}
+              </h2>
+              <p className="mt-1 text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+                {group.description || 'Échangez avec les autres membres du groupe'}
+              </p>
             </div>
-          </DialogHeader>
+            
+            {/* Menu options groupe - Desktop uniquement pour le créateur */}
+            {!isTutorChat && isCreator && (
+              <div className="relative hidden lg:block">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowGroupMenu(!showGroupMenu)}
+                  className="h-9 w-9 rounded-full hover:bg-gray-200 dark:hover:bg-slate-700"
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </Button>
+                
+                {/* Menu déroulant - Style WhatsApp */}
+                {showGroupMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowGroupMenu(false)}
+                    />
+                    <div className="absolute right-0 top-12 z-50 w-56 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 py-1">
+                      <button
+                        onClick={async () => {
+                          console.log('📝 Ouvrir dialog ajouter membres');
+                          setShowGroupMenu(false);
+                          setShowAddMemberDialog(true);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        <span>Ajouter des membres</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await loadGroupMembers();
+                            setShowMembersDialog(true);
+                            setShowGroupMenu(false);
+                          } catch (error) {
+                            console.error('Erreur lors du chargement des membres:', error);
+                            // Si erreur 404, fermer le chat
+                            if (error instanceof Error && error.message.includes('404')) {
+                              onClose?.();
+                            }
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                      >
+                        <UserCog className="h-4 w-4" />
+                        <span>Gérer les membres</span>
+                      </button>
+                      <div className="border-t border-gray-100 dark:border-slate-700 my-1"></div>
+                      <button
+                        onClick={() => {
+                          console.log('📝 Ouvrir dialog paramètres, group:', group);
+                          if (group) {
+                            setGroupSettings({
+                              name: group.name || '',
+                              description: group.description || '',
+                              userClass: group.userClass || '',
+                              section: group.section || ''
+                            });
+                            console.log('📝 Paramètres définis:', {
+                              name: group.name || '',
+                              description: group.description || '',
+                              userClass: group.userClass || '',
+                              section: group.section || ''
+                            });
+                            setShowSettingsDialog(true);
+                          }
+                          setShowGroupMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Paramètres du groupe</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          loadGroupMembers();
+                          setShowAdminsDialog(true);
+                          setShowGroupMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                      >
+                        <Shield className="h-4 w-4" />
+                        <span>Administrateurs</span>
+                      </button>
+                      <div className="border-t border-gray-100 dark:border-slate-700 my-1"></div>
+                      <button
+                        onClick={() => {
+                          handleDeleteGroup();
+                          setShowGroupMenu(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span>Supprimer le groupe</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            
+            {/* Boutons d'action - Mobile et pour non-créateur */}
+            {(!isCreator || isTutorChat) && (
+              <div className="flex items-center gap-2 lg:hidden">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSearch(!showSearch)}
+                  className="h-9 w-9 rounded-full"
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+            </div>
+            )}
+          </div>
+        </div>
 
-          {/* Barre de recherche */}
-          {showSearch && (
+        {/* Barre de recherche */}
+        {showSearch && (
             <div className="border-b bg-white p-4">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
+                    id="search-messages-input-inline"
+                    name="searchMessages"
                     placeholder="Rechercher dans les messages..."
                     value={searchQuery}
                     onChange={(e) => {
@@ -1233,6 +1974,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                     }}
                     className="pl-10"
                     autoFocus
+                    autoComplete="off"
                   />
                 </div>
                 {searchResults.length > 0 && (
@@ -1269,8 +2011,8 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
             </div>
           )}
 
-          {/* Zone de chat - Structure responsive professionnelle */}
-          <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
+        {/* Zone de chat - Structure responsive professionnelle */}
+        <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
             {isMember ? (
               <>
                 {/* Zone des messages - Scrollable */}
@@ -1280,17 +2022,48 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                     ref={scrollRef}
                     onScroll={handleScroll}
                   >
-                    <div className="p-3 sm:p-4 lg:p-6">
-                      {messages.length === 0 ? (
-                        <div className="text-center text-gray-500 py-16">
-                          <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                          <p className="text-lg font-medium text-gray-600">Aucun message pour le moment</p>
-                          <p className="text-sm mt-2 text-gray-500">Soyez le premier à envoyer un message !</p>
+                  <div className="p-2 sm:p-3 lg:p-4 xl:p-6 pb-safe">
+                    {group.isBlocked ? (
+                      <div className="text-center bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-6 sm:p-8 my-4">
+                        <Ban className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4 text-orange-500" />
+                        <h3 className="text-lg sm:text-xl font-bold text-orange-900 dark:text-orange-100 mb-2">
+                          Conversation bloquée
+                        </h3>
+                        <p className="text-sm sm:text-base text-orange-700 dark:text-orange-200 mb-4">
+                          {group.blockReason || 'Cette conversation a été bloquée par l\'administrateur pour violation des règlements du site.'}
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                          <Button
+                            variant="outline"
+                            onClick={() => window.open('/privacy-policy', '_blank')}
+                            className="border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/30"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Lire les politiques de confidentialité
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={onDelete}
+                            className="bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Supprimer la conversation
+                          </Button>
                         </div>
-                      ) : (
-                        <div className="space-y-2 sm:space-y-3">
-                          {messages.map((msg) => {
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="text-center text-gray-500 dark:text-gray-400 py-12 sm:py-16">
+                        <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-3 sm:mb-4 text-gray-300 dark:text-gray-700" />
+                        <p className="text-base sm:text-lg font-medium text-gray-600 dark:text-gray-300">Aucun message pour le moment</p>
+                        <p className="text-xs sm:text-sm mt-2 text-gray-500 dark:text-gray-400">Soyez le premier à envoyer un message !</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 sm:space-y-3">
+                        {messages.map((msg) => {
                         const isOwnMessage = msg.userId === user?.id;
+                        // Détection robuste des messages système TYALA
+                        const msgUserEmail = (msg.user as any)?.email;
+                        const isSystemMessage = msg.userId === 0 || msg.user?.id === 0 || (msg as any).senderId === 0 || msg.user?.firstName === 'TYALA' || msgUserEmail === 'system@tyala.com' || msg.user?.firstName === 'Système';
                         const isVoiceMessage = msg.messageType === 'VOICE';
                         const isImageMessage = msg.messageType === 'IMAGE';
                         const isFileMessage = msg.messageType === 'FILE';
@@ -1300,42 +2073,49 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                             key={msg.id}
                             id={`message-${msg.id}`}
                             className={cn(
-                              "flex gap-2 sm:gap-3 mb-3 sm:mb-4 group relative transition-all duration-200",
+                              "flex gap-2 sm:gap-3 mb-2.5 sm:mb-3 lg:mb-4 group relative transition-all duration-200",
                               isOwnMessage ? 'flex-row-reverse' : 'flex-row'
                             )}
                             onTouchStart={() => longPressStart(msg.id)}
                             onTouchEnd={longPressEnd}
                           >
-                            {/* Avatar - Uniquement pour les messages reçus */}
+                            {/* Avatar - Uniquement pour les messages reçus - Optimisé mobile */}
                             {!isOwnMessage && (
                               <div className="flex-shrink-0 order-1">
                                 <Avatar 
-                                  className="h-9 w-9 sm:h-11 sm:w-11 cursor-pointer ring-2 ring-white dark:ring-slate-700 shadow-md hover:ring-primary/50 transition-all duration-300 hover:scale-105"
-                                  onClick={() => openUserProfile(msg.user)}
+                                  className={cn(
+                                    "h-8 w-8 sm:h-9 sm:w-9 md:h-11 md:w-11 cursor-pointer ring-2 ring-white dark:ring-slate-700 shadow-md hover:ring-primary/50 transition-all duration-300 hover:scale-105 touch-manipulation",
+                                    isSystemMessage && "ring-2 ring-blue-500"
+                                  )}
+                                  onClick={() => !isSystemMessage && openUserProfile(msg.user)}
                                 >
-                                  {msg.user.profilePhoto ? (
+                                  {isSystemMessage ? (
+                                    <AvatarFallback className="bg-gradient-to-br from-blue-600 to-blue-700 text-white text-[10px] sm:text-xs md:text-sm font-bold">
+                                      TY
+                                    </AvatarFallback>
+                                  ) : msg.user.profilePhoto ? (
                                     <AvatarImage 
-                                      src={`http://localhost:8081/api/profile/photos/${msg.user.profilePhoto}`}
+                                      src={`${API_URL}/api/profile/photos/${msg.user.profilePhoto}`}
                                       alt={`${msg.user.firstName} ${msg.user.lastName}`}
                                       className="object-cover"
                                     />
                                   ) : (
-                                    <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary text-white text-xs sm:text-sm font-semibold">
-                                      {msg.user.firstName[0]}{msg.user.lastName[0]}
+                                    <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary text-white text-[10px] sm:text-xs md:text-sm font-semibold">
+                                      {msg.user.firstName?.[0] || ''}{msg.user.lastName?.[0] || ''}
                                     </AvatarFallback>
                                   )}
                                 </Avatar>
                               </div>
                             )}
 
-                            {/* Menu 3 points - toujours à droite */}
+                            {/* Menu 3 points - Touch target optimisé mobile */}
                             <div className="flex items-start pt-1 order-3">
                               <button
                                 onClick={() => setActivePostMenu(activePostMenu === msg.id ? null : msg.id)}
-                                className="h-6 w-6 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors duration-150"
+                                className="h-8 w-8 sm:h-6 sm:w-6 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 active:bg-gray-200 dark:active:bg-slate-600 flex items-center justify-center transition-colors duration-150 touch-manipulation"
                                 title="Plus d'options"
                               >
-                                <MoreVertical className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                                <MoreVertical className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-gray-500 dark:text-gray-400" />
                               </button>
                               
                               {/* Menu déroulant des options */}
@@ -1396,7 +2176,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                   )}
                                   
                                   {/* Actions pour les admins/moderators */}
-                                  {(user?.role === 'admin' || user?.role === 'moderator') && (
+                                  {(user?.role === 'ADMIN') && (
                                     <>
                                       <div className="border-t border-gray-100 dark:border-slate-700 my-1"></div>
                                       <button
@@ -1428,15 +2208,15 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                               )}
                             </div>
 
-                            {/* Contenu du message */}
+                            {/* Contenu du message - Responsive Mobile Pro */}
                             <div className={cn(
-                              "flex flex-col max-w-[70%] sm:max-w-[65%] md:max-w-[60%] relative order-2",
+                              "flex flex-col max-w-[75%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%] relative order-2",
                               isOwnMessage ? 'items-end' : 'items-start'
                             )}>
-                              {/* Bubble de message - Design Moderne & Épuré */}
+                              {/* Bubble de message - Design Moderne & Épuré - Optimisé mobile */}
                               <div
                                 className={cn(
-                                  "relative px-4 py-2.5 sm:px-4 sm:py-3 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 ease-out w-full",
+                                  "relative px-3 py-2 sm:px-3.5 sm:py-2.5 md:px-4 md:py-3 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 ease-out w-full",
                                   isOwnMessage
                                     ? 'bg-primary/90 dark:bg-primary/80 text-white backdrop-blur-sm rounded-br-md'
                                     : 'bg-gray-50 dark:bg-slate-800 text-foreground border border-gray-100 dark:border-slate-700 rounded-bl-md'
@@ -1445,27 +2225,37 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                 {/* Nom DANS la bulle - Uniquement pour les messages reçus */}
                                 {!isOwnMessage && (
                                   <div 
-                                    className="text-xs font-semibold text-primary dark:text-primary/90 mb-1 cursor-pointer hover:underline"
-                                    onClick={() => openUserProfile(msg.user)}
+                                    className={cn(
+                                      "flex items-center gap-2 mb-1",
+                                      !isSystemMessage && "cursor-pointer hover:underline"
+                                    )}
+                                    onClick={() => !isSystemMessage && openUserProfile(msg.user)}
                                   >
-                                    {msg.user.firstName} {msg.user.lastName}
+                                    <span className="text-xs font-semibold text-primary dark:text-primary/90">
+                                      {isSystemMessage ? 'TYALA' : `${msg.user.firstName || ''} ${msg.user.lastName || ''}`}
+                                    </span>
+                                    {isSystemMessage && (
+                                      <Badge variant="default" className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5">
+                                        ✓ Certifié
+                                      </Badge>
+                                    )}
                                   </div>
                                 )}
                                 {isVoiceMessage && msg.audioUrl ? (
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-2 sm:gap-3">
                                     <Button
                                       variant="ghost"
                                       size="icon"
                                       className={cn(
-                                        "h-10 w-10 rounded-full",
+                                        "h-9 w-9 sm:h-10 sm:w-10 rounded-full touch-manipulation active:scale-95",
                                         isOwnMessage 
                                           ? 'bg-white/20 hover:bg-white/30 text-white' 
-                                          : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+                                          : 'bg-blue-100 dark:bg-blue-900/20 hover:bg-blue-200 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                                       )}
                                       onClick={() => {
                                         if (msg.audioUrl) {
                                           playAudio(
-                                            `http://localhost:8081/api/audio/${msg.audioUrl}`,
+                                            getAudioUrl(msg.audioUrl),
                                             msg.id
                                           );
                                         } else {
@@ -1478,32 +2268,32 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                       }}
                                     >
                                       {isPlaying === msg.id ? (
-                                        <Pause className="h-5 w-5" />
+                                        <Pause className="h-4 w-4 sm:h-5 sm:w-5" />
                                       ) : (
-                                        <Play className="h-5 w-5" />
+                                        <Play className="h-4 w-4 sm:h-5 sm:w-5" />
                                       )}
                                     </Button>
-                                    <div className="flex-1 space-y-1.5">
-                                      <div className="flex items-center gap-2">
+                                    <div className="flex-1 space-y-1 sm:space-y-1.5 min-w-0">
+                                      <div className="flex items-center gap-1.5 sm:gap-2">
                                         <Volume2 className={cn(
-                                          "h-4 w-4",
-                                          isOwnMessage ? 'text-white/80' : 'text-gray-600'
+                                          "h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0",
+                                          isOwnMessage ? 'text-white/80' : 'text-gray-600 dark:text-gray-400'
                                         )} />
-                                        <span className={cn("text-sm font-medium", isOwnMessage ? 'text-white' : 'text-gray-900')}>
+                                        <span className={cn("text-xs sm:text-sm font-medium truncate", isOwnMessage ? 'text-white' : 'text-gray-900 dark:text-gray-100')}>
                                           Message vocal
                                         </span>
                                       </div>
                                       
-                                      {/* Barre de progression */}
+                                      {/* Barre de progression - Optimisée mobile */}
                                       <div className="space-y-1">
                                         <div className={cn(
-                                          "h-1.5 rounded-full overflow-hidden",
-                                          isOwnMessage ? 'bg-white/20' : 'bg-gray-200'
+                                          "h-1 sm:h-1.5 rounded-full overflow-hidden",
+                                          isOwnMessage ? 'bg-white/20' : 'bg-gray-200 dark:bg-slate-700'
                                         )}>
                                           <div 
                                             className={cn(
                                               "h-full transition-all duration-100",
-                                              isOwnMessage ? 'bg-white' : 'bg-blue-500'
+                                              isOwnMessage ? 'bg-white' : 'bg-blue-500 dark:bg-blue-400'
                                             )}
                                             style={{ 
                                               width: `${isPlaying === msg.id ? (audioProgress[msg.id] || 0) : 0}%` 
@@ -1511,9 +2301,9 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           />
                                         </div>
                                         
-                                        {/* Compteur de temps */}
+                                        {/* Compteur de temps - Optimisé mobile */}
                                         <div className={cn(
-                                          "flex items-center justify-between text-[10px] sm:text-xs",
+                                          "flex items-center justify-between text-[9px] sm:text-[10px] md:text-xs",
                                           isOwnMessage ? 'text-white/70' : 'text-gray-500 dark:text-gray-400'
                                         )}>
                                           <span>
@@ -1525,124 +2315,143 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                         </div>
                                       </div>
                                     </div>
-                                    {/* Actions spécifiques pour les messages vocaux - Téléchargement supprimé */}
                                   </div>
                                 ) : isImageMessage && msg.fileUrl ? (
-                                  <div className="space-y-2">
-                                    <div className="relative group">
+                                  <div className="space-y-1.5 sm:space-y-2">
+                                    <div className="relative group touch-manipulation">
                                       <img
-                                        src={`http://localhost:8081/api/chat-files/${msg.fileUrl}`}
+                                        src={`${API_URL}/api/chat-files/${msg.fileUrl}`}
                                         alt={msg.fileName || 'Image'}
                                         className={cn(
-                                          "max-w-full max-h-80 object-cover cursor-pointer transition-transform hover:scale-105",
+                                          "max-w-full max-h-64 sm:max-h-80 object-cover cursor-pointer transition-transform active:scale-95 rounded-lg sm:rounded-2xl",
                                           isOwnMessage 
-                                            ? 'rounded-2xl rounded-br-md' 
-                                            : 'rounded-2xl rounded-bl-md'
+                                            ? 'rounded-br-md sm:rounded-br-md' 
+                                            : 'rounded-bl-md sm:rounded-bl-md'
                                         )}
-                                        onClick={() => window.open(`http://localhost:8081/api/chat-files/${msg.fileUrl}`, '_blank')}
+                                        onClick={() => window.open(`${API_URL}/api/chat-files/${msg.fileUrl}`, '_blank')}
                                       />
                                       {/* Overlay pour l'effet hover */}
                                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-2xl transition-colors" />
                                     </div>
                                     {msg.content && msg.content !== '📷 Photo' && (
                                       <p className={cn(
-                                        "text-sm whitespace-pre-wrap break-words leading-relaxed",
-                                        isOwnMessage ? 'text-white/90' : 'text-gray-700'
+                                        "text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed",
+                                        isOwnMessage ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'
                                       )}>
                                         {msg.content}
                                       </p>
                                     )}
                                   </div>
                                 ) : isFileMessage && msg.fileUrl ? (
-                                  <div className="space-y-2">
+                                  <div className="space-y-1.5 sm:space-y-2">
                                     <div className={cn(
-                                      "flex items-center gap-3 p-3 rounded-lg border",
+                                      "flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border touch-manipulation",
                                       isOwnMessage 
-                                        ? 'bg-white/10 border-white/20' 
-                                        : 'bg-gray-50 border-gray-200'
+                                        ? 'bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10' 
+                                        : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700'
                                     )}>
                                       <div className={cn(
-                                        "p-2 rounded-lg",
-                                        isOwnMessage ? 'bg-white/20' : 'bg-blue-100'
+                                        "p-1.5 sm:p-2 rounded-lg flex-shrink-0",
+                                        isOwnMessage ? 'bg-white/20 dark:bg-white/10' : 'bg-blue-100 dark:bg-blue-900/20'
                                       )}>
                                         {getFileIcon(msg.fileType || '', msg.fileName || '')}
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <p className={cn(
-                                          "text-sm font-medium truncate",
-                                          isOwnMessage ? 'text-white' : 'text-gray-900'
+                                          "text-xs sm:text-sm font-medium truncate",
+                                          isOwnMessage ? 'text-white' : 'text-gray-900 dark:text-gray-100'
                                         )}>
                                           {msg.fileName || 'Fichier'}
                                         </p>
                                         <p className={cn(
-                                          "text-xs",
-                                          isOwnMessage ? 'text-white/70' : 'text-gray-500'
+                                          "text-[10px] sm:text-xs truncate",
+                                          isOwnMessage ? 'text-white/70 dark:text-white/50' : 'text-gray-500 dark:text-gray-400'
                                         )}>
                                           {msg.fileSize ? formatFileSize(msg.fileSize) : ''} • {getFileTypeLabel(msg.fileType || '')}
                                         </p>
                                       </div>
-                                      <div className="flex gap-1">
+                                      <div className="flex gap-0.5 sm:gap-1 flex-shrink-0">
                                         {canPreviewFile(msg.fileType || '') && (
                                           <Button
                                             variant="ghost"
                                             size="icon"
                                             className={cn(
-                                              "h-8 w-8",
+                                              "h-8 w-8 sm:h-9 sm:w-9 touch-manipulation active:scale-95",
                                               isOwnMessage 
-                                                ? 'text-white hover:bg-white/20' 
-                                                : 'text-gray-600 hover:bg-gray-100'
+                                                ? 'text-white hover:bg-white/20 dark:hover:bg-white/10' 
+                                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
                                             )}
                                             onClick={() => previewFile(msg.fileUrl!, msg.fileType || '')}
                                             title="Prévisualiser"
                                           >
-                                            <Eye className="h-4 w-4" />
+                                            <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                           </Button>
                                         )}
                                         <Button
                                           variant="ghost"
                                           size="icon"
                                           className={cn(
-                                            "h-8 w-8",
+                                            "h-8 w-8 sm:h-9 sm:w-9 touch-manipulation active:scale-95",
                                             isOwnMessage 
-                                              ? 'text-white hover:bg-white/20' 
-                                              : 'text-gray-600 hover:bg-gray-100'
+                                              ? 'text-white hover:bg-white/20 dark:hover:bg-white/10' 
+                                              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
                                           )}
                                           onClick={() => downloadFile(msg.fileUrl!, msg.fileName || 'fichier')}
                                           title="Télécharger"
                                         >
-                                          <Download className="h-4 w-4" />
+                                          <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                         </Button>
                                       </div>
                                     </div>
                                     {msg.content && msg.content !== '📎 Fichier' && (
-                                      <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                      <p className={cn(
+                                        "text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed",
+                                        isOwnMessage ? 'text-white/90 dark:text-white/80' : 'text-gray-700 dark:text-gray-300'
+                                      )}>
                                         {msg.content}
                                       </p>
                                     )}
                                   </div>
                                 ) : editingMessage === msg.id ? (
-                                  <div className="space-y-2">
+                                  <div className="space-y-1.5 sm:space-y-2">
                                     <Input
+                                      id={`edit-message-${msg.id}`}
+                                      name={`editMessage_${msg.id}`}
                                       value={editContent}
                                       onChange={(e) => setEditContent(e.target.value)}
-                                      className="bg-white/10 border-white/20 text-white placeholder-white/70"
+                                      className={cn(
+                                        "text-xs sm:text-sm",
+                                        isOwnMessage 
+                                          ? 'bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10 text-white placeholder-white/70' 
+                                          : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-gray-100'
+                                      )}
                                       placeholder="Modifier le message..."
                                       autoFocus
                                     />
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-1.5 sm:gap-2">
                                       <Button
                                         size="sm"
                                         onClick={() => editMessage(msg.id, editContent)}
-                                        className="bg-white/20 hover:bg-white/30 text-white"
+                                        className={cn(
+                                          "h-8 sm:h-9 text-xs sm:text-sm touch-manipulation active:scale-95",
+                                          isOwnMessage 
+                                            ? 'bg-white/20 dark:bg-white/10 hover:bg-white/30 dark:hover:bg-white/20 text-white' 
+                                            : 'bg-primary hover:bg-primary/90 text-white'
+                                        )}
                                       >
-                                        <Check className="h-3 w-3 mr-1" />
+                                        <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1" />
                                         Enregistrer
                                       </Button>
                                       <Button
                                         size="sm"
                                         variant="ghost"
                                         onClick={cancelEdit}
-                                        className="text-white/70 hover:text-white hover:bg-white/10"
+                                        className={cn(
+                                          "h-8 sm:h-9 text-xs sm:text-sm touch-manipulation active:scale-95",
+                                          isOwnMessage 
+                                            ? 'text-white/70 dark:text-white/50 hover:text-white hover:bg-white/10 dark:hover:bg-white/10' 
+                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
+                                        )}
                                       >
                                         Annuler
                                       </Button>
@@ -1651,14 +2460,14 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                 ) : (
                                   <>
                                     <p className={cn(
-                                      "text-sm whitespace-pre-wrap break-words leading-relaxed",
-                                      isOwnMessage ? 'text-white' : 'text-gray-900 dark:text-gray-100'
+                                      "text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed",
+                                      isOwnMessage ? 'text-white dark:text-white/90' : 'text-gray-900 dark:text-gray-100'
                                     )}>
                                       {searchQuery ? (
                                         <span dangerouslySetInnerHTML={{
                                           __html: msg.content.replace(
                                             new RegExp(`(${searchQuery})`, 'gi'),
-                                            '<mark class="bg-yellow-200 px-1 rounded">$1</mark>'
+                                            '<mark class="bg-yellow-200 dark:bg-yellow-900/50 px-1 rounded">$1</mark>'
                                           )
                                         }} />
                                       ) : (
@@ -1666,19 +2475,19 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                       )}
                                     </p>
                                     
-                                    {/* Heure en bas à droite de la bulle */}
+                                    {/* Heure en bas à droite de la bulle - Optimisée mobile */}
                                     <div className={cn(
                                       "flex items-center gap-1 mt-1 justify-end",
-                                      isOwnMessage ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'
+                                      isOwnMessage ? 'text-white/70 dark:text-white/50' : 'text-gray-400 dark:text-gray-500'
                                     )}>
-                                      <span className="text-[10px] sm:text-xs font-medium">
+                                      <span className="text-[9px] sm:text-[10px] md:text-xs font-medium">
                                         {new Date(msg.createdAt).toLocaleTimeString('fr-FR', {
                                           hour: '2-digit',
                                           minute: '2-digit'
                                         })}
                                       </span>
                                       {isOwnMessage && (
-                                        <CheckCheck className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                                        <CheckCheck className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
                                       )}
                                     </div>
                                   </>
@@ -1867,104 +2676,108 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                   </div>
                 )}
 
-                {/* Zone de saisie - Design Moderne & Épuré */}
-                <div className="border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5 flex-shrink-0 backdrop-blur-lg">
-                  {/* Indicateur d'enregistrement */}
+                {/* Zone de saisie - Design Moderne & Épuré - Responsive Mobile Pro */}
+                <div className="border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 sm:p-4 lg:p-5 flex-shrink-0 backdrop-blur-lg safe-area-inset-bottom">
+                  {/* Indicateur d'enregistrement - Optimisé mobile */}
                   {isRecording && (
-                    <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-3 w-3 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                          Enregistrement en cours... {formatDuration(recordingDuration)}
+                    <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+                        <span className="text-xs sm:text-sm font-medium text-red-700 dark:text-red-400 truncate">
+                          Enregistrement... {formatDuration(recordingDuration)}
                         </span>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={stopRecording}
-                        className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30"
+                        className="h-8 w-8 sm:h-9 sm:w-9 p-0 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
+                        title="Arrêter"
                       >
-                        Arrêter
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   )}
 
-                  {/* Prévisualisation du fichier sélectionné */}
+                  {/* Prévisualisation du fichier sélectionné - Optimisé mobile */}
                   {selectedFile && (
-                    <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                    <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                           {previewUrl ? (
                             <img
                               src={previewUrl}
                               alt="Preview"
-                              className="h-12 w-12 rounded-lg object-cover"
+                              className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover flex-shrink-0"
                             />
                           ) : (
-                            <div className="h-12 w-12 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
                               {getFileIcon(selectedFile.type, selectedFile.name)}
                             </div>
                           )}
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                               {selectedFile.name}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 truncate">
                               {formatFileSize(selectedFile.size)} • {getFileTypeLabel(selectedFile.type)}
                             </p>
                           </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 flex-shrink-0">
                           {canPreviewFile(selectedFile.type) && (
                             <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => previewFile(URL.createObjectURL(selectedFile), selectedFile.type)}
-                              className="h-8 w-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                              className="h-8 w-8 sm:h-9 sm:w-9 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
                               title="Prévisualiser"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             </Button>
                           )}
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={cancelFileSelection}
-                            className="h-8 w-8 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                            className="h-8 w-8 sm:h-9 sm:w-9 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
                             title="Supprimer"
                           >
-                            <X className="h-4 w-4" />
+                            <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                           </Button>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  <div className="flex gap-2 sm:gap-3 items-end">
+                  <div className="flex gap-1.5 sm:gap-2 lg:gap-3 items-end">
                     <div className="flex-1 relative">
                       <Input
+                        id="message-input-inline"
+                        name="messageInline"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={handleKeyPress}
-                        placeholder={selectedFile ? "Ajouter un commentaire... (Entrée pour envoyer)" : "Écrivez votre message... (Entrée pour envoyer)"}
+                        placeholder={selectedFile ? "Commentaire... (Entrée)" : "Message... (Entrée)"}
                         disabled={sending || isRecording}
-                        className="w-full min-h-[44px] sm:min-h-[48px] rounded-full border-gray-300 focus:border-blue-500 focus:ring-blue-500 pr-12"
+                        autoComplete="off"
+                        className="w-full min-h-[44px] sm:min-h-[48px] text-sm sm:text-base rounded-full sm:rounded-lg border-gray-300 dark:border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 pr-10 sm:pr-12 py-2.5 sm:py-3"
                       />
                       {/* Indicateur de frappe */}
                       {sending && (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                        <div className="absolute right-2.5 sm:right-3 top-1/2 transform -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-b-2 border-blue-500"></div>
                         </div>
                       )}
                     </div>
                     
-                    {/* Bouton fichier */}
+                    {/* Bouton fichier - Touch target optimisé */}
                     <Button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={sending || isRecording || !!selectedFile}
                       size="icon"
                       variant="outline"
-                      className="h-10 w-10 sm:h-11 sm:w-11 rounded-full shrink-0 border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+                      className="h-11 w-11 sm:h-12 sm:w-12 rounded-full sm:rounded-lg shrink-0 border-gray-300 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 touch-manipulation active:scale-95"
                       title="Joindre un fichier"
                     >
                       <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1979,14 +2792,14 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                       className="hidden"
                     />
                     
-                    {/* Bouton microphone */}
+                    {/* Bouton microphone - Touch target optimisé */}
                     <Button
                       onClick={isRecording ? stopRecording : startRecording}
                       disabled={sending || !!newMessage.trim() || !!selectedFile}
                       size="icon"
                       variant={isRecording ? "destructive" : "outline"}
                       className={cn(
-                        "h-10 w-10 sm:h-11 sm:w-11 rounded-full shrink-0 border-gray-300 hover:border-red-500 hover:bg-red-50",
+                        "h-11 w-11 sm:h-12 sm:w-12 rounded-full sm:rounded-lg shrink-0 border-gray-300 dark:border-slate-700 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation active:scale-95",
                         isRecording && "animate-pulse bg-red-500 hover:bg-red-600 text-white border-red-500"
                       )}
                       title={isRecording ? "Arrêter l'enregistrement" : "Enregistrer un message vocal"}
@@ -1998,7 +2811,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                       )}
                     </Button>
 
-                    {/* Bouton envoyer */}
+                    {/* Bouton envoyer - Touch target optimisé */}
                     <Button
                       onClick={() => {
                         if (selectedFile) {
@@ -2009,13 +2822,13 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                       }}
                       disabled={(!newMessage.trim() && !selectedFile) || sending || isRecording}
                       size="icon"
-                      className="h-10 w-10 sm:h-11 sm:w-11 rounded-full shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                      className="h-11 w-11 sm:h-12 sm:w-12 rounded-full sm:rounded-lg shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 shadow-md hover:shadow-lg transition-all disabled:opacity-50 touch-manipulation active:scale-95"
                       title={selectedFile ? "Envoyer le fichier" : "Envoyer le message"}
                     >
                       {sending ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
                       ) : (
-                        <Send className="h-5 w-5" />
+                        <Send className="h-4 w-4 sm:h-5 sm:w-5" />
                       )}
                     </Button>
                   </div>
@@ -2044,7 +2857,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                           return;
                         }
 
-                        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/join`, {
+                        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/join`, {
                           method: 'POST',
                           headers: {
                             'Authorization': `Bearer ${token}`,
@@ -2082,77 +2895,709 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                 </Card>
               </div>
             )}
-          </div>
+        </div>
 
-          {/* Footer avec actions */}
-          {isMember && (
-            <div className="border-t p-4 bg-gray-50 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="text-sm text-gray-600">
-                  💬 Messages actualisés automatiquement
-                </div>
-                {/* Indicateur de statut de connexion */}
-                <div className="flex items-center gap-1">
-                  <div className={`w-2 h-2 rounded-full ${
-                    connectionStatus === 'connected' ? 'bg-green-500' :
-                    connectionStatus === 'reconnecting' ? 'bg-yellow-500 animate-pulse' :
-                    'bg-red-500'
-                  }`} />
-                  <span className="text-xs text-gray-500">
-                    {connectionStatus === 'connected' ? 'Connecté' :
-                     connectionStatus === 'reconnecting' ? 'Reconnexion...' :
-                     'Déconnecté'}
-                  </span>
-                </div>
-                {lastMessageTime && (
-                  <span className="text-xs text-gray-400">
-                    Dernière mise à jour: {lastMessageTime.toLocaleTimeString()}
-                  </span>
-                )}
+        {/* Footer avec actions */}
+        {isMember && (
+          <div className="border-t p-4 bg-gray-50 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-gray-600">
+                💬 Messages actualisés automatiquement
               </div>
-              <div className="flex gap-2">
-                {connectionStatus === 'disconnected' && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => loadMessages()}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Reconnecter
-                  </Button>
-                )}
-                {isCreator ? (
-                  <Button 
-                    variant="destructive" 
-                    size="sm"
-                    onClick={handleDeleteGroup}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Supprimer
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleLeaveGroup}
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Quitter
-                  </Button>
+              {/* Indicateur de statut de connexion */}
+              <div className="flex items-center gap-1">
+                <div className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'connected' ? 'bg-green-500' :
+                  connectionStatus === 'reconnecting' ? 'bg-yellow-500 animate-pulse' :
+                  'bg-red-500'
+                }`} />
+                <span className="text-xs text-gray-500">
+                  {connectionStatus === 'connected' ? 'Connecté' :
+                   connectionStatus === 'reconnecting' ? 'Reconnexion...' :
+                   'Déconnecté'}
+                </span>
+              </div>
+              {lastMessageTime && (
+                <span className="text-xs text-gray-400">
+                  Dernière mise à jour: {lastMessageTime.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {connectionStatus === 'disconnected' && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => loadMessages()}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reconnecter
+                </Button>
+              )}
+              {isCreator ? (
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={handleDeleteGroup}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleLeaveGroup}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Quitter
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Dialogs de confirmation modernes */}
+        <ConfirmDialog
+          open={showLeaveConfirm}
+          onOpenChange={setShowLeaveConfirm}
+          onConfirm={handleConfirmLeave}
+          title="Quitter le groupe"
+          description={`Êtes-vous sûr de vouloir quitter le groupe "${group?.name}" ? Vous ne pourrez plus voir les messages de ce groupe.`}
+          confirmText="Quitter"
+          cancelText="Annuler"
+          variant="default"
+        />
+
+        <ConfirmDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          onConfirm={handleConfirmDelete}
+          title="Supprimer le groupe"
+          description={`Voulez-vous vraiment supprimer le groupe "${group?.name}" ? Cette action est irréversible et tous les messages seront perdus.`}
+          confirmText="Supprimer"
+          cancelText="Annuler"
+          variant="destructive"
+        />
+
+        <ConfirmDialog
+          open={showRemoveMemberConfirm}
+          onOpenChange={(open) => {
+            setShowRemoveMemberConfirm(open);
+            if (!open) setMemberToRemove(null);
+          }}
+          onConfirm={handleConfirmRemoveMember}
+          title="Retirer le membre"
+          description={`Êtes-vous sûr de vouloir retirer ${memberToRemove?.name} du groupe "${group?.name}" ?`}
+          confirmText="Retirer"
+          cancelText="Annuler"
+          variant="destructive"
+        />
+      </div>
+    );
+  }
+
+  // Sinon, retourner avec Dialog (comportement original)
+  return (
+    <>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen) {
+        stopRecording();
+        onClose();
+      }
+    }}>
+      <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col">
+        {/* Header */}
+        <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 pr-12">
+              <DialogTitle className="text-2xl font-bold flex items-center gap-2 text-gray-900">
+                <Users className="h-6 w-6 text-blue-600" />
+                {group.name}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-gray-600">
+                {group.description || 'Échangez avec les autres membres du groupe'}
+              </DialogDescription>
+              {/* Badges pour chat 1-à-1 */}
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <GraduationCap className="h-3 w-3" />
+                  {group.userClass}
+                </Badge>
+                {group.section && (
+                  <Badge variant={group.section === 'En ligne' ? 'default' : 'secondary'} className={group.section === 'En ligne' ? 'bg-green-600' : ''}>
+                    {group.section}
+                  </Badge>
                 )}
               </div>
             </div>
+            {/* Pas de boutons groupe pour chat 1-à-1 */}
+            <div className="flex gap-2">
+              {/* Chat privé - pas besoin de recherche/épinglage/ajout */}
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Barre de recherche */}
+        {showSearch && (
+          <div className="border-b bg-white p-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  id="search-messages-input-dialog"
+                  name="searchMessagesDialog"
+                  placeholder="Rechercher dans les messages..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    searchMessages(e.target.value);
+                  }}
+                  className="pl-10"
+                  autoFocus
+                  autoComplete="off"
+                />
+              </div>
+              {searchResults.length > 0 && (
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={goToPreviousResult}
+                    disabled={searchResults.length === 0}
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <span className="px-2">
+                    {currentSearchIndex + 1} / {searchResults.length}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={goToNextResult}
+                    disabled={searchResults.length === 0}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSearch}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Zone de chat - Structure responsive professionnelle */}
+        <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
+          {isMember ? (
+            <>
+              {/* Zone des messages - Scrollable */}
+              <div className="flex-1 overflow-hidden relative">
+                <ScrollArea 
+                  className="h-full" 
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                >
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    {messages.length === 0 ? (
+                      <div className="text-center text-gray-500 py-16">
+                        <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-medium text-gray-600">Aucun message pour le moment</p>
+                        <p className="text-sm mt-2 text-gray-500">Soyez le premier à envoyer un message !</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 sm:space-y-3">
+                        {messages.map((msg) => {
+                          const isOwnMessage = msg.userId === user?.id;
+                          // Vérifier si c'est un message système TYALA
+                          const isSystemMessage = msg.userId === 0 || (msg as any).senderId === 0 || msg.user?.id === 0 || msg.user?.firstName === 'TYALA' || (msg.user as any)?.email === 'system@tyala.com';
+                          const isVoiceMessage = msg.messageType === 'VOICE';
+                          const isImageMessage = msg.messageType === 'IMAGE';
+                          const isFileMessage = msg.messageType === 'FILE';
+                          
+                          return (
+                            <div
+                              key={msg.id}
+                              id={`message-${msg.id}`}
+                              className={cn(
+                                "flex gap-2 sm:gap-3 mb-3 sm:mb-4 group relative transition-all duration-200",
+                                isOwnMessage ? 'flex-row-reverse' : 'flex-row'
+                              )}
+                              onTouchStart={() => longPressStart(msg.id)}
+                              onTouchEnd={longPressEnd}
+                            >
+                              {/* Avatar - Uniquement pour les messages reçus */}
+                              {!isOwnMessage && (
+                                <div className="flex-shrink-0 order-1">
+                                  <Avatar 
+                                    className={cn(
+                                      "h-9 w-9 sm:h-11 sm:w-11 ring-2 ring-white dark:ring-slate-700 shadow-md hover:ring-primary/50 transition-all duration-300 hover:scale-105",
+                                      !isSystemMessage && "cursor-pointer"
+                                    )}
+                                    onClick={() => !isSystemMessage && openUserProfile(msg.user)}
+                                  >
+                                    {isSystemMessage ? (
+                                      <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xs sm:text-sm font-semibold">
+                                        TY
+                                      </AvatarFallback>
+                                    ) : msg.user.profilePhoto ? (
+                                      <AvatarImage 
+                                        src={`${API_URL}/api/profile/photos/${msg.user.profilePhoto}`}
+                                        alt={`${msg.user.firstName} ${msg.user.lastName}`}
+                                        className="object-cover"
+                                      />
+                                    ) : (
+                                      <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary text-white text-xs sm:text-sm font-semibold">
+                                        {msg.user.firstName?.[0] || ''}{msg.user.lastName?.[0] || ''}
+                                      </AvatarFallback>
+                                    )}
+                                  </Avatar>
+                                </div>
+                              )}
+
+                              {/* Contenu du message simplifié pour Dialog */}
+                              <div className={cn(
+                                "flex flex-col max-w-[70%] sm:max-w-[65%] md:max-w-[60%] relative order-2",
+                                isOwnMessage ? 'items-end' : 'items-start'
+                              )}>
+                                <div
+                                  className={cn(
+                                    "relative px-4 py-2.5 sm:px-4 sm:py-3 rounded-2xl shadow-sm",
+                                    isOwnMessage
+                                      ? 'bg-primary/90 text-white rounded-br-md'
+                                      : 'bg-gray-50 text-foreground border border-gray-100 rounded-bl-md'
+                                  )}
+                                >
+                                  {!isOwnMessage && (
+                                    <div 
+                                      className="text-xs font-semibold text-primary mb-1 flex items-center gap-2"
+                                    >
+                                      <span>{isSystemMessage ? 'TYALA' : `${msg.user.firstName || ''} ${msg.user.lastName || ''}`.trim()}</span>
+                                      {isSystemMessage && (
+                                        <Badge variant="default" className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5">
+                                          ✓ Certifié
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                  {isVoiceMessage && msg.audioUrl && (
+                                    <div className="flex items-center gap-3">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={cn(
+                                          "h-10 w-10 rounded-full",
+                                          isOwnMessage 
+                                            ? 'bg-white/20 hover:bg-white/30 text-white' 
+                                            : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+                                        )}
+                                        onClick={() => {
+                                          if (msg.audioUrl) {
+                                            playAudio(
+                                              getAudioUrl(msg.audioUrl),
+                                              msg.id
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        {isPlaying === msg.id ? (
+                                          <Pause className="h-5 w-5" />
+                                        ) : (
+                                          <Play className="h-5 w-5" />
+                                        )}
+                                      </Button>
+                                      <span className="text-sm">Message vocal</span>
+                                    </div>
+                                  )}
+                                  {isImageMessage && msg.fileUrl && (
+                                    <img
+                                      src={`${API_URL}/api/chat-files/${msg.fileUrl}`}
+                                      alt={msg.fileName || 'Image'}
+                                      className="max-w-full max-h-80 object-cover rounded-lg"
+                                    />
+                                  )}
+                                  {isFileMessage && msg.fileUrl && (
+                                    <div className="flex items-center gap-2">
+                                      <File className="h-4 w-4" />
+                                      <span className="text-sm">{msg.fileName || 'Fichier'}</span>
+                                    </div>
+                                  )}
+                                  {msg.messageType === 'TEXT' && (
+                                    <p className={cn(
+                                      "text-sm whitespace-pre-wrap break-words",
+                                      isOwnMessage ? 'text-white' : 'text-gray-900'
+                                    )}>
+                                      {msg.content}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className={cn(
+                                  "text-xs mt-1",
+                                  isOwnMessage ? 'text-white/70' : 'text-gray-400'
+                                )}>
+                                  {new Date(msg.createdAt).toLocaleTimeString('fr-FR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Zone de saisie */}
+              <div className="border-t border-gray-100 bg-white p-4 flex-shrink-0">
+                {selectedFile && (
+                  <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{selectedFile.name}</span>
+                      <Button variant="ghost" size="sm" onClick={cancelFileSelection}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2 items-end">
+                  <Input
+                    id="message-input"
+                    name="message"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Écrivez votre message..."
+                    disabled={sending || isRecording}
+                    className="flex-1"
+                    autoComplete="off"
+                  />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    id="file-input"
+                    name="file"
+                    type="file"
+                    accept="image/*,application/pdf,.doc,.docx"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    size="icon"
+                    variant={isRecording ? "destructive" : "outline"}
+                  >
+                    {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (selectedFile) {
+                        sendSelectedFile();
+                      } else {
+                        sendMessage(newMessage);
+                      }
+                    }}
+                    disabled={(!newMessage.trim() && !selectedFile) || sending}
+                    size="icon"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <Card className="p-8 text-center max-w-md">
+                <Users className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                <h3 className="text-xl font-bold mb-2">Rejoignez ce groupe</h3>
+                <p className="text-gray-600 mb-6">
+                  Vous devez être membre de ce groupe pour voir les messages.
+                </p>
+                <Button 
+                  className="w-full" 
+                  size="lg"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/join`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json'
+                        }
+                      });
+                      if (response.ok) {
+                        toast({
+                          title: "Succès !",
+                          description: "Vous avez rejoint le groupe avec succès"
+                        });
+                        window.location.reload();
+                      }
+                    } catch (error) {
+                      console.error('Erreur:', error);
+                    }
+                  }}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Rejoindre le groupe
+                </Button>
+              </Card>
+            </div>
           )}
+        </div>
       </DialogContent>
 
       {/* Dialog pour ajouter des membres */}
+      {/* Dialog Gérer les membres */}
+      <Dialog open={showMembersDialog} onOpenChange={setShowMembersDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Gérer les membres</DialogTitle>
+            <DialogDescription>
+              Liste des membres du groupe. Vous pouvez retirer des membres ou modifier leurs rôles.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-2">
+              {groupMembers.map((member) => (
+                <div key={member.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      {member.user.profilePhoto ? (
+                        <AvatarImage src={`${API_URL}/api/profile/photos/${member.user.profilePhoto}`} />
+                      ) : (
+                        <AvatarFallback>
+                          {member.user.firstName[0]}{member.user.lastName[0]}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{member.user.firstName} {member.user.lastName}</p>
+                      <p className="text-sm text-gray-500">{member.user.email}</p>
+                      {member.userId === group?.creatorId && (
+                        <Badge variant="destructive" className="mt-1">Créateur</Badge>
+                      )}
+                      {member.userId !== group?.creatorId && (
+                        <Badge variant="secondary" className="mt-1">{member.role}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  {member.userId !== group?.creatorId && isCreator && (
+                    <div className="flex gap-2">
+                      <Select
+                        name={`memberRole_${member.userId}`}
+                        value={member.role}
+                        onValueChange={(value: 'MEMBER' | 'MODERATOR' | 'ADMIN') => {
+                          updateMemberRole(member.userId, value);
+                        }}
+                      >
+                        <SelectTrigger id={`role-select-${member.userId}`} className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="MEMBER">Membre</SelectItem>
+                          <SelectItem value="MODERATOR">Modérateur</SelectItem>
+                          <SelectItem value="ADMIN">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveMemberClick(member.userId, `${member.user.firstName} ${member.user.lastName}`)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Paramètres du groupe */}
+      {showSettingsDialog && (
+        <Dialog open={showSettingsDialog} onOpenChange={(open) => {
+          console.log('📝 Dialog paramètres onOpenChange:', open);
+          setShowSettingsDialog(open);
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Paramètres du groupe</DialogTitle>
+              <DialogDescription>
+                Modifiez les informations du groupe
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="group-name">Nom du groupe</Label>
+                <Input
+                  id="group-name"
+                  name="groupName"
+                  value={groupSettings.name}
+                  onChange={(e) => {
+                    console.log('📝 Nom changé:', e.target.value);
+                    setGroupSettings({ ...groupSettings, name: e.target.value });
+                  }}
+                  placeholder="Nom du groupe"
+                  className="mt-1"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <Label htmlFor="group-description">Description</Label>
+                <Textarea
+                  id="group-description"
+                  name="groupDescription"
+                  value={groupSettings.description || ''}
+                  onChange={(e) => {
+                    console.log('📝 Description changée:', e.target.value);
+                    setGroupSettings({ ...groupSettings, description: e.target.value });
+                  }}
+                  placeholder="Description du groupe"
+                  rows={3}
+                  className="mt-1"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <Label htmlFor="group-class">Classe</Label>
+                <Input
+                  id="group-class"
+                  name="groupClass"
+                  value={groupSettings.userClass || ''}
+                  onChange={(e) => {
+                    console.log('📝 Classe changée:', e.target.value);
+                    setGroupSettings({ ...groupSettings, userClass: e.target.value });
+                  }}
+                  placeholder="ex: Terminale"
+                  className="mt-1"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <Label htmlFor="group-section">Section</Label>
+                <Input
+                  id="group-section"
+                  name="groupSection"
+                  value={groupSettings.section || ''}
+                  onChange={(e) => {
+                    console.log('📝 Section changée:', e.target.value);
+                    setGroupSettings({ ...groupSettings, section: e.target.value });
+                  }}
+                  placeholder="ex: SMP"
+                  className="mt-1"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => {
+                  console.log('📝 Annuler modifications');
+                  setShowSettingsDialog(false);
+                }}>
+                  Annuler
+                </Button>
+                <Button onClick={() => {
+                  console.log('📝 Enregistrer paramètres:', groupSettings);
+                  updateGroupSettings();
+                }}>
+                  Enregistrer
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog Administrateurs */}
+      <Dialog open={showAdminsDialog} onOpenChange={setShowAdminsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Gérer les administrateurs</DialogTitle>
+            <DialogDescription>
+              Promouvoir ou rétrograder des membres en tant qu'administrateurs ou modérateurs.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-2">
+              {groupMembers
+                .filter(m => m.userId !== group?.creatorId)
+                .map((member) => (
+                <div key={member.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      {member.user.profilePhoto ? (
+                        <AvatarImage src={`${API_URL}/api/profile/photos/${member.user.profilePhoto}`} />
+                      ) : (
+                        <AvatarFallback>
+                          {member.user.firstName[0]}{member.user.lastName[0]}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{member.user.firstName} {member.user.lastName}</p>
+                      <p className="text-sm text-gray-500">{member.user.email}</p>
+                      <Badge variant={member.role === 'ADMIN' ? 'destructive' : member.role === 'MODERATOR' ? 'default' : 'secondary'} className="mt-1">
+                        {member.role === 'ADMIN' ? 'Administrateur' : member.role === 'MODERATOR' ? 'Modérateur' : 'Membre'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <Select
+                    value={member.role}
+                    onValueChange={(value: 'MEMBER' | 'MODERATOR' | 'ADMIN') => {
+                      updateMemberRole(member.userId, value);
+                    }}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MEMBER">Membre</SelectItem>
+                      <SelectItem value="MODERATOR">Modérateur</SelectItem>
+                      <SelectItem value="ADMIN">Administrateur</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              {groupMembers.filter(m => m.userId !== group?.creatorId).length === 0 && (
+                <p className="text-center text-gray-500 py-8">Aucun autre membre dans le groupe</p>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
       <AddMemberDialog
         group={group}
         open={showAddMemberDialog}
-        onClose={() => setShowAddMemberDialog(false)}
-        onMemberAdded={() => {
-          if (onLeave) onLeave();
+        onClose={() => {
+          console.log('📝 Fermer dialog ajouter membres');
+          setShowAddMemberDialog(false);
+        }}
+        onMemberAdded={async () => {
+          console.log('✅ Membre ajouté, recharger les données');
+          await loadGroupMembers();
+          await loadMessages();
+          // Recharger les données du groupe si nécessaire
+          if (onLeave) {
+            onLeave(); // Cela déclenchera un rechargement
+          }
         }}
       />
 
@@ -2169,7 +3614,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                 <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
                   {selectedUser.profilePhoto ? (
                     <AvatarImage 
-                      src={`http://localhost:8081/api/profile/photos/${selectedUser.profilePhoto}`}
+                      src={`${API_URL}/api/profile/photos/${selectedUser.profilePhoto}`}
                       alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
                       className="object-cover"
                     />
@@ -2186,11 +3631,11 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                   <p className="text-xs sm:text-sm text-gray-500 mt-1 break-all">{selectedUser.email}</p>
                   {selectedUser.role && (
                     <Badge 
-                      variant={selectedUser.role === 'admin' ? 'destructive' : 'secondary'} 
+                      variant={selectedUser.role === 'ADMIN' ? 'destructive' : 'secondary'} 
                       className="mt-2 text-xs"
                     >
-                      {selectedUser.role === 'admin' ? 'Administrateur' : 
-                       selectedUser.role === 'moderator' ? 'Modérateur' : 'Étudiant'}
+                      {selectedUser.role === 'ADMIN' ? 'Administrateur' : 
+                       selectedUser.role === 'TUTOR' ? 'Tuteur' : 'Étudiant'}
                     </Badge>
                   )}
                 </div>
@@ -2314,7 +3759,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                     Envoyer un message privé
                   </Button>
 
-                  {(user?.role === 'admin' || user?.role === 'moderator') && selectedUser.role !== 'admin' && (
+                  {(user?.role === 'ADMIN') && selectedUser.role !== 'ADMIN' && (
                     <Button 
                       variant="outline" 
                       className="w-full justify-start text-xs sm:text-sm text-orange-600 hover:text-orange-700"
@@ -2336,6 +3781,44 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         </DialogContent>
       </Dialog>
     </Dialog>
+
+    {/* Dialogs de confirmation modernes */}
+    <ConfirmDialog
+        open={showLeaveConfirm}
+        onOpenChange={setShowLeaveConfirm}
+        onConfirm={handleConfirmLeave}
+        title="Quitter le groupe"
+        description={`Êtes-vous sûr de vouloir quitter le groupe "${group?.name}" ? Vous ne pourrez plus voir les messages de ce groupe.`}
+        confirmText="Quitter"
+        cancelText="Annuler"
+        variant="default"
+      />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={handleConfirmDelete}
+        title="Supprimer le groupe"
+        description={`Voulez-vous vraiment supprimer le groupe "${group?.name}" ? Cette action est irréversible et tous les messages seront perdus.`}
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={showRemoveMemberConfirm}
+        onOpenChange={(open) => {
+          setShowRemoveMemberConfirm(open);
+          if (!open) setMemberToRemove(null);
+        }}
+        onConfirm={handleConfirmRemoveMember}
+        title="Retirer le membre"
+        description={`Êtes-vous sûr de vouloir retirer ${memberToRemove?.name} du groupe "${group?.name}" ?`}
+        confirmText="Retirer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
+    </>
   );
 };
 

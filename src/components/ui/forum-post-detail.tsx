@@ -116,8 +116,13 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
   };
 
   const isLiked = post ? post.likes.some(like => like.userId === user?.id) : false;
-  const canEdit = user && post && (user.id === post.author.id || user.role === 'ADMIN');
-  const canDelete = user && post && (user.id === post.author.id || user.role === 'ADMIN');
+  // Vérifier si l'utilisateur peut modifier/supprimer (auteur ou admin)
+  const canEdit = user && post && (
+    user.id === post.author.id || user.role === 'ADMIN'
+  );
+  const canDelete = user && post && (
+    user.id === post.author.id || user.role === 'ADMIN'
+  );
 
   if (!post) return null;
 
