@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Users, Trophy, Star, CheckCircle } from "lucide-r
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useState, useEffect } from "react";
 import studentsBanner from "@/assets/students-banner.jpg";
 import student1 from "@/assets/student1.jpg";
@@ -13,15 +14,24 @@ const HeroSection = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   
   // Phrases d'animation courtes sur l'éducation
-  const educationPhrases = [
-    "Réussir ses examens",
-    "Apprendre efficacement",
-    "Maîtriser les matières",
-    "Étudier intelligemment",
-    "Transformer sa vie"
-  ];
+  const educationPhrases = language === 'fr' 
+    ? [
+        "Réussir ses examens",
+        "Apprendre efficacement",
+        "Maîtriser les matières",
+        "Étudier intelligemment",
+        "Transformer sa vie"
+      ]
+    : [
+        "Reyisi nan egzamen yo",
+        "Aprann efektivman",
+        "Matrise matyè yo",
+        "Etidye entelijan",
+        "Transfòme lavi ou"
+      ];
 
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [displayedText, setDisplayedText] = useState("");
@@ -79,15 +89,19 @@ const HeroSection = () => {
         navigate('/dashboard');
       }
       toast({
-        title: "Bienvenue !",
-        description: `Bon retour, ${user.firstName} !`,
+        title: language === 'fr' ? "Bienvenue !" : "Byenveni !",
+        description: language === 'fr' 
+          ? `Bon retour, ${user.firstName} !`
+          : `Bon retou, ${user.firstName} !`,
       });
     } else {
       // Utilisateur non connecté, rediriger vers la page de connexion
       navigate('/login');
       toast({
-        title: "Connexion requise",
-        description: "Veuillez vous connecter pour accéder aux fonctionnalités",
+        title: language === 'fr' ? "Connexion requise" : "Koneksyon obligatwa",
+        description: language === 'fr' 
+          ? "Veuillez vous connecter pour accéder aux fonctionnalités"
+          : "Tanpri konekte pou aksede fonksyon yo",
       });
     }
   };
@@ -95,8 +109,10 @@ const HeroSection = () => {
   const handleFindTutor = () => {
     navigate('/tutors');
     toast({
-      title: "Recherche de tuteurs",
-      description: "Découvrez nos tuteurs experts",
+      title: language === 'fr' ? "Recherche de tuteurs" : "Chèche titor",
+      description: language === 'fr' 
+        ? "Découvrez nos tuteurs experts"
+        : "Dekouvri titor ekspè nou yo",
     });
   };
 
@@ -112,17 +128,17 @@ const HeroSection = () => {
             {/* Badge */}
             <div className="inline-flex items-center gap-1 sm:gap-2 bg-blue-100 text-blue-800 rounded-full px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium mb-4 sm:mb-6">
               <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Excellence dans la préparation aux examens</span>
-              <span className="sm:hidden">Excellence aux examens</span>
+              <span className="hidden sm:inline">{t.home?.hero?.badge || (language === 'fr' ? 'Excellence dans la préparation aux examens' : 'Ekselans nan preparasyon pou egzamen')}</span>
+              <span className="sm:hidden">{t.home?.hero?.badgeShort || (language === 'fr' ? 'Excellence aux examens' : 'Ekselans egzamen')}</span>
             </div>
 
             {/* Main Headline */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 sm:mb-6 leading-tight">
               <div className="mb-2 sm:mb-4">
-                Votre Réussite
+                {t.home?.hero?.title || (language === 'fr' ? 'Votre Réussite' : 'Siksè ou')}
                 <br />
                 <span className="text-primary">
-                  à Portée de Clic
+                  {t.home?.hero?.titleHighlight || (language === 'fr' ? 'à Portée de Clic' : 'Sou yon klike')}
                 </span>
               </div>
               
@@ -137,8 +153,9 @@ const HeroSection = () => {
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-6 sm:mb-8 max-w-2xl">
-              Maîtrisez vos examens de terminale et de 9ème avec notre plateforme numérique complète. 
-              Flashcards, exercices et tuteurs experts - tout en un seul endroit pour votre réussite.
+              {t.home?.hero?.subtitle || (language === 'fr' 
+                ? 'Maîtrisez vos examens de terminale et de 9ème avec notre plateforme numérique complète. Flashcards, exercices et tuteurs experts - tout en un seul endroit pour votre réussite.'
+                : 'Matrise egzamen Tèminal ak 9yèm ou yo ak platfòm nimerik konplè nou an. Flashcards, egzèsis ak titor ekspè - tout nan yon sèl kote pou siksè ou.')}
             </p>
 
             {/* Features */}
@@ -147,31 +164,33 @@ const HeroSection = () => {
                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
-                <span className="text-gray-700">Plus efficace que les méthodes traditionnelles</span>
+                <span className="text-gray-700">{t.home?.hero?.feature1 || (language === 'fr' ? 'Plus efficace que les méthodes traditionnelles' : 'Pi efikas pase metòd tradisyonèl yo')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                   <BookOpen className="w-5 h-5 text-blue-600" />
                 </div>
-                <span className="text-gray-700">Vos révisions en un clic</span>
+                <span className="text-gray-700">{t.home?.hero?.feature2 || (language === 'fr' ? 'Vos révisions en un clic' : 'Revizyon ou sou yon klike')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
                   <Star className="w-5 h-5 text-purple-600" />
                 </div>
-                <span className="text-gray-700">Préparation ciblée aux examens</span>
+                <span className="text-gray-700">{t.home?.hero?.feature3 || (language === 'fr' ? 'Préparation ciblée aux examens' : 'Preparasyon sib pou egzamen')}</span>
               </div>
             </div>
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 sm:mb-12">
               <Button variant="hero" size="lg" onClick={handleStartNow} className="w-full sm:w-auto">
-                {user ? "Accéder au Dashboard" : "Commencer Maintenant"}
+                {user 
+                  ? (t.home?.hero?.accessDashboard || (language === 'fr' ? 'Accéder au Dashboard' : 'Aksede Tablo'))
+                  : (t.home?.hero?.startNow || (language === 'fr' ? 'Commencer Maintenant' : 'Kòmanse kounye a'))}
                 <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
               <Button variant="outline" size="lg" className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10" onClick={handleFindTutor}>
                 <Users className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                Trouver un Tuteur
+                {t.home?.hero?.findTutor || (language === 'fr' ? 'Trouver un Tuteur' : 'Jwenn yon Titor')}
               </Button>
             </div>
 
@@ -179,15 +198,15 @@ const HeroSection = () => {
             <div className="grid grid-cols-3 gap-4 sm:gap-8">
               <div className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-primary mb-1 sm:mb-2">10,000+</div>
-                <div className="text-xs sm:text-sm text-muted-foreground">Étudiants Actifs</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.hero?.statStudents || (language === 'fr' ? 'Étudiants Actifs' : 'Elèv Aktif')}</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-success mb-1 sm:mb-2">500+</div>
-                <div className="text-xs sm:text-sm text-muted-foreground">Tuteurs Experts</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.hero?.statTutors || (language === 'fr' ? 'Tuteurs Experts' : 'Titor Ekspè')}</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-secondary mb-1 sm:mb-2">95%</div>
-                <div className="text-xs sm:text-sm text-muted-foreground">Taux de Réussite</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.hero?.statSuccess || (language === 'fr' ? 'Taux de Réussite' : 'Pousantaj Siksè')}</div>
               </div>
             </div>
           </div>
@@ -207,7 +226,7 @@ const HeroSection = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm sm:text-lg font-bold text-gray-800 truncate">Marie-Claire Joseph</div>
-                        <div className="text-xs sm:text-sm text-gray-600">Terminale SMP</div>
+                        <div className="text-xs sm:text-sm text-gray-600">{language === 'fr' ? 'Terminale SMP' : 'Tèminal SMP'}</div>
                         <div className="text-xs text-blue-600 font-medium">Port-au-Prince</div>
                       </div>
                       <div className="flex items-center space-x-1">
@@ -228,12 +247,12 @@ const HeroSection = () => {
                       </div>
                       <div className="flex-1">
                         <div className="text-lg font-bold text-gray-800">Jean-Baptiste Pierre</div>
-                        <div className="text-sm text-gray-600">Terminale SVT</div>
-                        <div className="text-xs text-green-600 font-medium">156 flashcards</div>
+                        <div className="text-sm text-gray-600">{language === 'fr' ? 'Terminale SVT' : 'Tèminal SVT'}</div>
+                        <div className="text-xs text-green-600 font-medium">156 {language === 'fr' ? 'flashcards' : 'flashcards'}</div>
                       </div>
                       <div className="flex items-center space-x-1">
                         <BookOpen className="w-4 h-4 text-blue-600" />
-                        <span className="text-xs font-medium text-gray-700">Étudiant</span>
+                        <span className="text-xs font-medium text-gray-700">{t.home?.hero?.studentCard || (language === 'fr' ? 'Étudiant' : 'Elèv')}</span>
                       </div>
                     </div>
                   </div>
@@ -251,13 +270,13 @@ const HeroSection = () => {
                         <Users className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <div className="text-lg font-bold text-gray-800">Étudiants de 9ème</div>
-                        <div className="text-sm text-gray-600">Collège Saint-Louis</div>
-                        <div className="text-xs text-purple-600 font-medium">Équipe d'étude</div>
+                        <div className="text-lg font-bold text-gray-800">{language === 'fr' ? 'Étudiants de 9ème' : 'Elèv 9yèm'}</div>
+                        <div className="text-sm text-gray-600">{language === 'fr' ? 'Collège Saint-Louis' : 'Kolej Sen Lwi'}</div>
+                        <div className="text-xs text-purple-600 font-medium">{language === 'fr' ? 'Équipe d\'étude' : 'Ekip etid'}</div>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Users className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-medium text-gray-700">Groupe</span>
+                        <span className="text-xs font-medium text-gray-700">{t.home?.hero?.groupCard || (language === 'fr' ? 'Groupe' : 'Gwoup')}</span>
                       </div>
                     </div>
                   </div>
@@ -274,12 +293,12 @@ const HeroSection = () => {
                         </div>
                       </div>
                       <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-1">95%</div>
-                      <div className="text-sm font-semibold text-gray-700 mb-1">Taux de Réussite</div>
-                      <div className="text-xs text-gray-500">Parmi nos étudiants</div>
+                      <div className="text-sm font-semibold text-gray-700 mb-1">{t.home?.hero?.successRate || (language === 'fr' ? 'Taux de Réussite' : 'Pousantaj Siksè')}</div>
+                      <div className="text-xs text-gray-500">{t.home?.hero?.amongStudents || (language === 'fr' ? 'Parmi nos étudiants' : 'Pami elèv nou yo')}</div>
                       <div className="mt-2 flex items-center justify-center">
                         <div className="flex items-center text-xs text-gray-600">
                           <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                          <span>+15% ce mois</span>
+                          <span>+15% {t.home?.hero?.thisMonth || (language === 'fr' ? 'ce mois' : 'mwa sa a')}</span>
                         </div>
                       </div>
                     </div>

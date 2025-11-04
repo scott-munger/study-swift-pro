@@ -124,7 +124,7 @@ const SimpleForumDialog: React.FC<SimpleForumDialogProps> = ({
           {trigger}
         </DialogTrigger>
       )}
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{dialogTitle || (mode === 'edit' ? 'Modifier le Post' : 'Créer un Post Simple')}</DialogTitle>
         </DialogHeader>

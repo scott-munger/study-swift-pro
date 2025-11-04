@@ -9,6 +9,7 @@ import { Card } from './card';
 import { UserPlus, Search, Users, GraduationCap, BookOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/config/api';
 
 interface AddMemberDialogProps {
   group: any;
@@ -24,6 +25,8 @@ interface AvailableUser {
   email: string;
   userClass: string | null;
   section: string | null;
+  role?: string;
+  profilePhoto?: string | null;
 }
 
 export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({ 
@@ -50,7 +53,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/available-users`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/available-users`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -83,7 +86,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
     try {
       setAddingUser(userId);
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/add-member`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/add-member`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -168,15 +171,30 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
           </div>
         </Card>
 
-        {/* Barre de recherche */}
+        {/* Barre de recherche - Style Facebook Messenger */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Rechercher un étudiant..."
+            id="search-users-input"
+            name="searchUsers"
+            placeholder="Rechercher parmi tous les utilisateurs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
+            autoFocus
+            autoComplete="off"
           />
+        </div>
+        
+        {/* Info - Tous les utilisateurs disponibles */}
+        <div className="text-xs text-gray-500 bg-gray-50 dark:bg-slate-800 p-2 rounded">
+          <Users className="h-3 w-3 inline mr-1" />
+          {availableUsers.length} utilisateur{availableUsers.length > 1 ? 's' : ''} disponible{availableUsers.length > 1 ? 's' : ''}
+          {filteredUsers.length !== availableUsers.length && searchTerm && (
+            <span className="ml-2">
+              ({filteredUsers.length} résultat{filteredUsers.length > 1 ? 's' : ''})
+            </span>
+          )}
         </div>
 
         {/* Liste des utilisateurs disponibles */}
@@ -192,12 +210,12 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
             <div className="flex items-center justify-center p-8">
               <div className="text-center">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">
+                <p className="text-gray-600 dark:text-gray-400">
                   {searchTerm ? 'Aucun utilisateur trouvé' : 'Aucun utilisateur disponible'}
                 </p>
                 {!searchTerm && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Tous les étudiants de cette classe sont déjà membres
+                  <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+                    Tous les utilisateurs sont déjà membres de ce groupe
                   </p>
                 )}
               </div>
@@ -208,21 +226,38 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
                 <Card key={availableUser.id} className="p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-blue-100 text-blue-600">
-                          {availableUser.firstName[0]}{availableUser.lastName[0]}
-                        </AvatarFallback>
+                      <Avatar className="h-12 w-12">
+                        {availableUser.profilePhoto ? (
+                          <AvatarImage 
+                            src={`${API_URL}/api/profile/photos/${availableUser.profilePhoto}`}
+                            alt={`${availableUser.firstName} ${availableUser.lastName}`}
+                          />
+                        ) : (
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                            {availableUser.firstName[0]}{availableUser.lastName[0]}
+                          </AvatarFallback>
+                        )}
                       </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-semibold text-gray-900 dark:text-white truncate">
                             {availableUser.firstName} {availableUser.lastName}
                           </span>
-                          <Badge variant="outline" className="text-xs">
-                            {availableUser.userClass} {availableUser.section && `- ${availableUser.section}`}
-                          </Badge>
+                          {availableUser.role && (
+                            <Badge 
+                              variant={availableUser.role === 'ADMIN' ? 'destructive' : availableUser.role === 'TUTOR' ? 'default' : 'secondary'} 
+                              className="text-xs"
+                            >
+                              {availableUser.role === 'ADMIN' ? 'Admin' : availableUser.role === 'TUTOR' ? 'Tuteur' : 'Étudiant'}
+                            </Badge>
+                          )}
+                          {(availableUser.userClass || availableUser.section) && (
+                            <Badge variant="outline" className="text-xs">
+                              {availableUser.userClass || ''} {availableUser.section && `- ${availableUser.section}`}
+                            </Badge>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-600">{availableUser.email}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{availableUser.email}</p>
                       </div>
                     </div>
                     <Button

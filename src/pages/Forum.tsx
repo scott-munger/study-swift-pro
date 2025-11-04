@@ -636,17 +636,14 @@ const Forum = () => {
         });
       }
     } catch (e) {
+      console.error('Erreur lors de la création du post:', e);
       setPosts(prev => [newPost, ...prev]);
-      // Post ajouté en mode hors ligne
+      toast({
+        title: "⚠️ Mode hors ligne",
+        description: "Post ajouté localement. Il sera synchronisé lorsque la connexion sera rétablie",
+        variant: "default"
+      });
     }
-
-    // Notification envoyée
-
-
-    toast({
-      title: "Post créé avec succès !",
-      description: "Votre post a été ajouté au forum",
-    });
   };
 
 
@@ -654,6 +651,15 @@ const Forum = () => {
   const handleEditPost = async (postId: number, data: { title: string; content: string; subjectId?: number }) => {
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Erreur",
+          description: "Vous devez être connecté pour modifier un post",
+          variant: "destructive"
+        });
+        return false;
+      }
+
       const response = await fetch(`${API_URL}/api/forum/posts/${postId}`, {
         method: 'PUT',
         headers: {
@@ -670,31 +676,20 @@ const Forum = () => {
       if (response.ok) {
         const updatedPost = await response.json();
         
-        // Mettre à jour l'état local
-        setPosts(prev => prev.map(post => 
-          post.id === postId 
-            ? { 
-                ...post, 
-                title: updatedPost.title,
-                content: updatedPost.content,
-                subject: updatedPost.subject,
-                updatedAt: updatedPost.updatedAt,
-                tags: computeTags(updatedPost.subject?.name)
-              }
-            : post
-        ));
+        // Recharger les données depuis l'API pour avoir les données à jour
+        await loadDataFromAPI(false);
         
         toast({
-          title: "Post modifié",
+          title: "✅ Post modifié",
           description: "Le post a été modifié avec succès",
         });
         
         return true;
       } else {
-        const error = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
         toast({
           title: "Erreur",
-          description: error.error || "Impossible de modifier le post",
+          description: errorData.error || "Impossible de modifier le post",
           variant: "destructive"
         });
         return false;
@@ -732,16 +727,16 @@ const Forum = () => {
 
       if (response.ok) {
         // Recharger les données depuis l'API pour avoir les données à jour
-        await loadDataFromAPI();
+        await loadDataFromAPI(false);
         toast({
-          title: "Post supprimé",
+          title: "✅ Post supprimé",
           description: "Le post a été supprimé avec succès",
         });
       } else {
-        const error = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
         toast({
           title: "Erreur",
-          description: error.error || "Impossible de supprimer le post",
+          description: errorData.error || "Impossible de supprimer le post",
           variant: "destructive"
         });
       }
@@ -1073,7 +1068,7 @@ const Forum = () => {
             </div>
           </div>
           
-          <p className="text-xl text-muted-foreground">
+          <p className="text-sm sm:text-base md:text-lg lg:text-xl text-muted-foreground">
             Connectez-vous avec vos pairs et tuteurs, partagez vos connaissances et obtenez de l'aide
           </p>
         </div>
@@ -1275,12 +1270,13 @@ const Forum = () => {
                     className="pl-10"
                   />
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-2 sm:gap-4">
                   <SimpleForumDialog 
                     trigger={
-                      <Button variant="hero" size="lg">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Nouveau Post
+                      <Button variant="hero" size="sm" className="sm:size-default">
+                        <Plus className="w-4 h-4 sm:mr-2" />
+                        <span className="hidden sm:inline">Nouveau Post</span>
+                        <span className="sm:hidden">Post</span>
                       </Button>
                     }
                     onSave={handleCreatePost}

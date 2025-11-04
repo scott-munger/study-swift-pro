@@ -8,104 +8,111 @@ datasource db {
 }
 
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique
-  firstName     String
-  lastName      String
-  password      String
-  role          Role           @default(STUDENT)
-  userClass     String?
-  section       String?
-  department    String?
-  phone         String?
-  address       String?
-  profilePhoto  String?        // Chemin vers la photo de profil
-  isProfilePrivate Boolean     @default(false) // Profil privé ou public
-  darkMode      Boolean        @default(false) // Mode sombre activé
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  flashcards    Flashcard[]
-  forumLikes    ForumLike[]
-  forumPosts    ForumPost[]
-  forumReplies  ForumReply[]
-  forumImages   ForumImage[]
-  messages      Message[]
-  reviews       Review[]
-  tutorSessions TutorSession[]
-  tutor         Tutor?
-  knowledgeTestResults KnowledgeTestResult[]
-  createdGroups StudyGroup[]   @relation("CreatedGroups")
-  groupMemberships GroupMember[] @relation("GroupMemberships")
-  groupMessages GroupMessage[] @relation("GroupMessages")
-  messageReactions MessageReaction[] @relation("MessageReactions")
-  studentStats StudentStats?
-  studentActivities StudentActivity[]
-  subjectProgress SubjectProgress[]
-  notifications Notification[] @relation("UserNotifications")
+  id                    Int                   @id @default(autoincrement())
+  email                 String                @unique
+  firstName             String
+  lastName              String
+  password              String?
+  role                  Role                  @default(STUDENT)
+  userClass             String?
+  section               String?
+  department            String?
+  phone                 String?
+  address               String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  profilePhoto          String?
+  darkMode              Boolean               @default(false)
+  isProfilePrivate      Boolean               @default(false)
+  emailVerified         Boolean               @default(false)
+  emailVerificationToken String?             @unique
+  emailVerificationExpires DateTime?
+  resetPasswordToken    String?              @unique
+  resetPasswordExpires  DateTime?
+  googleId              String?               @unique
+  flashcards            Flashcard[]
+  forumImages           ForumImage[]
+  forumLikes            ForumLike[]
+  forumPosts            ForumPost[]
+  forumReplies          ForumReply[]
+  groupMemberships      GroupMember[]         @relation("GroupMemberships")
+  groupMessages         GroupMessage[]        @relation("GroupMessages")
+  knowledgeTestResults  KnowledgeTestResult[]
+  messageReactions      MessageReaction[]     @relation("MessageReactions")
+  messages              Message[]
+  notifications         Notification[]        @relation("UserNotifications")
+  reviews               Review[]
+  studentActivities     StudentActivity[]
+  studentStats          StudentStats?
+  createdGroups         StudyGroup[]          @relation("CreatedGroups")
+  subjectProgress       SubjectProgress[]
   tutorGroupMemberships TutorGroupMember[]
+  tutorSessions         TutorSession[]
+  tutor                 Tutor?
 
   @@map("users")
 }
 
 model Tutor {
-  id            Int            @id @default(autoincrement())
-  userId        Int            @unique
-  experience    Int
-  rating        Float          @default(0)
-  isOnline      Boolean        @default(false)
-  isAvailable   Boolean        @default(true)  // Disponible pour prendre de nouveaux étudiants
-  bio           String?        @db.Text
-  hourlyRate    Float?
-  specialties   String?        @db.Text  // Spécialités du tuteur (JSON array)
-  languages     String?        // Langues parlées
-  education     String?        @db.Text  // Formation académique
-  certifications String?       @db.Text  // Certifications
-  totalSessions Int            @default(0)  // Nombre total de sessions effectuées
-  totalEarnings Float          @default(0)  // Montant total gagné
-  responseTime  Int?           // Temps de réponse moyen en minutes
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  reviews       Review[]
-  sessions      TutorSession[]
-  tutorSubjects TutorSubject[]
-  payments      Payment[]
-  tutorGroups   TutorGroup[]   // Groupes créés par le tuteur
-  user          User           @relation(fields: [userId], references: [id])
+  id             Int            @id @default(autoincrement())
+  userId         Int            @unique
+  experience     Int
+  rating         Float          @default(0)
+  isOnline       Boolean        @default(false)
+  bio            String?        @db.Text
+  hourlyRate     Float?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  certifications String?        @db.Text
+  education      String?        @db.Text
+  isAvailable    Boolean        @default(true)
+  languages      String?
+  responseTime   Int?
+  specialties    String?        @db.Text
+  totalEarnings  Float          @default(0)
+  totalSessions  Int            @default(0)
+  payments       Payment[]
+  reviews        Review[]
+  tutorGroups    TutorGroup[]
+  sessions       TutorSession[]
+  tutorSubjects  TutorSubject[]
+  user           User           @relation(fields: [userId], references: [id])
 
   @@map("tutors")
 }
 
 model Subject {
-  id          Int            @id @default(autoincrement())
-  name        String         @unique
-  level       String
-  section     String?        // Section spécifique (SMP, SVT, LLA, SES, etc.)
-  description String?
-  difficulty  String?        // facile, moyen, difficile
-  totalLessons Int?          // Nombre total de leçons
-  createdAt   DateTime       @default(now())
-  flashcards  Flashcard[]
-  forumPosts  ForumPost[]
-  tutors      TutorSubject[]
-  chapters    Chapter[]
-  knowledgeTests KnowledgeTest[]
-  studyGroups StudyGroup[]
-  subjectProgress SubjectProgress[]
+  id                Int               @id @default(autoincrement())
+  name              String            @unique
+  level             String
+  description       String?
+  createdAt         DateTime          @default(now())
+  section           String?
+  difficulty        String?
+  totalLessons      Int?
+  chapters          Chapter[]
+  flashcards        Flashcard[]
+  forumPosts        ForumPost[]
+  knowledgeTests    KnowledgeTest[]
   studentActivities StudentActivity[]
+  studyGroups       StudyGroup[]
+  subjectProgress   SubjectProgress[]
+  tutors            TutorSubject[]
 
   @@map("subjects")
 }
 
 model Chapter {
-  id          Int            @id @default(autoincrement())
+  id          Int         @id @default(autoincrement())
   name        String
   subjectId   Int
   description String?
-  order       Int            @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  subject     Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  order       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  subject     Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   flashcards  Flashcard[]
+  questions   KnowledgeQuestion[]
 
   @@unique([name, subjectId])
   @@index([subjectId])
@@ -129,14 +136,14 @@ model Flashcard {
   question   String
   answer     String
   subjectId  Int
-  chapterId  Int?
   userId     Int
   difficulty String             @default("medium")
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
+  chapterId  Int?
   attempts   FlashcardAttempt[]
-  subject    Subject            @relation(fields: [subjectId], references: [id])
   chapter    Chapter?           @relation(fields: [chapterId], references: [id])
+  subject    Subject            @relation(fields: [subjectId], references: [id])
   user       User               @relation(fields: [userId], references: [id])
 
   @@index([subjectId], map: "flashcards_subjectId_fkey")
@@ -163,20 +170,20 @@ model TutorSession {
   tutorId     Int
   studentId   Int
   subject     String
-  duration    Int           // Durée en minutes
+  duration    Int
   status      SessionStatus @default(SCHEDULED)
   scheduledAt DateTime
-  endAt       DateTime?     // Heure de fin prévue
-  actualStart DateTime?     // Heure de début réelle
-  actualEnd   DateTime?     // Heure de fin réelle
-  notes       String?       @db.Text  // Notes de session
-  rating      Int?          // Note donnée par l'étudiant (1-5)
-  feedback    String?       @db.Text  // Commentaire de l'étudiant
-  price       Float?        // Prix de la session
-  isPaid      Boolean       @default(false)  // Session payée ou non
-  meetingLink String?       // Lien de visioconférence
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  actualEnd   DateTime?
+  actualStart DateTime?
+  endAt       DateTime?
+  feedback    String?       @db.Text
+  isPaid      Boolean       @default(false)
+  meetingLink String?
+  notes       String?       @db.Text
+  price       Float?
+  rating      Int?
   messages    Message[]
   payment     Payment?
   student     User          @relation(fields: [studentId], references: [id])
@@ -230,11 +237,11 @@ model ForumPost {
   isLocked  Boolean      @default(false)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  images    ForumImage[]
   likes     ForumLike[]
   author    User         @relation(fields: [authorId], references: [id])
   subject   Subject?     @relation(fields: [subjectId], references: [id])
   replies   ForumReply[]
-  images    ForumImage[]
 
   @@index([authorId], map: "forum_posts_authorId_fkey")
   @@index([subjectId], map: "forum_posts_subjectId_fkey")
@@ -249,12 +256,12 @@ model ForumReply {
   parentId  Int?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  images    ForumImage[]
   likes     ForumLike[]
   author    User         @relation(fields: [authorId], references: [id])
   parent    ForumReply?  @relation("ReplyReplies", fields: [parentId], references: [id])
   replies   ForumReply[] @relation("ReplyReplies")
   post      ForumPost    @relation(fields: [postId], references: [id])
-  images    ForumImage[]
 
   @@index([authorId], map: "forum_replies_authorId_fkey")
   @@index([parentId], map: "forum_replies_parentId_fkey")
@@ -280,26 +287,355 @@ model ForumLike {
 }
 
 model ForumImage {
-  id        Int         @id @default(autoincrement())
-  filename  String      // Nom du fichier original
-  filepath  String      // Chemin vers le fichier sur le serveur
-  mimetype  String      // Type MIME de l'image
-  size      Int         // Taille du fichier en bytes
-  postId    Int?        // ID du post associé (optionnel)
-  replyId   Int?        // ID de la réponse associée (optionnel)
-  uploadedBy Int        // ID de l'utilisateur qui a uploadé l'image
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  
-  // Relations
-  post      ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
-  reply     ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  uploader  User        @relation(fields: [uploadedBy], references: [id])
+  id         Int         @id @default(autoincrement())
+  filename   String
+  filepath   String
+  mimetype   String
+  size       Int
+  postId     Int?
+  replyId    Int?
+  uploadedBy Int
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  post       ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply      ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  uploader   User        @relation(fields: [uploadedBy], references: [id])
 
   @@index([postId], map: "forum_images_postId_fkey")
   @@index([replyId], map: "forum_images_replyId_fkey")
   @@index([uploadedBy], map: "forum_images_uploadedBy_fkey")
   @@map("forum_images")
+}
+
+model KnowledgeTest {
+  id             Int                   @id @default(autoincrement())
+  title          String
+  description    String?
+  subjectId      Int
+  totalQuestions Int
+  timeLimit      Int
+  passingScore   Int
+  isActive       Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  questions      KnowledgeQuestion[]
+  results        KnowledgeTestResult[]
+  subject        Subject               @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([subjectId])
+  @@map("knowledge_tests")
+}
+
+model KnowledgeQuestion {
+  id            Int                   @id @default(autoincrement())
+  testId        Int
+  chapterId     Int?
+  question      String
+  type          QuestionType
+  options       Json?
+  correctAnswer String
+  explanation   String?
+  difficulty    Difficulty            @default(MEDIUM)
+  concept       String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  test          KnowledgeTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  chapter       Chapter?              @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  answers       KnowledgeTestAnswer[]
+
+  @@index([testId])
+  @@index([chapterId])
+  @@map("knowledge_questions")
+}
+
+model KnowledgeTestResult {
+  id          Int                   @id @default(autoincrement())
+  testId      Int
+  userId      Int
+  score       Int
+  percentage  Float
+  timeSpent   Int
+  isPassed    Boolean
+  completedAt DateTime              @default(now())
+  answers     KnowledgeTestAnswer[]
+  test        KnowledgeTest         @relation(fields: [testId], references: [id])
+  user        User                  @relation(fields: [userId], references: [id])
+
+  @@index([testId])
+  @@index([userId])
+  @@map("knowledge_test_results")
+}
+
+model KnowledgeTestAnswer {
+  id         Int                 @id @default(autoincrement())
+  resultId   Int
+  questionId Int
+  userAnswer String
+  isCorrect  Boolean
+  timeSpent  Int
+  question   KnowledgeQuestion   @relation(fields: [questionId], references: [id])
+  result     KnowledgeTestResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([resultId])
+  @@index([questionId])
+  @@map("knowledge_test_answers")
+}
+
+model StudyGroup {
+  id          Int            @id @default(autoincrement())
+  name        String
+  description String?        @db.Text
+  subjectId   Int
+  creatorId   Int
+  isPrivate   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  section     String?
+  userClass   String?
+  members     GroupMember[]
+  messages    GroupMessage[]
+  creator     User           @relation("CreatedGroups", fields: [creatorId], references: [id])
+  subject     Subject        @relation(fields: [subjectId], references: [id])
+
+  @@index([subjectId])
+  @@index([creatorId])
+  @@index([userClass])
+  @@index([section])
+  @@map("study_groups")
+}
+
+model GroupMessage {
+  id          Int               @id @default(autoincrement())
+  groupId     Int
+  userId      Int
+  content     String            @db.Text
+  createdAt   DateTime          @default(now())
+  audioUrl    String?
+  messageType MessageType       @default(TEXT)
+  fileName    String?
+  fileSize    Int?
+  fileType    String?
+  replyToId   Int?              // ID du message auquel on répond (fonctionnalité WhatsApp)
+  fileUrl     String?
+  isPinned    Boolean           @default(false)
+  pinnedAt    DateTime?
+  pinnedBy    Int?
+  group       StudyGroup        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User              @relation("GroupMessages", fields: [userId], references: [id])
+  reactions   MessageReaction[]
+
+  @@index([groupId])
+  @@index([userId])
+  @@index([isPinned])
+  @@map("group_messages")
+}
+
+model MessageReaction {
+  id        Int          @id @default(autoincrement())
+  messageId Int
+  userId    Int
+  emoji     String
+  createdAt DateTime     @default(now())
+  message   GroupMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User         @relation("MessageReactions", fields: [userId], references: [id])
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
+}
+
+model GroupMember {
+  id       Int        @id @default(autoincrement())
+  groupId  Int
+  userId   Int
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+  group    StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User       @relation("GroupMemberships", fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+model StudentStats {
+  id                  Int      @id @default(autoincrement())
+  studentId           Int      @unique
+  flashcardsCompleted Int      @default(0)
+  studyStreak         Int      @default(0)
+  averageScore        Float    @default(0)
+  timeSpentMinutes    Int      @default(0)
+  totalSubjects       Int      @default(0)
+  completedLessons    Int      @default(0)
+  upcomingTests       Int      @default(0)
+  achievements        Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  student             User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_stats")
+}
+
+model StudentActivity {
+  id        Int          @id @default(autoincrement())
+  studentId Int
+  subjectId Int?
+  type      ActivityType
+  title     String
+  score     Int?
+  createdAt DateTime     @default(now())
+  student   User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject   Subject?     @relation(fields: [subjectId], references: [id])
+
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([createdAt])
+  @@map("student_activities")
+}
+
+model SubjectProgress {
+  id               Int       @id @default(autoincrement())
+  studentId        Int
+  subjectId        Int
+  completedLessons Int       @default(0)
+  nextLesson       String?
+  lastStudiedAt    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  student          User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject          Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@map("subject_progress")
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+model Conversation {
+  id            Int             @id @default(autoincrement())
+  studentId     Int
+  tutorId       Int
+  lastMessageAt DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  isBlocked     Boolean         @default(false)
+  blockReason   String?         @db.Text
+  blockedAt     DateTime?
+  messages      DirectMessage[]
+
+  @@unique([studentId, tutorId])
+  @@index([studentId])
+  @@index([tutorId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model DirectMessage {
+  id             Int          @id @default(autoincrement())
+  senderId       Int
+  receiverId     Int
+  content        String       @db.Text
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  audioUrl       String?
+  conversationId Int
+  fileName       String?
+  fileSize       Int?
+  replyToId      Int?         // ID du message auquel on répond (fonctionnalité WhatsApp)
+  fileType       String?
+  fileUrl        String?
+  messageType    MessageType  @default(TEXT)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("direct_messages")
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  sessionId     Int           @unique
+  tutorId       Int
+  studentId     Int
+  amount        Float
+  currency      String        @default("XAF")
+  status        PaymentStatus @default(PENDING)
+  method        String?
+  transactionId String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  session       TutorSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tutor         Tutor         @relation(fields: [tutorId], references: [id])
+
+  @@index([sessionId])
+  @@index([tutorId])
+  @@index([studentId])
+  @@index([status])
+  @@map("payments")
+}
+
+model TutorGroup {
+  id              Int                @id @default(autoincrement())
+  tutorId         Int
+  name            String
+  description     String?            @db.Text
+  subjectId       Int?
+  maxStudents     Int                @default(10)
+  currentStudents Int                @default(0)
+  price           Float
+  schedule        String?            @db.Text
+  isActive        Boolean            @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  meetingLink     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  members         TutorGroupMember[]
+  tutor           Tutor              @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId])
+  @@index([subjectId])
+  @@index([isActive])
+  @@map("tutor_groups")
+}
+
+model TutorGroupMember {
+  id        Int               @id @default(autoincrement())
+  groupId   Int
+  studentId Int
+  status    GroupMemberStatus @default(PENDING)
+  joinedAt  DateTime          @default(now())
+  paidAt    DateTime?
+  group     TutorGroup        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student   User              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, studentId])
+  @@index([groupId])
+  @@index([studentId])
+  @@index([status])
+  @@map("tutor_group_members")
 }
 
 enum Role {
@@ -313,155 +649,6 @@ enum SessionStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
-}
-
-model KnowledgeTest {
-  id              Int                    @id @default(autoincrement())
-  title           String
-  description     String?
-  subjectId       Int
-  totalQuestions  Int
-  timeLimit       Int                    // en minutes
-  passingScore    Int                    // pourcentage minimum pour réussir
-  isActive        Boolean                @default(true)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  subject         Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  questions       KnowledgeQuestion[]
-  results         KnowledgeTestResult[]
-
-  @@index([subjectId])
-  @@map("knowledge_tests")
-}
-
-model KnowledgeQuestion {
-  id              Int                    @id @default(autoincrement())
-  testId          Int
-  question        String
-  type            QuestionType
-  options         Json?                  // Pour les questions à choix multiples
-  correctAnswer   String
-  explanation     String?
-  difficulty      Difficulty             @default(MEDIUM)
-  concept         String?                // Concept abordé par la question
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  test            KnowledgeTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
-  answers         KnowledgeTestAnswer[]
-
-  @@index([testId])
-  @@map("knowledge_questions")
-}
-
-model KnowledgeTestResult {
-  id              Int                    @id @default(autoincrement())
-  testId          Int
-  userId          Int
-  score           Int                    // Score obtenu
-  percentage      Float                  // Pourcentage obtenu
-  timeSpent       Int                    // Temps passé en secondes
-  isPassed        Boolean                // Si le test est réussi
-  completedAt     DateTime               @default(now())
-  test            KnowledgeTest          @relation(fields: [testId], references: [id])
-  user            User                   @relation(fields: [userId], references: [id])
-  answers         KnowledgeTestAnswer[]
-
-  @@index([testId])
-  @@index([userId])
-  @@map("knowledge_test_results")
-}
-
-model KnowledgeTestAnswer {
-  id              Int                    @id @default(autoincrement())
-  resultId        Int
-  questionId      Int
-  userAnswer      String
-  isCorrect       Boolean
-  timeSpent       Int                    // Temps passé sur cette question en secondes
-  result          KnowledgeTestResult    @relation(fields: [resultId], references: [id], onDelete: Cascade)
-  question        KnowledgeQuestion      @relation(fields: [questionId], references: [id])
-
-  @@index([resultId])
-  @@index([questionId])
-  @@map("knowledge_test_answers")
-}
-
-model StudyGroup {
-  id          Int            @id @default(autoincrement())
-  name        String
-  description String?        @db.Text
-  subjectId   Int
-  creatorId   Int
-  userClass   String?        // Classe (Seconde, Première, Terminale, etc.)
-  section     String?        // Section (SMP, SVT, LLA, SES, etc.)
-  isPrivate   Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  subject     Subject        @relation(fields: [subjectId], references: [id])
-  creator     User           @relation("CreatedGroups", fields: [creatorId], references: [id])
-  members     GroupMember[]
-  messages    GroupMessage[]
-
-  @@index([subjectId])
-  @@index([creatorId])
-  @@index([userClass])
-  @@index([section])
-  @@map("study_groups")
-}
-
-model GroupMessage {
-  id        Int            @id @default(autoincrement())
-  groupId   Int
-  userId    Int
-  content   String         @db.Text
-  messageType MessageType  @default(TEXT)
-  audioUrl  String?        // URL vers le fichier audio pour les messages vocaux
-  fileUrl   String?        // URL vers le fichier (photo/document)
-  fileName  String?        // Nom original du fichier
-  fileType  String?        // Type MIME du fichier
-  fileSize  Int?           // Taille du fichier en bytes
-  isPinned  Boolean        @default(false) // Message épinglé
-  pinnedAt  DateTime?      // Date d'épinglage
-  pinnedBy  Int?           // Utilisateur qui a épinglé le message
-  createdAt DateTime       @default(now())
-  group     StudyGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User           @relation("GroupMessages", fields: [userId], references: [id])
-  reactions MessageReaction[]
-
-  @@index([groupId])
-  @@index([userId])
-  @@index([isPinned])
-  @@map("group_messages")
-}
-
-model MessageReaction {
-  id        Int         @id @default(autoincrement())
-  messageId Int
-  userId    Int
-  emoji     String      // L'emoji de la réaction
-  createdAt DateTime    @default(now())
-  message   GroupMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User        @relation("MessageReactions", fields: [userId], references: [id])
-
-  @@unique([messageId, userId, emoji]) // Un utilisateur ne peut réagir qu'une fois avec le même emoji
-  @@index([messageId])
-  @@index([userId])
-  @@map("message_reactions")
-}
-
-model GroupMember {
-  id        Int        @id @default(autoincrement())
-  groupId   Int
-  userId    Int
-  role      MemberRole @default(MEMBER)
-  joinedAt  DateTime   @default(now())
-  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User       @relation("GroupMemberships", fields: [userId], references: [id])
-
-  @@unique([groupId, userId])
-  @@index([groupId])
-  @@index([userId])
-  @@map("group_members")
 }
 
 enum MemberRole {
@@ -483,60 +670,6 @@ enum Difficulty {
   HARD
 }
 
-// Modèles pour les statistiques des étudiants
-model StudentStats {
-  id                  Int      @id @default(autoincrement())
-  studentId           Int      @unique
-  flashcardsCompleted Int      @default(0)
-  studyStreak         Int      @default(0)
-  averageScore        Float    @default(0)
-  timeSpentMinutes    Int      @default(0)
-  totalSubjects       Int      @default(0)
-  completedLessons    Int      @default(0)
-  upcomingTests       Int      @default(0)
-  achievements        Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  student             User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@map("student_stats")
-}
-
-model StudentActivity {
-  id        Int      @id @default(autoincrement())
-  studentId Int
-  subjectId Int?
-  type      ActivityType
-  title     String
-  score     Int?     // Score obtenu (optionnel)
-  createdAt DateTime @default(now())
-  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subject   Subject? @relation(fields: [subjectId], references: [id])
-
-  @@index([studentId])
-  @@index([subjectId])
-  @@index([createdAt])
-  @@map("student_activities")
-}
-
-model SubjectProgress {
-  id                Int      @id @default(autoincrement())
-  studentId         Int
-  subjectId         Int
-  completedLessons  Int      @default(0)
-  nextLesson        String?  // Prochaine leçon à étudier
-  lastStudiedAt     DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  student           User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subject           Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  @@unique([studentId, subjectId])
-  @@index([studentId])
-  @@index([subjectId])
-  @@map("subject_progress")
-}
-
 enum ActivityType {
   FLASHCARD
   TEST
@@ -551,144 +684,18 @@ enum MessageType {
   FILE
 }
 
-model Notification {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  type      NotificationType
-  title     String
-  message   String   @db.Text
-  link      String?  // Lien vers la ressource concernée
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isRead])
-  @@map("notifications")
-}
-
 enum NotificationType {
-  FORUM_REPLY      // Quelqu'un a répondu à votre post
-  FORUM_LIKE       // Quelqu'un a aimé votre post
-  GROUP_MESSAGE    // Nouveau message dans un groupe
-  GROUP_INVITE     // Invitation à rejoindre un groupe
-  TEST_RESULT      // Résultats de test disponibles
-  ACHIEVEMENT      // Nouveau succès débloqué
-  SYSTEM           // Notification système
-  TUTOR_MESSAGE    // Nouveau message d'un tuteur
-  SESSION_REMINDER // Rappel de session
-  SESSION_REQUEST  // Demande de session
-  PAYMENT_RECEIVED // Paiement reçu
-}
-
-// Conversations entre étudiants et tuteurs
-model Conversation {
-  id              Int      @id @default(autoincrement())
-  studentId       Int      // ID de l'étudiant
-  tutorId         Int      // ID du tuteur
-  lastMessageAt   DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  messages        DirectMessage[]
-
-  @@unique([studentId, tutorId])
-  @@index([studentId])
-  @@index([tutorId])
-  @@index([lastMessageAt])
-  @@map("conversations")
-}
-
-// Messagerie directe entre étudiants et tuteurs
-model DirectMessage {
-  id            Int          @id @default(autoincrement())
-  conversationId Int
-  senderId      Int          // ID de l'utilisateur qui envoie
-  receiverId    Int          // ID de l'utilisateur qui reçoit
-  content       String       @db.Text
-  messageType   MessageType  @default(TEXT)
-  audioUrl      String?      // URL vers le fichier audio pour les messages vocaux
-  fileUrl       String?      // URL vers le fichier (photo/document)
-  fileName      String?      // Nom original du fichier
-  fileType      String?      // Type MIME du fichier
-  fileSize      Int?         // Taille du fichier en bytes
-  isRead        Boolean      @default(false)
-  createdAt     DateTime     @default(now())
-  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId])
-  @@index([senderId])
-  @@index([receiverId])
-  @@index([isRead])
-  @@index([createdAt])
-  @@map("direct_messages")
-}
-
-// Paiements
-model Payment {
-  id          Int           @id @default(autoincrement())
-  sessionId   Int           @unique
-  tutorId     Int
-  studentId   Int
-  amount      Float
-  currency    String        @default("XAF")  // Franc CFA
-  status      PaymentStatus @default(PENDING)
-  method      String?       // Méthode de paiement (Stripe, PayPal, etc.)
-  transactionId String?     // ID de transaction externe
-  paidAt      DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  session     TutorSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  tutor       Tutor         @relation(fields: [tutorId], references: [id])
-
-  @@index([sessionId])
-  @@index([tutorId])
-  @@index([studentId])
-  @@index([status])
-  @@map("payments")
-}
-
-// Groupes créés par les tuteurs
-model TutorGroup {
-  id          Int            @id @default(autoincrement())
-  tutorId     Int
-  name        String
-  description String?        @db.Text
-  subjectId   Int?
-  maxStudents Int            @default(10)  // Nombre maximum d'étudiants
-  currentStudents Int        @default(0)   // Nombre actuel d'étudiants
-  price       Float          // Prix par étudiant
-  schedule    String?        @db.Text      // Horaire (JSON)
-  isActive    Boolean        @default(true)
-  startDate   DateTime?
-  endDate     DateTime?
-  meetingLink String?        // Lien de visioconférence
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  tutor       Tutor          @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-  members     TutorGroupMember[]
-
-  @@index([tutorId])
-  @@index([subjectId])
-  @@index([isActive])
-  @@map("tutor_groups")
-}
-
-// Membres des groupes de tuteurs
-model TutorGroupMember {
-  id        Int        @id @default(autoincrement())
-  groupId   Int
-  studentId Int
-  status    GroupMemberStatus @default(PENDING)
-  joinedAt  DateTime   @default(now())
-  paidAt    DateTime?
-  group     TutorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  student   User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([groupId, studentId])
-  @@index([groupId])
-  @@index([studentId])
-  @@index([status])
-  @@map("tutor_group_members")
+  FORUM_REPLY
+  FORUM_LIKE
+  GROUP_MESSAGE
+  GROUP_INVITE
+  TEST_RESULT
+  ACHIEVEMENT
+  SYSTEM
+  TUTOR_MESSAGE
+  SESSION_REMINDER
+  SESSION_REQUEST
+  PAYMENT_RECEIVED
 }
 
 enum PaymentStatus {
@@ -700,8 +707,8 @@ enum PaymentStatus {
 }
 
 enum GroupMemberStatus {
-  PENDING    // En attente de paiement
-  ACTIVE     // Membre actif
-  EXPIRED    // Abonnement expiré
-  CANCELLED  // Annulé
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }

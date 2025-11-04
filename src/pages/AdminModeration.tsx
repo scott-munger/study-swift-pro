@@ -26,6 +26,8 @@ import {
   Reply,
   Loader2
 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { API_URL } from '@/config/api';
 
 const AdminModeration = () => {
   const { adminUser, hasPermission, moderatePost } = useAdmin();
@@ -47,6 +49,10 @@ const AdminModeration = () => {
     isPinned: false,
     isLocked: false
   });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePostId, setDeletePostId] = useState<number | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeletePostIds, setBulkDeletePostIds] = useState<number[]>([]);
 
   // Vérifier l'accès admin
   const storageUser = (() => { try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null'); } catch { return null; } })();
@@ -79,7 +85,7 @@ const AdminModeration = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/forum-posts', {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -92,7 +98,8 @@ const AdminModeration = () => {
       }
 
       const data = await response.json();
-      setForumPosts(data || []);
+      console.log('📋 Posts du forum chargés:', data?.length || 0, 'posts');
+      setForumPosts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur lors du chargement des posts:', error);
       toast({
@@ -108,7 +115,7 @@ const AdminModeration = () => {
   const handleModeratePost = async (postId: number, action: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/moderate-post/${postId}`, {
+      const response = await fetch(`${API_URL}/api/admin/moderate-post/${postId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -137,14 +144,17 @@ const AdminModeration = () => {
     }
   };
 
-  const handleDeletePost = async (postId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce post ?')) {
-      return;
-    }
+  const handleDeletePost = (postId: number) => {
+    setDeletePostId(postId);
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDeletePost = async () => {
+    if (!deletePostId) return;
+    
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts/${deletePostId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -153,11 +163,13 @@ const AdminModeration = () => {
       });
 
       if (response.ok) {
-        setForumPosts(prev => prev.filter((post: any) => post.id !== postId));
+        setForumPosts(prev => prev.filter((post: any) => post.id !== deletePostId));
         toast({
           title: "Post supprimé",
           description: "Le post a été supprimé avec succès",
         });
+        setShowDeleteConfirm(false);
+        setDeletePostId(null);
       } else {
         const error = await response.json();
         throw new Error(error.error || 'Erreur lors de la suppression');
@@ -172,27 +184,30 @@ const AdminModeration = () => {
     }
   };
 
-  const handleBulkDelete = async (postIds: number[]) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${postIds.length} post(s) ?`)) {
-      return;
-    }
+  const handleBulkDelete = (postIds: number[]) => {
+    setBulkDeletePostIds(postIds);
+    setShowBulkDeleteConfirm(true);
+  };
 
+  const confirmBulkDelete = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ postIds })
+        body: JSON.stringify({ postIds: bulkDeletePostIds })
       });
 
       if (response.ok) {
         const result = await response.json();
-        setForumPosts(prev => prev.filter((post: any) => !postIds.includes(post.id)));
+        setForumPosts(prev => prev.filter((post: any) => !bulkDeletePostIds.includes(post.id)));
         setSelectedPosts([]);
         setIsSelectMode(false);
+        setShowBulkDeleteConfirm(false);
+        setBulkDeletePostIds([]);
         toast({
           title: "Posts supprimés",
           description: `${result.deletedCount} post(s) supprimé(s) avec succès`,
@@ -208,6 +223,8 @@ const AdminModeration = () => {
         description: "Impossible de supprimer les posts",
         variant: "destructive"
       });
+      setShowBulkDeleteConfirm(false);
+      setBulkDeletePostIds([]);
     }
   };
 
@@ -235,7 +252,7 @@ const AdminModeration = () => {
   const handleViewPost = async (postId: number) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts/${postId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -277,7 +294,7 @@ const AdminModeration = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${editingPost.id}`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts/${editingPost.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -312,7 +329,7 @@ const AdminModeration = () => {
   const handleTogglePin = async (postId: number, currentPinStatus: boolean) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts/${postId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -344,7 +361,7 @@ const AdminModeration = () => {
   const handleToggleLock = async (postId: number, currentLockStatus: boolean) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/admin/forum-posts/${postId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -372,64 +389,6 @@ const AdminModeration = () => {
     }
   };
 
-  // Données simulées des posts du forum (fallback si pas de données)
-  const mockForumPosts = [
-    {
-      id: 1,
-      title: 'Aide en mathématiques - Dérivées',
-      content: 'Bonjour, j\'ai besoin d\'aide pour comprendre les dérivées. Quelqu\'un peut m\'expliquer ?',
-      author: {
-        id: 1,
-        name: 'Carlos Rodriguez',
-        email: 'carlos.rodriguez@test.com',
-        role: 'STUDENT'
-      },
-      subject: 'Mathématiques',
-      createdAt: '2024-01-15T10:30:00Z',
-      status: 'approved',
-      likes: 5,
-      replies: 3,
-      reports: 0,
-      isPinned: false
-    },
-    {
-      id: 2,
-      title: 'Question sur la photosynthèse',
-      content: 'Je ne comprends pas bien le processus de photosynthèse. Pouvez-vous m\'aider ?',
-      author: {
-        id: 2,
-        name: 'Maria Gonzalez',
-        email: 'maria.gonzalez@test.com',
-        role: 'STUDENT'
-      },
-      subject: 'SVT',
-      createdAt: '2024-01-14T14:20:00Z',
-      status: 'pending',
-      likes: 2,
-      replies: 1,
-      reports: 0,
-      isPinned: false
-    },
-    {
-      id: 3,
-      title: 'Contenu inapproprié signalé',
-      content: 'Ce post contient du contenu inapproprié et des insultes.',
-      author: {
-        id: 3,
-        name: 'Utilisateur Anonyme',
-        email: 'anonymous@test.com',
-        role: 'STUDENT'
-      },
-      subject: 'Général',
-      createdAt: '2024-01-13T16:45:00Z',
-      status: 'reported',
-      likes: 0,
-      replies: 0,
-      reports: 3,
-      isPinned: false
-    }
-  ];
-
   if (!adminUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -450,10 +409,8 @@ const AdminModeration = () => {
     );
   }
 
-  // Utiliser les vraies données ou les données simulées en fallback
-  const postsToDisplay = forumPosts.length > 0 ? forumPosts : mockForumPosts;
-  
-  const filteredPosts = postsToDisplay.filter(post => {
+  // Utiliser uniquement les vraies données de la base
+  const filteredPosts = forumPosts.filter(post => {
     const matchesSearch = post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (post.author?.name || post.author?.firstName)?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -510,7 +467,7 @@ const AdminModeration = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Posts</p>
-                  <p className="text-2xl font-bold">{forumPosts.length}</p>
+                  <p className="text-2xl font-bold">{filteredPosts.length}</p>
                 </div>
                 <MessageSquare className="h-8 w-8 text-blue-600" />
               </div>
@@ -521,7 +478,7 @@ const AdminModeration = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">En Attente</p>
-                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'pending').length}</p>
+                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'pending' || (!p.status && !p.isLocked)).length}</p>
                 </div>
                 <Clock className="h-8 w-8 text-yellow-600" />
               </div>
@@ -532,7 +489,7 @@ const AdminModeration = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Signalés</p>
-                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'reported').length}</p>
+                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'rejected' || p.isLocked).length}</p>
                 </div>
                 <AlertTriangle className="h-8 w-8 text-red-600" />
               </div>
@@ -543,7 +500,7 @@ const AdminModeration = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Approuvés</p>
-                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'approved').length}</p>
+                  <p className="text-2xl font-bold">{forumPosts.filter(p => p.status === 'approved' || (!p.isLocked && p.status !== 'rejected')).length}</p>
                 </div>
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
@@ -600,6 +557,18 @@ const AdminModeration = () => {
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />
                 <span className="ml-2">Chargement des posts...</span>
+              </div>
+            ) : forumPosts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <MessageSquare className="h-16 w-16 text-gray-300 mb-4" />
+                <p className="text-lg font-medium text-gray-700 mb-2">Aucun post dans le forum</p>
+                <p className="text-sm text-gray-500">Il n'y a actuellement aucun post à modérer dans le forum.</p>
+              </div>
+            ) : filteredPosts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Search className="h-16 w-16 text-gray-300 mb-4" />
+                <p className="text-lg font-medium text-gray-700 mb-2">Aucun post correspondant aux filtres</p>
+                <p className="text-sm text-gray-500">Essayez de modifier vos critères de recherche ou de filtre.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -835,6 +804,32 @@ const AdminModeration = () => {
           </div>
         )}
       </div>
+
+      {/* Dialogs de confirmation */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={confirmDeletePost}
+        title="Supprimer le post"
+        description="Êtes-vous sûr de vouloir supprimer ce post ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={setShowBulkDeleteConfirm}
+        onConfirm={() => {
+          confirmBulkDelete();
+          setShowBulkDeleteConfirm(false);
+        }}
+        title="Supprimer plusieurs posts"
+        description={`Êtes-vous sûr de vouloir supprimer ${bulkDeletePostIds.length} post(s) ? Cette action est irréversible.`}
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
     </div>
   );
 };

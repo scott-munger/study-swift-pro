@@ -1,53 +1,71 @@
-const benefits = [
-  {
-    number: "01",
-    title: "Apprentissage Ultra-Rapide",
-    description: "Accélérez votre processus d'étude avec notre système de flashcards optimisé et nos algorithmes d'apprentissage adaptatifs.",
-    accent: "primary"
-  },
-  {
-    number: "02",
-    title: "Préparation Ciblée aux Examens",
-    description: "Concentrez-vous exactement sur ce que vous devez savoir pour votre classe d'examen et vos matières spécifiques.",
-    accent: "secondary"
-  },
-  {
-    number: "03",
-    title: "Suivi Intelligent des Progrès",
-    description: "Surveillez vos progrès d'apprentissage avec des analyses détaillées et des recommandations personnalisées.",
-    accent: "primary"
-  },
-  {
-    number: "04",
-    title: "Réseau de Tuteurs Experts",
-    description: "Connectez-vous avec des tuteurs vérifiés qui se spécialisent dans vos matières d'examen et vos besoins d'apprentissage.",
-    accent: "secondary"
-  },
-  {
-    number: "05",
-    title: "Accessibilité 24h/24",
-    description: "Étudiez n'importe quand, n'importe où avec notre plateforme optimisée mobile et nos capacités hors ligne.",
-    accent: "primary"
-  },
-  {
-    number: "06",
-    title: "Taux de Réussite Prouvé",
-    description: "Rejoignez des milliers d'étudiants qui ont atteint leurs objectifs d'examen avec notre plateforme.",
-    accent: "secondary"
-  }
-];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const BenefitsSection = () => {
+  const { language, t } = useLanguage();
+  
+  const benefits = [
+    {
+      number: "01",
+      title: language === 'fr' ? "Apprentissage Ultra-Rapide" : "Aprantisaj Ult-Rapid",
+      description: language === 'fr' 
+        ? "Accélérez votre processus d'étude avec notre système de flashcards optimisé et nos algorithmes d'apprentissage adaptatifs."
+        : "Akselere pwosesis etid ou ak sistèm flashcards optimize nou an ak algoritm aprantisaj adaptatif yo.",
+      accent: "primary"
+    },
+    {
+      number: "02",
+      title: language === 'fr' ? "Préparation Ciblée aux Examens" : "Preparasyon Sib pou Egzamen",
+      description: language === 'fr'
+        ? "Concentrez-vous exactement sur ce que vous devez savoir pour votre classe d'examen et vos matières spécifiques."
+        : "Konsantre egzakteman sou sa ou dwe konnen pou klas egzamen ou ak matyè espesifik ou yo.",
+      accent: "secondary"
+    },
+    {
+      number: "03",
+      title: language === 'fr' ? "Suivi Intelligent des Progrès" : "Swiv Entelijan Pwogrè",
+      description: language === 'fr'
+        ? "Surveillez vos progrès d'apprentissage avec des analyses détaillées et des recommandations personnalisées."
+        : "Swiv pwogrè aprantisaj ou ak analiz detaye ak rekòmandasyon pèsonalize.",
+      accent: "primary"
+    },
+    {
+      number: "04",
+      title: language === 'fr' ? "Réseau de Tuteurs Experts" : "Rezo Titor Ekspè",
+      description: language === 'fr'
+        ? "Connectez-vous avec des tuteurs vérifiés qui se spécialisent dans vos matières d'examen et vos besoins d'apprentissage."
+        : "Konekte ak titor verifye ki espesyalize nan matyè egzamen ou ak bezwen aprantisaj ou yo.",
+      accent: "secondary"
+    },
+    {
+      number: "05",
+      title: language === 'fr' ? "Accessibilité 24h/24" : "Aksesib 24/7",
+      description: language === 'fr'
+        ? "Étudiez n'importe quand, n'importe où avec notre plateforme optimisée mobile et nos capacités hors ligne."
+        : "Etidye nenpòt lè, nenpòt kote ak platfòm optimize mobil nou an ak kapasite ofline nou yo.",
+      accent: "primary"
+    },
+    {
+      number: "06",
+      title: language === 'fr' ? "Taux de Réussite Prouvé" : "Pousantaj Siksè Pwouve",
+      description: language === 'fr'
+        ? "Rejoignez des milliers d'étudiants qui ont atteint leurs objectifs d'examen avec notre plateforme."
+        : "Ansanm dè milye elèv ki te rive nan objektif egzamen yo ak platfòm nou an.",
+      accent: "secondary"
+    }
+  ];
+
   return (
     <section className="py-16 sm:py-20 lg:py-28 px-4 sm:px-6 lg:px-8 relative">
       <div className="max-w-7xl mx-auto">
         {/* En-tête centré */}
         <div className="text-center mb-16 sm:mb-20 lg:mb-24">
           <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 sm:mb-6 tracking-tight">
-            Pourquoi Choisir Notre Plateforme ?
+            {t.home?.benefits?.title || (language === 'fr' ? 'Pourquoi Choisir Notre Plateforme ?' : 'Poukisa Chwazi Platfòm Nou an ?')}
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-muted-foreground/70 max-w-3xl mx-auto leading-relaxed">
-            Découvrez la façon la plus efficace de préparer vos examens d'État avec notre environnement d'apprentissage numérique complet.
+            {t.home?.benefits?.subtitle || (language === 'fr' 
+              ? "Découvrez la façon la plus efficace de préparer vos examens d'État avec notre environnement d'apprentissage numérique complet."
+              : "Dekouvri fason ki pi efikas pou prepare egzamen Leta ou yo ak anviwònman aprantisaj nimerik konplè nou an.")}
           </p>
         </div>
 
@@ -90,10 +108,12 @@ const BenefitsSection = () => {
         <div className="mt-12 sm:mt-16 lg:mt-20 bg-gradient-hero rounded-2xl p-6 sm:p-8 md:p-12 border border-border">
           <div className="text-center mb-8 sm:mb-12">
             <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mb-3 sm:mb-4">
-              Impact de la Plateforme
+              {t.home?.benefits?.impactTitle || (language === 'fr' ? 'Impact de la Plateforme' : 'Enpak Platfòm nan')}
             </h3>
             <p className="text-sm sm:text-base text-muted-foreground px-4 sm:px-0">
-              Résultats réels d'étudiants qui ont transformé leur préparation aux examens
+              {t.home?.benefits?.impactSubtitle || (language === 'fr' 
+                ? "Résultats réels d'étudiants qui ont transformé leur préparation aux examens"
+                : 'Rezilta reyèl elèv ki te transfòme preparasyon egzamen yo')}
             </p>
           </div>
           
@@ -102,25 +122,25 @@ const BenefitsSection = () => {
               <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-1 sm:mb-2">
                 75%
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Amélioration Moyenne des Notes</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.benefits?.stat1 || (language === 'fr' ? 'Amélioration Moyenne des Notes' : 'Amelyorasyon Mwayen Nòt yo')}</div>
             </div>
             <div className="text-center">
               <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-1 sm:mb-2">
                 50%
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Vitesse d'Apprentissage Plus Rapide</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.benefits?.stat2 || (language === 'fr' ? 'Vitesse d\'Apprentissage Plus Rapide' : 'Vitès Aprantisaj Pi Rapid')}</div>
             </div>
             <div className="text-center">
               <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-1 sm:mb-2">
                 90%
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Satisfaction des Étudiants</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.benefits?.stat3 || (language === 'fr' ? 'Satisfaction des Étudiants' : 'Satisfaksyon Elèv yo')}</div>
             </div>
             <div className="text-center">
               <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-1 sm:mb-2">
                 24/7
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Disponibilité de la Plateforme</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">{t.home?.benefits?.stat4 || (language === 'fr' ? 'Disponibilité de la Plateforme' : 'Disponibilite Platfòm nan')}</div>
             </div>
           </div>
         </div>

@@ -370,10 +370,11 @@ const ModernProfile = () => {
 
                 {user.role === 'STUDENT' && (
                   <ClassSectionSelector
-                    userClass={formData.userClass}
-                    section={formData.section}
+                    selectedClass={formData.userClass}
+                    selectedSection={formData.section}
                     onClassChange={(value) => setFormData({ ...formData, userClass: value })}
                     onSectionChange={(value) => setFormData({ ...formData, section: value })}
+                    showLabel={true}
                   />
                 )}
 
@@ -588,6 +589,10 @@ const InfoRow = ({ icon, label, value }: { icon: React.ReactNode; label: string;
 );
 
 export default ModernProfile;
+
+
+
+
 
 
 

@@ -1,5 +1,6 @@
 // Centre de notifications moderne pour forum, groupes et messages privés
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, MessageSquare, Users, Reply, Check, X, Trash2 } from 'lucide-react';
 import { Button } from './button';
 import { Badge } from './badge';
@@ -9,6 +10,7 @@ import { Card } from './card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { API_URL } from '@/config/api';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,10 +21,11 @@ import {
 
 interface Notification {
   id: number;
-  type: 'FORUM_REPLY' | 'GROUP_MESSAGE' | 'PRIVATE_MESSAGE' | 'MENTION' | 'LIKE';
+  type: 'FORUM_REPLY' | 'GROUP_MESSAGE' | 'PRIVATE_MESSAGE' | 'TUTOR_MESSAGE' | 'MENTION' | 'LIKE' | 'FORUM_LIKE' | 'SYSTEM' | 'FORUM_POST' | string;
   title: string;
   message: string;
-  read: boolean;
+  read?: boolean; // Pour compatibilité
+  isRead?: boolean; // Format API
   createdAt: string;
   sender?: {
     id: number;
@@ -32,11 +35,13 @@ interface Notification {
   };
   relatedId?: number; // ID du post, groupe, ou message
   relatedType?: string; // 'post', 'group', 'message'
+  link?: string; // Lien direct
 }
 
 export const NotificationCenter = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -49,7 +54,9 @@ export const NotificationCenter = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/notifications', {
+      console.log('📬 Chargement notifications, token:', token ? 'présent' : 'absent');
+      
+      const response = await fetch(`${API_URL}/api/notifications`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -57,14 +64,41 @@ export const NotificationCenter = () => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('📬 Notifications reçues:', data.length, data);
+        console.log('📬 Détails notifications:', data.map((n: any) => ({ 
+          id: n.id, 
+          type: n.type, 
+          title: n.title, 
+          isRead: n.isRead,
+          createdAt: n.createdAt 
+        })));
         setNotifications(data);
         
-        // Compter les non lues
-        const unread = data.filter((n: Notification) => !n.read).length;
+        // Compter les non lues (le champ peut être `read` ou `isRead`)
+        const unread = data.filter((n: any) => !(n.read || n.isRead)).length;
+        console.log('📬 Notifications non lues:', unread);
+        console.log('📬 Notifications non lues détails:', data.filter((n: any) => !(n.read || n.isRead)).map((n: any) => ({ 
+          id: n.id, 
+          type: n.type, 
+          title: n.title 
+        })));
         setUnreadCount(unread);
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Erreur chargement notifications:', response.status, errorText);
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les notifications: ${response.status}`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
-      console.error('Erreur chargement notifications:', error);
+      console.error('❌ Erreur chargement notifications:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur de connexion lors du chargement des notifications",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -83,7 +117,7 @@ export const NotificationCenter = () => {
   const markAsRead = async (notificationId: number) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/notifications/${notificationId}/read`, {
+      const response = await fetch(`${API_URL}/api/notifications/${notificationId}/read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -92,7 +126,7 @@ export const NotificationCenter = () => {
 
       if (response.ok) {
         setNotifications(prev =>
-          prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+          prev.map(n => n.id === notificationId ? { ...n, read: true, isRead: true } : n)
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
@@ -105,7 +139,7 @@ export const NotificationCenter = () => {
   const markAllAsRead = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/notifications/mark-all-read', {
+      const response = await fetch(`${API_URL}/api/notifications/mark-all-read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -113,7 +147,7 @@ export const NotificationCenter = () => {
       });
 
       if (response.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setNotifications(prev => prev.map(n => ({ ...n, read: true, isRead: true })));
         setUnreadCount(0);
         toast({
           title: "Notifications marquées comme lues",
@@ -129,7 +163,7 @@ export const NotificationCenter = () => {
   const deleteNotification = async (notificationId: number) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/notifications/${notificationId}`, {
+      const response = await fetch(`${API_URL}/api/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -152,7 +186,7 @@ export const NotificationCenter = () => {
   const clearReadNotifications = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/notifications/clear-read', {
+      const response = await fetch(`${API_URL}/api/notifications/clear-read`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -173,43 +207,107 @@ export const NotificationCenter = () => {
 
   // Gérer le clic sur une notification
   const handleNotificationClick = (notification: Notification) => {
-    markAsRead(notification.id);
-    
-    // Rediriger selon le type
-    switch (notification.type) {
-      case 'FORUM_REPLY':
-        window.location.href = `/forum?post=${notification.relatedId}`;
-        break;
-      case 'GROUP_MESSAGE':
-        window.location.href = `/forum?group=${notification.relatedId}`;
-        break;
-      case 'PRIVATE_MESSAGE':
-        window.location.href = `/tutors?chat=${notification.relatedId}`;
-        break;
-      case 'MENTION':
-        if (notification.relatedType === 'post') {
-          window.location.href = `/forum?post=${notification.relatedId}`;
-        } else if (notification.relatedType === 'group') {
-          window.location.href = `/forum?group=${notification.relatedId}`;
-        }
-        break;
+    if (!(notification.read || (notification as any).isRead)) {
+      markAsRead(notification.id);
     }
     
+    // Fermer le menu d'abord
     setOpen(false);
+    
+    // Utiliser navigate() au lieu de window.location.href pour éviter la déconnexion
+    if (notification.relatedId) {
+      switch (notification.type) {
+        case 'FORUM_REPLY':
+        case 'FORUM_LIKE':
+        case 'FORUM_POST':
+          navigate(`/forum?post=${notification.relatedId}`);
+          break;
+        case 'GROUP_MESSAGE':
+          navigate(`/messages?groupId=${notification.relatedId}`);
+          break;
+        case 'TUTOR_MESSAGE':
+        case 'PRIVATE_MESSAGE':
+          navigate(`/messages?conversationId=${notification.relatedId}`);
+          break;
+        case 'SYSTEM':
+          // Pour les notifications système, utiliser le link qui contient déjà le conversationId
+          if ((notification as any).link) {
+            // Extraire le chemin du link (sans le domaine)
+            const link = (notification as any).link;
+            if (link.startsWith('http')) {
+              // Si c'est une URL complète, extraire le chemin
+              try {
+                const url = new URL(link);
+                navigate(url.pathname + url.search);
+              } catch {
+                navigate('/messages');
+              }
+            } else {
+              navigate(link);
+            }
+          } else {
+            navigate('/messages');
+          }
+          break;
+        case 'MENTION':
+          if (notification.relatedType === 'post') {
+            navigate(`/forum?post=${notification.relatedId}`);
+          } else if (notification.relatedType === 'group') {
+            navigate(`/messages?groupId=${notification.relatedId}`);
+          }
+          break;
+        default:
+          // Essayer d'utiliser le link s'il existe
+          if ((notification as any).link) {
+            const link = (notification as any).link;
+            if (link.startsWith('http')) {
+              try {
+                const url = new URL(link);
+                navigate(url.pathname + url.search);
+              } catch {
+                // Ignorer si l'URL est invalide
+              }
+            } else {
+              navigate(link);
+            }
+          }
+      }
+    } else if ((notification as any).link) {
+      // Utiliser le link si pas de relatedId (notamment pour SYSTEM)
+      const link = (notification as any).link;
+      if (link.startsWith('http')) {
+        try {
+          const url = new URL(link);
+          navigate(url.pathname + url.search);
+        } catch {
+          navigate('/messages');
+        }
+      } else {
+        navigate(link);
+      }
+    } else if (notification.type === 'SYSTEM') {
+      // Fallback pour notifications SYSTEM sans link
+      navigate('/messages');
+    }
   };
 
   // Icône selon le type
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'FORUM_REPLY':
+      case 'FORUM_POST':
         return <Reply className="h-4 w-4" />;
       case 'GROUP_MESSAGE':
         return <Users className="h-4 w-4" />;
       case 'PRIVATE_MESSAGE':
+      case 'TUTOR_MESSAGE':
         return <MessageSquare className="h-4 w-4" />;
+      case 'SYSTEM':
+        return <Bell className="h-4 w-4" />;
       case 'MENTION':
         return <MessageSquare className="h-4 w-4" />;
       case 'LIKE':
+      case 'FORUM_LIKE':
         return <Check className="h-4 w-4" />;
       default:
         return <Bell className="h-4 w-4" />;
@@ -220,14 +318,19 @@ export const NotificationCenter = () => {
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'FORUM_REPLY':
+      case 'FORUM_POST':
         return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
       case 'GROUP_MESSAGE':
         return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400';
       case 'PRIVATE_MESSAGE':
+      case 'TUTOR_MESSAGE':
         return 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400';
+      case 'SYSTEM':
+        return 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400';
       case 'MENTION':
         return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400';
       case 'LIKE':
+      case 'FORUM_LIKE':
         return 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400';
       default:
         return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
@@ -339,12 +442,12 @@ export const NotificationCenter = () => {
                   key={notification.id}
                   className={cn(
                     "p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer relative",
-                    !notification.read && "bg-blue-50/50 dark:bg-blue-900/10"
+                    !(notification.read || (notification as any).isRead) && "bg-blue-50/50 dark:bg-blue-900/10"
                   )}
                   onClick={() => handleNotificationClick(notification)}
                 >
                   {/* Indicateur non lu */}
-                  {!notification.read && (
+                  {!(notification.read || (notification as any).isRead) && (
                     <div className="absolute left-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-primary rounded-full"></div>
                   )}
 
@@ -354,7 +457,7 @@ export const NotificationCenter = () => {
                       <Avatar className="h-10 w-10 flex-shrink-0">
                         {notification.sender.profilePhoto ? (
                           <img
-                            src={`http://localhost:8081/api/profile/photos/${notification.sender.profilePhoto}`}
+                            src={`${API_URL}/api/profile/photos/${notification.sender.profilePhoto}`}
                             alt={`${notification.sender.firstName} ${notification.sender.lastName}`}
                             className="object-cover"
                           />
@@ -388,7 +491,7 @@ export const NotificationCenter = () => {
 
                     {/* Actions */}
                     <div className="flex flex-col gap-1">
-                      {!notification.read && (
+                      {!(notification.read || (notification as any).isRead) && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -439,6 +542,8 @@ export const NotificationCenter = () => {
     </DropdownMenu>
   );
 };
+
+
 
 
 

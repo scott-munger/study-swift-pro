@@ -103,6 +103,25 @@ const AdminSubjects = () => {
 
   const handleCreateSubject = async () => {
     try {
+      // Validation des champs requis
+      if (!subjectForm.name || !subjectForm.level) {
+        toast({ 
+          title: "Erreur", 
+          description: "Le nom et le niveau de la matière sont requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch('http://localhost:8081/api/admin/subjects', {
         method: 'POST',
         headers: {
@@ -113,16 +132,18 @@ const AdminSubjects = () => {
       });
 
       if (response.ok) {
+        const newSubject = await response.json();
         toast({ title: "Succès", description: "Matière créée avec succès" });
         setShowSubjectModal(false);
         resetForm();
-        loadSubjects();
+        loadSubjects(token);
       } else {
-        const error = await response.json();
-        toast({ title: "Erreur", description: error.error || "Erreur lors de la création", variant: "destructive" });
+        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
+        toast({ title: "Erreur", description: errorData.error || "Erreur lors de la création", variant: "destructive" });
       }
-    } catch (error) {
-      toast({ title: "Erreur", description: "Erreur de connexion", variant: "destructive" });
+    } catch (error: any) {
+      console.error('Erreur création matière:', error);
+      toast({ title: "Erreur", description: error.message || "Erreur de connexion", variant: "destructive" });
     }
   };
 
@@ -130,6 +151,25 @@ const AdminSubjects = () => {
     if (!editingSubject) return;
 
     try {
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Validation des champs requis
+      if (!subjectForm.name || !subjectForm.level) {
+        toast({ 
+          title: "Erreur", 
+          description: "Le nom et le niveau de la matière sont requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/admin/subjects/${editingSubject.id}`, {
         method: 'PUT',
         headers: {
@@ -144,7 +184,7 @@ const AdminSubjects = () => {
         setShowSubjectModal(false);
         setEditingSubject(null);
         resetForm();
-        loadSubjects();
+        loadSubjects(token);
       } else {
         const error = await response.json();
         toast({ title: "Erreur", description: error.error || "Erreur lors de la mise à jour", variant: "destructive" });
@@ -158,6 +198,15 @@ const AdminSubjects = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) return;
 
     try {
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
@@ -168,7 +217,7 @@ const AdminSubjects = () => {
 
       if (response.ok) {
         toast({ title: "Succès", description: "Matière supprimée avec succès" });
-        loadSubjects();
+        loadSubjects(token);
       } else {
         const error = await response.json();
         toast({ title: "Erreur", description: error.error || "Erreur lors de la suppression", variant: "destructive" });

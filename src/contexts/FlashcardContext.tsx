@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { offlineStorage } from '@/lib/offlineStorage';
+import { API_URL } from '@/config/api';
 
 export interface Flashcard {
   id: number;
@@ -34,7 +35,7 @@ interface FlashcardContextType {
   refreshFlashcards: () => Promise<void>;
   addFlashcard: (flashcard: Flashcard) => void;
   updateFlashcard: (flashcard: Flashcard) => void;
-  removeFlashcard: (flashcardId: number) => void;
+  removeFlashcard: (flashcardId: number) => Promise<void>;
   getFlashcardsBySubject: (subjectId: number) => Flashcard[];
   getFlashcardById: (flashcardId: number) => Flashcard | undefined;
 }
@@ -67,7 +68,7 @@ export const FlashcardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!token) return;
 
       // Utiliser l'endpoint public pour tous les utilisateurs
-      const endpoint = 'http://localhost:8081/api/flashcards';
+      const endpoint = `${API_URL}/api/flashcards`;
 
       try {
         const response = await fetch(endpoint, {
@@ -80,11 +81,20 @@ export const FlashcardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (response.ok) {
           const data = await response.json();
           const flashcardsData = data.flashcards || data;
-          setFlashcards(flashcardsData);
           
-          // Sauvegarder en cache pour usage offline
-          await offlineStorage.saveFlashcards(flashcardsData);
-          console.log('✅ Flashcards mises en cache pour usage offline');
+          // S'assurer que flashcardsData est un tableau
+          const flashcardsArray = Array.isArray(flashcardsData) ? flashcardsData : [];
+          setFlashcards(flashcardsArray);
+          
+          console.log(`✅ FlashcardContext - ${flashcardsArray.length} flashcards chargées`);
+          
+          // Sauvegarder en cache pour usage offline et synchroniser (supprimer celles qui n'existent plus)
+          await offlineStorage.saveFlashcards(flashcardsArray, true);
+          console.log('✅ Flashcards synchronisées avec le cache offline');
+          
+          if (flashcardsArray.length === 0) {
+            console.log('ℹ️ Aucune flashcard trouvée dans la base de données pour cet utilisateur');
+          }
         } else {
           console.error('❌ FlashcardContext - Erreur lors du rechargement:', response.status);
           // Charger depuis le cache en cas d'erreur
@@ -132,9 +142,17 @@ export const FlashcardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Supprimer une flashcard
-  const removeFlashcard = (flashcardId: number) => {
+  const removeFlashcard = async (flashcardId: number) => {
     console.log('🗑️ FlashcardContext - Suppression d\'une flashcard:', flashcardId);
     setFlashcards(prev => prev.filter(flashcard => flashcard.id !== flashcardId));
+    
+    // Supprimer aussi du cache offline
+    try {
+      await offlineStorage.deleteFlashcard(flashcardId);
+      console.log('✅ Flashcard supprimée du cache offline');
+    } catch (error) {
+      console.error('❌ Erreur suppression cache offline:', error);
+    }
   };
 
   // Obtenir les flashcards par matière

@@ -175,6 +175,26 @@ const AdminFlashcards = () => {
         return;
       }
 
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Validation du subjectId
+      const subjectIdNum = parseInt(flashcardForm.subjectId);
+      if (isNaN(subjectIdNum) || subjectIdNum <= 0) {
+        toast({ 
+          title: "Erreur", 
+          description: "Matière invalide", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch('http://localhost:8081/api/admin/flashcards', {
         method: 'POST',
         headers: {
@@ -182,9 +202,9 @@ const AdminFlashcards = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          question: flashcardForm.question,
-          answer: flashcardForm.answer,
-          subjectId: parseInt(flashcardForm.subjectId),
+          question: flashcardForm.question.trim(),
+          answer: flashcardForm.answer.trim(),
+          subjectId: subjectIdNum,
           chapterId: flashcardForm.chapterId && flashcardForm.chapterId !== 'none' ? parseInt(flashcardForm.chapterId) : null,
           difficulty: flashcardForm.difficulty.toUpperCase()
         })
@@ -200,9 +220,11 @@ const AdminFlashcards = () => {
         toast({ title: "Succès", description: "Flashcard créée avec succès" });
         setShowFlashcardModal(false);
         resetForm();
+        // La flashcard est déjà ajoutée au contexte global via addFlashcard()
+        // Pas besoin de recharger, le contexte se met à jour automatiquement
       } else {
-        const error = await response.json();
-        toast({ title: "Erreur", description: error.error || "Erreur lors de la création", variant: "destructive" });
+        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
+        toast({ title: "Erreur", description: errorData.error || "Erreur lors de la création", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Erreur", description: "Erreur de connexion", variant: "destructive" });
@@ -213,17 +235,48 @@ const AdminFlashcards = () => {
     if (!editingFlashcard) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/flashcards/${editingFlashcard.id}`, {
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Validation des champs requis
+      if (!flashcardForm.question || !flashcardForm.answer || !flashcardForm.subjectId) {
+        toast({ 
+          title: "Erreur", 
+          description: "Veuillez remplir tous les champs requis", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Validation du subjectId
+      const subjectIdNum = parseInt(flashcardForm.subjectId);
+      if (isNaN(subjectIdNum) || subjectIdNum <= 0) {
+        toast({ 
+          title: "Erreur", 
+          description: "Matière invalide", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${editingFlashcard.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          question: flashcardForm.question,
-          answer: flashcardForm.answer,
-          subjectId: parseInt(flashcardForm.subjectId),
-          difficulty: flashcardForm.difficulty
+          question: flashcardForm.question.trim(),
+          answer: flashcardForm.answer.trim(),
+          subjectId: subjectIdNum,
+          chapterId: flashcardForm.chapterId && flashcardForm.chapterId !== 'none' ? parseInt(flashcardForm.chapterId) : null,
+          difficulty: flashcardForm.difficulty.toUpperCase()
         })
       });
 
@@ -245,6 +298,15 @@ const AdminFlashcards = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
 
     try {
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {

@@ -4,17 +4,21 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import ChatBot from "@/components/ui/ChatBot";
 import { AdminProvider } from "@/contexts/AdminContext";
 import { FlashcardProvider } from "@/contexts/FlashcardContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { PWAInstallBanner } from "@/components/ui/PWAInstallBanner";
 import Navbar from "./components/layout/Navbar";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Flashcards from "./pages/Flashcards";
 import Forum from "./pages/Forum";
-import Admin from "./pages/Admin";
 import AdminModeration from "./pages/AdminModeration";
 import AdminUsersFixed from "./pages/AdminUsersFixed";
 import AdminUsersUnified from "./pages/AdminUsersUnified";
@@ -23,8 +27,7 @@ import AdminFlashcards from "./pages/AdminFlashcards";
 import AdminForumImages from "./pages/AdminForumImages";
 import AdminTests from "./pages/AdminTests";
 import AdminFlashcardsCRUD from "./pages/AdminFlashcardsCRUD";
-import ModernAdminDashboard from "./pages/ModernAdminDashboard";
-import AdminDashboardSidebar from "./pages/AdminDashboardSidebar";
+import AdminDashboardUnified from "./pages/AdminDashboardUnified";
 import StudentDashboard from "./pages/StudentDashboard";
 import ModernStudentDashboard from "./pages/ModernStudentDashboard";
 import KnowledgeTests from "./pages/KnowledgeTests";
@@ -36,28 +39,36 @@ import TestLogin from "./pages/TestLogin";
 import FindTutors from "./pages/FindTutors";
 import AdminTutors from "./pages/AdminTutors";
 import BecomeTutor from "./pages/BecomeTutor";
+import TutorDashboard from "./pages/TutorDashboard";
 import Messages from "./pages/Messages";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <ThemeProvider>
-        <AuthProvider>
-          <AdminProvider>
-            <FlashcardProvider>
-              <Toaster />
-              <Sonner />
-              <PWAInstallBanner />
-              <BrowserRouter future={{ v7_relativeSplatPath: true }}>
-                <Navbar />
-              <Routes>
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+        <TooltipProvider delayDuration={300}>
+          <ThemeProvider>
+            <LanguageProvider>
+              <AuthProvider>
+                <AdminProvider>
+                  <FlashcardProvider>
+                  <Toaster />
+                  <Sonner />
+                  <PWAInstallBanner />
+                  <Navbar />
+                  <ChatBot />
+                  <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
               <Route path="/test-login" element={<TestLogin />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               
               <Route path="/flashcards" element={
                 <ProtectedRoute allowedRoles={['STUDENT', 'TUTOR']} redirectTo="/">
@@ -75,6 +86,9 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/forum" element={<Forum />} />
+              
+              {/* Route Politiques de Confidentialité */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               
               {/* Route Tuteurs */}
               <Route path="/tutors" element={
@@ -110,20 +124,27 @@ const App = () => (
                 </ProtectedRoute>
               } />
               
+              {/* Routes tuteur */}
+              <Route path="/tutor/dashboard" element={
+                <ProtectedRoute allowedRoles={['TUTOR']} redirectTo="/login">
+                  <TutorDashboard />
+                </ProtectedRoute>
+              } />
+              
               {/* Routes admin */}
               <Route path="/admin" element={
                 <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
-                  <Admin />
+                  <AdminDashboardUnified />
                 </ProtectedRoute>
               } />
               <Route path="/admin/dashboard" element={
                 <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
-                  <AdminDashboardSidebar />
+                  <AdminDashboardUnified />
                 </ProtectedRoute>
               } />
               <Route path="/admin/dashboard-modern" element={
                 <ProtectedRoute allowedRoles={['ADMIN']} redirectTo="/login">
-                  <ModernAdminDashboard />
+                  <AdminDashboardUnified />
                 </ProtectedRoute>
               } />
               <Route path="/admin/moderation" element={
@@ -173,14 +194,16 @@ const App = () => (
         } />
               
               <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </FlashcardProvider>
-        </AdminProvider>
-      </AuthProvider>
-    </ThemeProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+                  </Routes>
+                  </FlashcardProvider>
+                </AdminProvider>
+              </AuthProvider>
+            </LanguageProvider>
+          </ThemeProvider>
+        </TooltipProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

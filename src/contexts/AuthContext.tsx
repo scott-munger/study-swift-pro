@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { clearUserStorage } from '@/utils/clearStorage';
+import { API_URL } from '@/config/api';
 
 export interface User {
   id: number;
@@ -55,29 +56,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('🔐 AuthContext - Chargement initial...');
-    
-    // Charger l'utilisateur depuis localStorage de manière simple
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    
-    if (token && savedUser) {
-      try {
-        const userData = JSON.parse(savedUser);
-        console.log('🔐 AuthContext - Utilisateur chargé:', userData.email);
-        setUser(userData);
-      } catch (error) {
-        console.error('Erreur parsing utilisateur:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    const initializeAuth = async () => {
+      console.log('🔐 AuthContext - Chargement initial...');
+      
+      // Charger l'utilisateur depuis localStorage
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
+      
+      if (token && savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          console.log('🔐 AuthContext - Utilisateur chargé:', userData.email, 'rôle:', userData.role);
+          
+          // Vérifier si le token contient le bon rôle
+          try {
+            const tokenParts = token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              const tokenRole = payload.role;
+              
+              // Si le rôle dans le token ne correspond pas au rôle en DB, rafraîchir
+              if (tokenRole !== userData.role && (userData.role === 'ADMIN' || userData.email?.toLowerCase() === 'admin@test.com')) {
+                console.log('🔄 AuthContext: Incohérence détectée - Token:', tokenRole, 'DB:', userData.role, ', rafraîchissement...');
+                try {
+                  const refreshResponse = await fetch('http://localhost:8081/api/auth/refresh-token', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${token}`,
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  
+                  if (refreshResponse.ok) {
+                    const refreshData = await refreshResponse.json();
+                    console.log('✅ AuthContext: Token rafraîchi, nouveau rôle:', refreshData.user.role);
+                    localStorage.setItem('token', refreshData.token);
+                    sessionStorage.setItem('token', refreshData.token);
+                    localStorage.setItem('user', JSON.stringify(refreshData.user));
+                    sessionStorage.setItem('user', JSON.stringify(refreshData.user));
+                    setUser(refreshData.user);
+                    setLoading(false);
+                    return;
+                  }
+                } catch (err) {
+                  console.warn('⚠️ AuthContext: Erreur rafraîchissement token:', err);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('⚠️ AuthContext: Erreur décodage token:', err);
+          }
+          
+          setUser(userData);
+        } catch (error) {
+          console.error('Erreur parsing utilisateur:', error);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+      } else {
         setUser(null);
       }
-    } else {
-      setUser(null);
-    }
+      
+      // Terminer le chargement
+      setLoading(false);
+    };
     
-    // Terminer le chargement immédiatement
-    setLoading(false);
+    initializeAuth();
   }, []);
 
   const login = async (email: string, password: string, rememberMe: boolean = false): Promise<boolean> => {
@@ -100,6 +145,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const data = await response.json();
         console.log('Login réussi:', data.user.email, data.user.role);
+        
+        // Si admin@test.com, forcer le rôle ADMIN et rafraîchir le token si nécessaire
+        if (email.toLowerCase() === 'admin@test.com' && data.user.role !== 'ADMIN') {
+          console.warn('⚠️ AuthContext: admin@test.com n\'a pas le rôle ADMIN, rafraîchissement du token...');
+          try {
+            const refreshResponse = await fetch('http://localhost:8081/api/auth/refresh-token', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${data.token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json();
+              console.log('✅ AuthContext: Token rafraîchi, nouveau rôle:', refreshData.user.role);
+              data.user = refreshData.user;
+              data.token = refreshData.token;
+            }
+          } catch (err) {
+            console.error('❌ AuthContext: Erreur rafraîchissement token:', err);
+          }
+        }
+        
         setUser(data.user);
         
         // Toujours persister dans les deux stockages pour éviter les 401
@@ -109,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessionStorage.setItem('token', data.token);
         if (rememberMe) localStorage.setItem('rememberMe', 'true');
         console.log('💾 Données sauvegardées dans localStorage et sessionStorage');
+        console.log('🔐 Token final - Rôle:', data.user.role, ', Email:', data.user.email);
         return true;
       }
 
@@ -155,36 +225,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
+      // Vérifier que les champs requis sont présents
+      if (!email || !password || !firstName || !lastName) {
+        console.error('❌ Champs manquants pour l\'inscription:', {
+          email: !!email,
+          password: !!password,
+          firstName: !!firstName,
+          lastName: !!lastName
+        });
+        return false;
+      }
+      
+      const requestBody = { 
+        email: email.trim(), 
+        password, 
+        firstName: firstName.trim(), 
+        lastName: lastName.trim(), 
+        userClass: userClass || null, 
+        section: section || null, 
+        department: department || null, 
+        phone: phone || null, 
+        address: address || null,
+        role: role || 'STUDENT',
+        tutorData: tutorData || undefined
+      };
+      
+      console.log('📤 Envoi inscription:', {
+        email: requestBody.email,
+        firstName: requestBody.firstName,
+        lastName: requestBody.lastName,
+        role: requestBody.role,
+        hasTutorData: !!requestBody.tutorData
+      });
+      
       // Appel à l'API d'inscription
-      const response = await fetch('http://localhost:8081/api/auth/register', {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          email, 
-          password, 
-          firstName, 
-          lastName, 
-          userClass, 
-          section, 
-          department, 
-          phone, 
-          address,
-          role: role || 'STUDENT',
-          tutorData
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const data = await response.json();
-        setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('token', data.token);
+        // NE PAS connecter l'utilisateur automatiquement
+        // L'utilisateur doit vérifier son email avant de pouvoir se connecter
+        console.log('✅ Inscription réussie:', data.message);
         return true;
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
-        console.error('Erreur d\'inscription:', response.status, errorData);
+        console.error('❌ Erreur d\'inscription:', response.status, errorData);
+        // Afficher le message d'erreur dans la console pour le débogage
+        if (errorData.error) {
+          console.error('❌ Message d\'erreur:', errorData.error);
+        }
+        if (errorData.missingFields) {
+          console.error('❌ Champs manquants:', errorData.missingFields);
+        }
       }
 
       return false;
@@ -293,9 +391,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const formData = new FormData();
       formData.append('photo', photo);
 
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      
+      // Pour FormData, ne PAS inclure Content-Type - le navigateur l'ajoute automatiquement avec la boundary
       const response = await fetch('http://localhost:8081/api/profile/photo', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // Ne pas ajouter Content-Type pour FormData
+        },
         body: formData
       });
 
@@ -340,7 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
 
-  const value = {
+  const value: AuthContextType = {
     user,
     login,
     register,

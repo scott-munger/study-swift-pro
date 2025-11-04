@@ -196,6 +196,17 @@ const Register = () => {
     // Formater le numéro de téléphone avec l'indicatif
     const formattedPhone = formData.phone ? `+509${formData.phone.replace(/\D/g, '')}` : undefined;
 
+    // Vérifier que tous les champs requis sont présents avant l'envoi
+    console.log('📝 Données d\'inscription à envoyer:', {
+      email: formData.email || 'MANQUANT',
+      password: formData.password ? 'présent' : 'MANQUANT',
+      firstName: formData.firstName || 'MANQUANT',
+      lastName: formData.lastName || 'MANQUANT',
+      role: formData.accountType || 'non défini',
+      userClass: userClass || 'non défini',
+      section: section || 'non défini'
+    });
+
     const success = await register(
       formData.email, 
       formData.password, 
@@ -216,30 +227,18 @@ const Register = () => {
     );
     
     if (success) {
-      // Redirection basée sur le rôle
-      if (formData.accountType === "student") {
-        toast({
-          title: "Inscription réussie",
-          description: "Bienvenue étudiant ! Votre compte a été créé avec succès",
-        });
-        navigate('/student/dashboard');
-      } else if (formData.accountType === "tutor") {
-        toast({
-          title: "Inscription réussie",
-          description: "Bienvenue tuteur ! Votre compte a été créé avec succès",
-        });
-        navigate('/profile');
-      } else {
-        toast({
-          title: "Inscription réussie",
-          description: "Bienvenue sur TYALA ! Votre compte a été créé avec succès",
-        });
-        navigate('/');
-      }
+      // Rediriger vers la page de vérification d'email
+      toast({
+        title: "Inscription réussie",
+        description: "Un email de vérification a été envoyé. Veuillez vérifier votre boîte mail.",
+      });
+      // Rediriger vers la page de vérification d'email
+      navigate('/verify-email', { state: { email: formData.email, message: 'Veuillez vérifier votre email pour activer votre compte.' } });
     } else {
+      // L'erreur est déjà loggée dans AuthContext, afficher un message générique
       toast({
         title: "Erreur d'inscription",
-        description: "Une erreur s'est produite lors de la création de votre compte",
+        description: "Vérifiez que tous les champs sont remplis correctement et que l'email n'est pas déjà utilisé.",
         variant: "destructive"
       });
     }
@@ -254,7 +253,8 @@ const Register = () => {
             <img 
               src="/Asset 2Tyala copie.png" 
               alt="Tyala Logo" 
-              className="h-8 w-auto sm:h-10"
+              className="h-9 w-auto sm:h-10 object-contain"
+              style={{ maxWidth: '130px', height: 'auto' }}
             />
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
@@ -619,10 +619,8 @@ const Register = () => {
                       <SelectValue placeholder="Sélectionnez votre genre" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="male">Homme</SelectItem>
-                      <SelectItem value="female">Femme</SelectItem>
-                      <SelectItem value="other">Autre</SelectItem>
-                      <SelectItem value="prefer-not-to-say">Préfère ne pas dire</SelectItem>
+                      <SelectItem value="Masculin">Masculin</SelectItem>
+                      <SelectItem value="Féminin">Féminin</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

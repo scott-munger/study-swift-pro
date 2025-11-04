@@ -76,10 +76,30 @@ router.get('/', async (req: any, res) => {
     let conversations;
 
     if (user.role === 'TUTOR' && user.tutor) {
+      // Obtenir le tuteur système TYALA pour l'exclure des conversations des tuteurs
+      // Les conversations admin (système TYALA) ne doivent PAS apparaître dans les conversations des tuteurs
+      const tyalaUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: 'system@tyala.com' },
+            { firstName: 'TYALA', role: 'TUTOR' }
+          ]
+        },
+        include: { tutor: true }
+      });
+      const systemTutorId = tyalaUser?.tutor?.id || null;
+      
       // Si c'est un tuteur, récupérer les conversations où il est le tuteur
+      // EXCLURE les conversations système TYALA (ne doivent PAS apparaître dans les conversations des tuteurs)
       conversations = await prisma.conversation.findMany({
         where: {
-          tutorId: user.tutor.id
+          tutorId: user.tutor.id,
+          // Exclure les conversations système TYALA si ce n'est pas le tuteur système lui-même
+          ...(systemTutorId && user.tutor.id !== systemTutorId ? {
+            NOT: {
+              tutorId: systemTutorId
+            }
+          } : {})
         },
         include: {
           messages: {

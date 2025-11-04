@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { API_URL, API_CONFIG, adminFetch } from '@/config/api';
 
 export interface AdminUser {
   id: string;
@@ -144,7 +145,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setLoading(true);
     try {
       // Appel à l'API réelle pour l'authentification admin
-      const response = await fetch('http://localhost:8081/api/auth/login', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,69 +194,61 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Charger les statistiques
   const refreshStats = async () => {
+    // Ne pas charger si l'utilisateur n'est pas admin
+    if (!adminUser && (!user || user.role !== 'ADMIN')) {
+      console.log('⚠️ refreshStats: Utilisateur non-admin, skip');
+      return;
+    }
+    
     try {
-      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      if (!token) {
-        console.log('Aucun token admin trouvé - opération non effectuée');
-        return;
-      }
-
-      const response = await fetch('http://localhost:8081/api/admin/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await adminFetch(`${API_URL}/api/admin/stats`);
+      const data = await response.json();
+      setStats({
+        totalUsers: data.totalUsers,
+        activeUsers: data.activeUsers,
+        totalTutors: data.totalTutors,
+        verifiedTutors: data.verifiedTutors,
+        totalMessages: data.totalMessages,
+        totalSessions: data.totalSessions,
+        revenue: data.revenue,
+        systemHealth: data.systemHealth
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStats({
-          totalUsers: data.totalUsers,
-          activeUsers: data.activeUsers,
-          totalTutors: data.totalTutors,
-          verifiedTutors: data.verifiedTutors,
-          totalMessages: data.totalMessages,
-          totalSessions: data.totalSessions,
-          revenue: data.revenue,
-          systemHealth: data.systemHealth
-        });
+    } catch (error: any) {
+      // Ne pas afficher d'erreur si l'utilisateur n'est pas admin
+      if (error.message?.includes('Accès refusé') || error.message?.includes('admin')) {
+        console.log('⚠️ refreshStats: Accès refusé (normal pour non-admin)');
       } else {
-        console.error('Erreur lors de la récupération des statistiques:', response.status);
+        console.error('Error loading stats:', error);
+        console.error('Error details:', error.message);
       }
-    } catch (error) {
-      console.error('Error loading stats:', error);
     }
   };
 
   // Charger les activités
   const refreshActivities = async () => {
+    // Ne pas charger si l'utilisateur n'est pas admin
+    if (!adminUser && (!user || user.role !== 'ADMIN')) {
+      console.log('⚠️ refreshActivities: Utilisateur non-admin, skip');
+      return;
+    }
+    
     try {
-      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      if (!token) {
-        console.log('Aucun token admin trouvé - opération non effectuée');
-        return;
-      }
-
-      const response = await fetch('http://localhost:8081/api/admin/activities', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Convertir les timestamps en objets Date
-        const activitiesWithDates = data.map((activity: any) => ({
-          ...activity,
-          timestamp: new Date(activity.timestamp)
-        }));
-        setActivities(activitiesWithDates);
+      const response = await adminFetch(`${API_URL}/api/admin/activity-data`);
+      const data = await response.json();
+      // Convertir les timestamps en objets Date
+      const activitiesWithDates = data.map((activity: any) => ({
+        ...activity,
+        timestamp: new Date(activity.timestamp)
+      }));
+      setActivities(activitiesWithDates);
+    } catch (error: any) {
+      // Ne pas afficher d'erreur si l'utilisateur n'est pas admin
+      if (error.message?.includes('Accès refusé') || error.message?.includes('admin')) {
+        console.log('⚠️ refreshActivities: Accès refusé (normal pour non-admin)');
       } else {
-        console.error('Erreur lors de la récupération des activités:', response.status);
+        console.error('Error loading activities:', error);
+        console.error('Error details:', error.message);
       }
-    } catch (error) {
-      console.error('Error loading activities:', error);
     }
   };
 
@@ -305,7 +298,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getUsers = async () => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -328,7 +321,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const createUser = async (userData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -353,7 +346,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateUser = async (userId: number, userData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users/${userId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -378,7 +371,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteUser = async (userId: number) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -401,7 +394,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const changeUserPassword = async (userId: number, newPassword: string) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}/password`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users/${userId}/password`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -421,7 +414,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const createTutor = async (tutorData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/tutors', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/tutors`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -446,7 +439,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateTutor = async (tutorId: number, tutorData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/tutors/${tutorId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/tutors/${tutorId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -471,7 +464,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteTutor = async (tutorId: number) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/tutors/${tutorId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/tutors/${tutorId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -495,7 +488,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const moderatePost = async (postId: number, action: string, data?: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum-posts/${postId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/forum-posts/${postId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -520,7 +513,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getSubjects = async () => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/subjects', {
+      const response = await fetch('${API_CONFIG.BASE_URL}/admin/subjects', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -540,7 +533,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const createSubject = async (subjectData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/subjects', {
+      const response = await fetch('${API_CONFIG.BASE_URL}/admin/subjects', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -565,7 +558,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateSubject = async (subjectId: number, subjectData: any) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/subjects/${subjectId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -590,7 +583,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteSubject = async (subjectId: number) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -614,7 +607,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getFlashcards = async (subjectId?: number, page: number = 1) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const url = new URL('http://localhost:8081/api/admin/flashcards');
+      const url = new URL('${API_CONFIG.BASE_URL}/admin/flashcards');
       if (subjectId) url.searchParams.append('subjectId', subjectId.toString());
       url.searchParams.append('page', page.toString());
 
@@ -638,7 +631,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteFlashcard = async (flashcardId: number) => {
     try {
       const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/flashcards/${flashcardId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -658,13 +651,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Charger les données initiales
+  // Charger les données initiales UNIQUEMENT pour les admins
   useEffect(() => {
-    if (adminUser || (user && user.role === 'ADMIN')) {
+    // Ne charger les données admin que si l'utilisateur est vraiment admin
+    const isAdmin = adminUser || (user && user.role === 'ADMIN');
+    if (isAdmin) {
       refreshStats();
       refreshActivities();
     }
-  }, [adminUser, user]);
+  }, [adminUser, user?.role]); // Dépendre du rôle pour éviter les rechargements inutiles
 
   const value: AdminContextType = {
     adminUser,

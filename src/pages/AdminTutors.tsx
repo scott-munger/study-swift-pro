@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { API_URL } from '@/config/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface User {
   id: number;
@@ -48,7 +49,7 @@ interface Tutor {
   userId: number;
   user: User;
   bio: string;
-  hourlyRate: number;
+  hourlyRate: number | null;
   rating: number;
   totalSessions: number;
   totalEarnings: number;
@@ -70,7 +71,7 @@ interface Tutor {
 interface TutorFormData {
   userId: number;
   bio: string;
-  hourlyRate: number;
+  hourlyRate: number | null;
   isAvailable: boolean;
   experience: number;
   education: string;
@@ -86,6 +87,8 @@ export default function AdminTutors() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTutorId, setDeleteTutorId] = useState<number | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTutor, setEditingTutor] = useState<Tutor | null>(null);
   const [formData, setFormData] = useState<TutorFormData>({
@@ -111,16 +114,23 @@ export default function AdminTutors() {
   const fetchTutors = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/api/tutors/search`, {
+      // Utiliser l'endpoint admin qui retourne tous les tuteurs sans filtre
+      const response = await fetch(`${API_URL}/api/admin/tutors`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
       if (!response.ok) throw new Error('Erreur lors du chargement des tuteurs');
 
       const data = await response.json();
-      setTutors(data);
+      console.log('📚 Tuteurs reçus:', data);
+      // Filtrer les tuteurs avec N/A dans firstName ou lastName
+      const filteredData = data.filter((tutor: Tutor) => 
+        tutor.user.firstName !== 'N/A' && tutor.user.lastName !== 'N/A'
+      );
+      setTutors(filteredData);
     } catch (error) {
       toast({
         title: 'Erreur',
@@ -202,32 +212,46 @@ export default function AdminTutors() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce tuteur ?')) return;
+  const handleDelete = (id: number) => {
+    setDeleteTutorId(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTutorId) return;
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/api/tutors/${id}`, {
+      // Utiliser l'endpoint admin pour supprimer le tuteur
+      const response = await fetch(`${API_URL}/api/admin/tutors/${deleteTutorId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
-      if (!response.ok) throw new Error('Erreur lors de la suppression');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de la suppression');
+      }
 
       toast({
         title: 'Succès',
         description: 'Tuteur supprimé avec succès',
       });
 
+      setShowDeleteConfirm(false);
+      setDeleteTutorId(null);
       fetchTutors();
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erreur',
-        description: 'Impossible de supprimer le tuteur',
+        description: error.message || 'Impossible de supprimer le tuteur',
         variant: 'destructive',
       });
+      setShowDeleteConfirm(false);
+      setDeleteTutorId(null);
     }
   };
 
@@ -422,7 +446,7 @@ export default function AdminTutors() {
                       <DollarSign className="h-4 w-4 text-primary" />
                       <span className="text-xs text-gray-600 dark:text-gray-400">Revenus</span>
                     </div>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{tutor.totalEarnings.toLocaleString()} HTG</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">{tutor.totalEarnings ? tutor.totalEarnings.toLocaleString() : '0'} HTG</p>
                   </div>
                 </div>
 
@@ -451,9 +475,11 @@ export default function AdminTutors() {
                   <div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-2xl font-black text-gray-900 dark:text-white">
-                        {tutor.hourlyRate.toLocaleString()}
+                        {tutor.hourlyRate ? tutor.hourlyRate.toLocaleString() : 'N/A'}
                       </span>
-                      <span className="text-sm font-bold text-gray-500 dark:text-gray-400">HTG/h</span>
+                        {tutor.hourlyRate && (
+                          <span className="text-sm font-bold text-gray-500 dark:text-gray-400">HTG/h</span>
+                        )}
                     </div>
                   </div>
                   
@@ -654,9 +680,22 @@ export default function AdminTutors() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={confirmDelete}
+        title="Supprimer le tuteur"
+        description="Êtes-vous sûr de vouloir supprimer ce tuteur ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
     </div>
   );
 }
+
 
 
 

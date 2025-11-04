@@ -672,8 +672,17 @@ async function seedFlashcards() {
     
     let totalFlashcards = 0;
     
+    // Sections à ignorer (ne doivent pas avoir de flashcards)
+    const sectionsToIgnore = ['SMP', 'SVT', 'SES', 'LLA'];
+    
     // Ajouter les flashcards pour chaque matière
     for (const subject of subjects) {
+      // Ignorer les sections - elles ne doivent pas avoir de flashcards
+      if (sectionsToIgnore.includes(subject.name)) {
+        console.log(`⏭️  Ignoré la section "${subject.name}" - les sections ne doivent pas avoir de flashcards`);
+        continue;
+      }
+      
       const subjectName = subject.name.toLowerCase();
       const flashcards = flashcardData[subjectName];
       

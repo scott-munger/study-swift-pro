@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   BookOpen, Clock, Trophy, RotateCcw, ChevronRight, Play, Eye, EyeOff, 
   CheckCircle, XCircle, User, Brain, Target, Zap, Star, TrendingUp,
-  BookMarked, Award, Timer as TimerIcon, Lightbulb, HelpCircle, LogIn,
+  BookMarked, Award, Lightbulb, HelpCircle, LogIn,
   ClipboardCheck, Share2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -235,34 +235,20 @@ const Flashcards = () => {
         const filteredSubjects = filterSubjectsByProfile(subjects);
         console.log('Matières filtrées selon le profil:', filteredSubjects.length);
         
-        // Ajouter les statistiques de flashcards pour chaque matière
-        const subjectsWithStats = await Promise.all(
-          filteredSubjects.map(async (subject) => {
-            try {
-              const flashcardsResponse = await fetch(API_CONFIG.ENDPOINTS.SUBJECT_FLASHCARDS(subject.id));
-              if (flashcardsResponse.ok) {
-                const flashcardsData = await flashcardsResponse.json();
-                const flashcards = Array.isArray(flashcardsData) ? flashcardsData : flashcardsData.flashcards || [];
-                return {
-                  ...subject,
-                  totalFlashcards: flashcards.length,
-                  completedFlashcards: 0,
-                  accuracy: 0,
-                  progress: 0
-                };
-              }
-            } catch (error) {
-              console.error(`Erreur lors du chargement des flashcards pour ${subject.name}:`, error);
-            }
-            return {
-              ...subject,
-              totalFlashcards: 0,
-              completedFlashcards: 0,
-              accuracy: 0,
-              progress: 0
-            };
-          })
-        );
+        // Utiliser les données déjà calculées par le backend si disponibles
+        // Sinon, initialiser avec 0 plutôt que de faire des appels API qui peuvent échouer
+        const subjectsWithStats = filteredSubjects.map((subject) => {
+          return {
+            ...subject,
+            // Utiliser totalFlashcards du backend s'il existe, sinon 0
+            totalFlashcards: subject.totalFlashcards ?? 0,
+            completedFlashcards: subject.completedFlashcards ?? 0,
+            accuracy: subject.accuracy ?? 0,
+            progress: subject.progress ?? 0,
+            // Préserver les chapitres avec leurs flashcardCount du backend
+            chapters: subject.chapters || []
+          };
+        });
         
         setAvailableSubjects(subjectsWithStats);
         console.log('Matières filtrées avec statistiques et définies dans le state:', subjectsWithStats.length);
@@ -355,21 +341,46 @@ const Flashcards = () => {
     try {
       console.log('🔍 Chargement des flashcards pour la matière:', subjectId, 'chapitre:', chapterId);
 
+      // S'assurer que les flashcards sont bien chargées dans le contexte
+      await refreshFlashcards();
+
       // Utiliser le contexte global pour obtenir les flashcards
       const allFlashcards = getFlashcardsBySubject(subjectId);
       console.log('🔍 Flashcards trouvées dans le contexte:', allFlashcards.length);
+      console.log('🔍 Détails des flashcards:', allFlashcards.map((c: any) => ({
+        id: c.id,
+        chapterId: c.chapterId,
+        chapterIdType: typeof c.chapterId,
+        subjectId: c.subjectId
+      })));
       
       // Filtrer par chapitre - uniquement si un chapitre est sélectionné
       let filteredFlashcards: any[] = [];
       
       if (chapterId && chapterId !== 'none' && chapterId !== 'all' && chapterId !== null) {
         // Chapitre spécifique : afficher UNIQUEMENT les flashcards de ce chapitre
-        const targetChapterId = typeof chapterId === 'string' ? parseInt(chapterId) : chapterId;
+        // Normaliser les types pour la comparaison
+        const targetChapterId = typeof chapterId === 'string' ? parseInt(chapterId) : Number(chapterId);
+        
+        if (isNaN(targetChapterId)) {
+          console.error('❌ ChapterId invalide:', chapterId);
+          filteredFlashcards = [];
+        } else {
         filteredFlashcards = allFlashcards.filter((card: any) => {
-          const cardChapterId = card.chapterId;
-          return cardChapterId === targetChapterId;
+            // Normaliser le chapterId de la carte pour la comparaison
+            const cardChapterId = card.chapterId != null ? Number(card.chapterId) : null;
+            const match = cardChapterId === targetChapterId;
+            if (match) {
+              console.log('✅ Flashcard correspondante trouvée:', {
+                cardId: card.id,
+                cardChapterId,
+                targetChapterId
+              });
+            }
+            return match;
         });
         console.log('🔍 Flashcards filtrées par chapitre:', filteredFlashcards.length, 'pour chapitre ID:', targetChapterId);
+        }
       } else {
         // Si aucun chapitre n'est sélectionné, ne pas afficher de flashcards
         console.log('⚠️ Aucun chapitre sélectionné, aucune flashcard affichée');
@@ -378,8 +389,14 @@ const Flashcards = () => {
       
       setSubjectFlashcards(filteredFlashcards);
       console.log('🔍 Flashcards définies dans le state:', filteredFlashcards.length);
+      
+      // Si aucune flashcard trouvée, afficher un message d'erreur
+      if (filteredFlashcards.length === 0 && chapterId && chapterId !== 'none' && chapterId !== 'all') {
+        console.warn('⚠️ Aucune flashcard trouvée pour le chapitre:', chapterId, 'dans la matière:', subjectId);
+      }
     } catch (error) {
       console.error('Erreur lors du chargement des flashcards:', error);
+      setSubjectFlashcards([]);
     }
   };
 
@@ -507,15 +524,21 @@ const Flashcards = () => {
     if (!selectedSubject || !selectedChapter) return 0;
     
     const subjectId = parseInt(selectedSubject);
-    if (!subjectId) return 0;
+    if (!subjectId || isNaN(subjectId)) return 0;
     
     // Utiliser les flashcards du contexte
     const allFlashcards = getFlashcardsBySubject(subjectId);
     
     // Filtrer uniquement par chapitre sélectionné (plus d'option "Tous les chapitres" ou "Sans chapitre")
     if (selectedChapter && selectedChapter !== 'none' && selectedChapter !== 'all' && selectedChapter !== null) {
-      const targetChapterId = typeof selectedChapter === 'string' ? parseInt(selectedChapter) : selectedChapter;
-      const filteredCards = allFlashcards.filter(card => card.chapterId === targetChapterId);
+      // Normaliser les types pour la comparaison
+      const targetChapterId = typeof selectedChapter === 'string' ? parseInt(selectedChapter) : Number(selectedChapter);
+      if (isNaN(targetChapterId)) return 0;
+      
+      const filteredCards = allFlashcards.filter((card: any) => {
+        const cardChapterId = card.chapterId != null ? Number(card.chapterId) : null;
+        return cardChapterId === targetChapterId;
+      });
       return filteredCards.length;
     }
     
@@ -605,10 +628,11 @@ const Flashcards = () => {
         }
         
         // Charger les données depuis l'API avec authentification
+        // Charger d'abord les flashcards pour qu'elles soient disponibles
+        await refreshFlashcards();
         await Promise.all([
           loadUserStats(),
-          loadAvailableSubjects(),
-          refreshFlashcards() // Charger les flashcards
+          loadAvailableSubjects()
         ]);
       } else {
         console.log('🔍 useEffect - Pas d\'utilisateur connecté, chargement des matières publiques');
@@ -648,12 +672,20 @@ const Flashcards = () => {
   // Effet pour charger les flashcards quand un chapitre est sélectionné
   useEffect(() => {
     console.log('🔍 useEffect flashcards - selectedSubject:', selectedSubject, 'selectedChapter:', selectedChapter);
-    if (selectedSubject && selectedChapter && selectedChapter !== 'all' && selectedChapter !== 'none') {
+    if (selectedSubject && selectedChapter && selectedChapter !== 'all' && selectedChapter !== 'none' && selectedChapter !== null) {
       const subjectId = parseInt(selectedSubject);
       console.log('🔍 useEffect flashcards - subjectId parsé:', subjectId);
-      if (subjectId) {
+      if (subjectId && !isNaN(subjectId)) {
         console.log('🔍 useEffect flashcards - Appel loadSubjectFlashcards avec:', subjectId, selectedChapter);
+        // Rafraîchir les flashcards puis charger
+        const loadWithRefresh = async () => {
+          await refreshFlashcards();
+          // Attendre un peu pour s'assurer que le contexte a mis à jour les flashcards
+          setTimeout(() => {
         loadSubjectFlashcards(subjectId, selectedChapter);
+          }, 300);
+        };
+        loadWithRefresh();
         // Réinitialiser l'état de la session
         setCurrentCard(0);
         setShowAnswer(false);
@@ -1391,11 +1423,6 @@ const Flashcards = () => {
                         <Badge variant="outline" className="text-xs">
                           {subject.totalFlashcards || 0} cartes
                         </Badge>
-                        {subject.totalQuestions > 0 && (
-                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
-                            {subject.totalQuestions || 0} questions
-                          </Badge>
-                        )}
                         {subject.accuracy > 0 && (
                           <Badge variant="secondary" className="text-xs">
                             {subject.accuracy}%
@@ -1416,10 +1443,6 @@ const Flashcards = () => {
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Total Flashcards</p>
                     <p className="text-lg font-bold text-blue-800">{subject.totalFlashcards || 0}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-blue-600">Total Questions</p>
-                    <p className="text-lg font-bold text-blue-800">{subject.totalQuestions || 0}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-blue-600">Progression</p>
@@ -1473,11 +1496,17 @@ const Flashcards = () => {
                 <SelectContent>
                   {availableChapters.length > 0 ? (
                     availableChapters.map((chapter: any) => {
-                      const chapterFlashcards = getFlashcardsBySubject(parseInt(selectedSubject)).filter((c: any) => c.chapterId === chapter.id);
-                      const questionCount = chapter.questionCount || 0;
+                      // Utiliser flashcardCount du backend s'il existe, sinon calculer depuis le contexte
+                      // Normaliser les types pour la comparaison
+                      const chapterId = Number(chapter.id);
+                      const allFlashcards = getFlashcardsBySubject(parseInt(selectedSubject));
+                      const flashcardCount = chapter.flashcardCount ?? allFlashcards.filter((c: any) => {
+                        const cardChapterId = c.chapterId != null ? Number(c.chapterId) : null;
+                        return cardChapterId === chapterId;
+                      }).length;
                       return (
                         <SelectItem key={chapter.id} value={chapter.id.toString()}>
-                          📖 {chapter.name} ({chapterFlashcards.length} cartes, {questionCount} questions)
+                          {chapter.name} ({flashcardCount} cartes)
                         </SelectItem>
                       );
                     })
@@ -1687,7 +1716,6 @@ const Flashcards = () => {
                     <div className="flex items-center gap-2">
                       {!showAnswer && !timeUp && (
                         <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
-                          <TimerIcon className="w-4 h-4 text-blue-600" />
                           <Timer 
                             duration={30} 
                             onTimeUp={handleTimeUp}
@@ -1736,13 +1764,18 @@ const Flashcards = () => {
                     </div>
                     
                     <div className="space-y-4">
+                      <label htmlFor="flashcard-answer-input" className="sr-only">
+                        Votre réponse
+                      </label>
                       <input
+                        id="flashcard-answer-input"
                         type="text"
                         value={userAnswer}
                         onChange={(e) => setUserAnswer(e.target.value)}
                         placeholder="Tapez votre réponse ici..."
                         className="w-full p-3 md:p-4 text-base md:text-lg border-2 border-gray-300 rounded-lg md:rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         disabled={showAnswer || timeUp}
+                        autoComplete="off"
                       />
                       
                       {!showAnswer && !timeUp ? (
@@ -1820,7 +1853,6 @@ const Flashcards = () => {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
-                  <TimerIcon className="w-4 h-4 text-purple-600" />
                   <span className="text-sm font-medium text-gray-700">
                     Temps restant: {Math.floor(examTimeLeft / 60)}:{(examTimeLeft % 60).toString().padStart(2, '0')}
                   </span>

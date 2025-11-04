@@ -6,6 +6,7 @@ import { ScrollArea } from './scroll-area';
 import { Card } from './card';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { API_URL } from '@/config/api';
 
 interface Notification {
   id: number;
@@ -32,7 +33,7 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
   // Charger les notifications
   const loadNotifications = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/notifications', {
+      const response = await fetch(`${API_URL}/api/notifications`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -66,7 +67,7 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
   // Marquer une notification comme lue
   const markAsRead = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8081/api/notifications/${id}/read`, {
+      const response = await fetch(`${API_URL}/api/notifications/${id}/read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -87,7 +88,7 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
   // Marquer toutes comme lues
   const markAllAsRead = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/notifications/mark-all-read', {
+      const response = await fetch(`${API_URL}/api/notifications/mark-all-read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -112,7 +113,7 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
   // Supprimer une notification
   const deleteNotification = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8081/api/notifications/${id}`, {
+      const response = await fetch(`${API_URL}/api/notifications/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -131,7 +132,7 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
   // Supprimer les notifications lues
   const clearReadNotifications = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/notifications/clear-read', {
+      const response = await fetch(`${API_URL}/api/notifications/clear-read`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -325,6 +326,8 @@ const NotificationPanel = ({ onClose, onNotificationRead }: NotificationPanelPro
 };
 
 export default NotificationPanel;
+
+
 
 
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '@/config/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -229,7 +230,7 @@ const SimpleAdminDashboard = () => {
 
   const loadStats = async (currentToken = token) => {
     console.log('🔍 Chargement des statistiques avec token:', currentToken ? 'présent' : 'absent');
-    const response = await fetch('http://localhost:8081/api/admin/stats', {
+    const response = await fetch(`${API_URL}/api/admin/stats`, {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -250,7 +251,7 @@ const SimpleAdminDashboard = () => {
 
   const loadUsers = async (currentToken = token) => {
     console.log('👥 Chargement des utilisateurs...');
-    const response = await fetch('http://localhost:8081/api/admin/users', {
+    const response = await fetch(`${API_URL}/api/admin/users`, {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -271,7 +272,7 @@ const SimpleAdminDashboard = () => {
 
   const loadSubjects = async (currentToken = token) => {
     console.log('📚 Chargement des matières...');
-    const response = await fetch('http://localhost:8081/api/admin/subjects', {
+    const response = await fetch(`${API_URL}/api/admin/subjects`, {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -293,7 +294,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateUser = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch(`${API_URL}/api/admin/users`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -332,7 +333,7 @@ const SimpleAdminDashboard = () => {
     if (!editingUser) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
+      const response = await fetch(`${API_URL}/api/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -371,7 +372,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_URL}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -425,7 +426,7 @@ const SimpleAdminDashboard = () => {
 
   const handleCreateSubject = async () => {
     try {
-      const response = await fetch('http://localhost:8081/api/admin/subjects', {
+      const response = await fetch(`${API_URL}/api/admin/subjects`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -463,7 +464,7 @@ const SimpleAdminDashboard = () => {
     if (!editingSubject) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${editingSubject.id}`, {
+      const response = await fetch(`${API_URL}/api/admin/subjects/${editingSubject.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -502,7 +503,7 @@ const SimpleAdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`${API_URL}/api/admin/subjects/${subjectId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

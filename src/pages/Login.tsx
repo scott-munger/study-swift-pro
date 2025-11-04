@@ -82,6 +82,46 @@ const Login = () => {
       
       console.log('Rôle final pour redirection:', userRole);
       
+      // Si l'utilisateur est admin@test.com ou a le rôle ADMIN en DB mais pas dans le token, rafraîchir le token
+      const userEmail = formData.email.toLowerCase();
+      if ((userEmail === 'admin@test.com' || userRole === 'ADMIN' || (userData && userData.role === 'ADMIN'))) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const tokenParts = token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              // Si le token ne contient pas ADMIN mais que l'utilisateur est ADMIN en DB, rafraîchir
+              if (payload.role !== 'ADMIN' && (userData?.role === 'ADMIN' || userRole === 'ADMIN' || userEmail === 'admin@test.com')) {
+                console.log('🔄 Login: Rôle ADMIN en DB mais token contient', payload.role, ', rafraîchissement...');
+                const refreshResponse = await fetch('http://localhost:8081/api/auth/refresh-token', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (refreshResponse.ok) {
+                  const refreshData = await refreshResponse.json();
+                  console.log('✅ Login: Token rafraîchi avec rôle ADMIN');
+                  localStorage.setItem('token', refreshData.token);
+                  sessionStorage.setItem('token', refreshData.token);
+                  localStorage.setItem('user', JSON.stringify(refreshData.user));
+                  sessionStorage.setItem('user', JSON.stringify(refreshData.user));
+                  
+                  // Mettre à jour userData avec les nouvelles données
+                  userData = refreshData.user;
+                  userRole = refreshData.user.role;
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('⚠️ Login: Erreur rafraîchissement token:', err);
+          }
+        }
+      }
+      
       // Rediriger selon le rôle
       if (userRole === 'ADMIN') {
         // Stocker les données admin et rediriger vers le dashboard admin
@@ -98,9 +138,9 @@ const Login = () => {
         console.log('Redirection étudiant vers /student/dashboard');
         navigate('/student/dashboard');
       } else if (userRole === 'TUTOR') {
-        // Rediriger les tuteurs vers leur profil
-        console.log('Redirection tuteur vers /profile');
-        navigate('/profile');
+        // Rediriger les tuteurs vers leur dashboard
+        console.log('Redirection tuteur vers /tutor/dashboard');
+        navigate('/tutor/dashboard');
       } else {
         // Pour les autres rôles, rediriger vers la page d'accueil
         console.log('Redirection par défaut vers /');
@@ -129,7 +169,8 @@ const Login = () => {
             <img 
               src="/Asset 2Tyala copie.png" 
               alt="Tyala Logo" 
-              className="h-8 w-auto sm:h-10"
+              className="h-9 w-auto sm:h-10 object-contain"
+              style={{ maxWidth: '130px', height: 'auto' }}
             />
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
@@ -221,9 +262,6 @@ const Login = () => {
             <Button type="submit" variant="premium" className="w-full" disabled={loading}>
               {loading ? "Connexion..." : "Se connecter"}
             </Button>
-
-
-            <Separator className="my-4 sm:my-6" />
 
             <div className="text-center">
               <p className="text-sm text-muted-foreground">

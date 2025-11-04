@@ -44,6 +44,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AddMemberDialog } from './AddMemberDialog';
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { API_URL } from "@/config/api";
 
 interface GroupDetailDialogProps {
   group: any;
@@ -150,16 +151,59 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     // Pas de scroll automatique - l'utilisateur contrôle le scroll
   }, [messages, isAtBottom]);
 
+  // Fonction helper pour obtenir l'URL correcte de l'audio
+  const getAudioUrl = (audioUrl: string | undefined | null): string => {
+    if (!audioUrl || audioUrl.trim() === "") {
+      console.warn("⚠️ getAudioUrl: audioUrl est vide ou null");
+      return "";
+    }
+
+    // Si c'est déjà une URL complète, la retourner telle quelle
+    if (audioUrl.startsWith("http://") || audioUrl.startsWith("https://")) {
+      return audioUrl;
+    }
+    
+    try {
+      // Si c'est un chemin avec /uploads/audio-messages/, extraire le filename
+      if (audioUrl.includes("/uploads/audio-messages/")) {
+        const filename = audioUrl.split("/uploads/audio-messages/")[1];
+        if (!filename || filename.trim() === "") {
+          console.warn("⚠️ getAudioUrl: filename vide après split");
+          return "";
+        }
+        const fullUrl = `${API_URL}/api/audio/${filename}`;
+        console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl);
+        return fullUrl;
+      }
+      
+      // Si c'est juste un filename ou un chemin relatif, utiliser l'endpoint /api/audio
+      const filename = audioUrl.split("/").pop() || audioUrl;
+      if (!filename || filename.trim() === "") {
+        console.warn("⚠️ getAudioUrl: filename vide après extraction");
+        return "";
+      }
+      const fullUrl = `${API_URL}/api/audio/${filename}`;
+      console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl);
+      return fullUrl;
+    } catch (error) {
+      console.error("❌ Erreur dans getAudioUrl:", error, "audioUrl:", audioUrl);
+      return "";
+    }
+  };
+
   // Précharger les durées des messages vocaux
   useEffect(() => {
     messages.forEach(msg => {
       if (msg.messageType === 'VOICE' && msg.audioUrl && !audioDuration[msg.id]) {
-        const audio = new Audio(`http://localhost:8081${msg.audioUrl}`);
-        audio.onloadedmetadata = () => {
-          setAudioDuration(prev => ({ ...prev, [msg.id]: audio.duration }));
-        };
-        // Charger seulement les métadonnées (pas l'audio complet)
-        audio.preload = 'metadata';
+        const audioUrl = getAudioUrl(msg.audioUrl);
+        if (audioUrl) {
+          const audio = new Audio(audioUrl);
+          audio.onloadedmetadata = () => {
+            setAudioDuration(prev => ({ ...prev, [msg.id]: audio.duration }));
+          };
+          // Charger seulement les métadonnées (pas l'audio complet)
+          audio.preload = 'metadata';
+        }
       }
     });
   }, [messages]);
@@ -266,7 +310,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -274,6 +318,19 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
 
       if (response.ok) {
         const data = await response.json();
+        console.log("📨 Messages chargés:", data.length, "messages");
+        // Debug pour les messages vocaux
+        const voiceMessages = data.filter((msg: Message) => msg.messageType === 'VOICE');
+        if (voiceMessages.length > 0) {
+          console.log("🎤 Messages vocaux trouvés:", voiceMessages.length);
+          voiceMessages.forEach((msg: Message) => {
+            console.log("🎤 Message vocal:", {
+              id: msg.id,
+              audioUrl: msg.audioUrl,
+              messageType: msg.messageType
+            });
+          });
+        }
         setMessages(data);
         
         // Extraire et organiser les réactions par message
@@ -371,9 +428,9 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         
         formData.append('audio', audioBlob, `voice-${Date.now()}.${fileExtension}`);
 
-        console.log('🎤 Frontend - FormData préparé, envoi vers:', `http://localhost:8081/api/study-groups/${group.id}/messages`);
+        console.log('🎤 Frontend - FormData préparé, envoi vers:', `${API_URL}/api/study-groups/${group.id}/messages`);
 
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -414,9 +471,9 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         formData.append('messageType', type);
         formData.append('file', file);
 
-        console.log('📎 Frontend - FormData préparé, envoi vers:', `http://localhost:8081/api/study-groups/${group.id}/messages`);
+        console.log('📎 Frontend - FormData préparé, envoi vers:', `${API_URL}/api/study-groups/${group.id}/messages`);
 
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -452,7 +509,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         }
       } else {
         // Envoyer un message texte
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -597,6 +654,8 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
   };
 
   const playAudio = (audioUrl: string, messageId: number) => {
+    console.log("🎵 playAudio appelé avec:", { audioUrl, messageId });
+    
     if (isPlaying === messageId) {
       // Arrêter la lecture
       if (audioElement) {
@@ -606,63 +665,205 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
       setIsPlaying(null);
       setAudioElement(null);
       setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-    } else {
-      // Arrêter toute autre lecture en cours
-      if (audioElement) {
-        audioElement.pause();
-        setAudioProgress(prev => {
-          const newProgress = { ...prev };
-          if (isPlaying) newProgress[isPlaying] = 0;
-          return newProgress;
-        });
-      }
-
-      // Lire l'audio
-      const audio = new Audio(audioUrl);
-      
-      // Récupérer la durée quand elle est disponible
-      audio.onloadedmetadata = () => {
-        setAudioDuration(prev => ({ ...prev, [messageId]: audio.duration }));
-      };
-      
-      // Mettre à jour la progression pendant la lecture
-      audio.ontimeupdate = () => {
-        const progress = (audio.currentTime / audio.duration) * 100;
-        setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
-      };
-      
-      audio.onended = () => {
-        setIsPlaying(null);
-        setAudioElement(null);
-        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-      };
-      
-      audio.onerror = (e) => {
-        console.error('Erreur lecture audio:', e);
-        toast({
-          title: "Erreur",
-          description: "Impossible de lire le message vocal",
-          variant: "destructive"
-        });
-        setIsPlaying(null);
-        setAudioElement(null);
-        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-      };
-      
-      setAudioElement(audio);
-      setIsPlaying(messageId);
-      audio.play().catch((error) => {
-        console.error('Erreur play audio:', error);
-        toast({
-          title: "Erreur",
-          description: "Impossible de lire le message vocal",
-          variant: "destructive"
-        });
-        setIsPlaying(null);
-        setAudioElement(null);
-        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+      return;
+    }
+    
+    // Arrêter toute autre lecture en cours
+    if (audioElement) {
+      audioElement.pause();
+      setAudioProgress(prev => {
+        const newProgress = { ...prev };
+        if (isPlaying) newProgress[isPlaying] = 0;
+        return newProgress;
       });
     }
+
+    // Vérifier que l'URL est valide
+    if (!audioUrl || audioUrl.trim() === "") {
+      console.error("❌ URL audio vide pour message:", messageId);
+      toast({
+        title: "Erreur",
+        description: "URL audio non disponible pour ce message vocal",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Normaliser l'URL - utiliser getAudioUrl si nécessaire
+    let normalizedUrl = audioUrl;
+    if (!audioUrl.startsWith("http://") && !audioUrl.startsWith("https://")) {
+      console.log("⚠️ URL ne commence pas par http, normalisation...");
+      normalizedUrl = getAudioUrl(audioUrl);
+      if (!normalizedUrl || normalizedUrl.trim() === "") {
+        console.error("❌ Impossible de normaliser l'URL audio:", audioUrl);
+        toast({
+          title: "Erreur",
+          description: "Format d'URL audio invalide. Veuillez réessayer.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    console.log("🎵 URL normalisée:", normalizedUrl);
+
+    console.log("🎵 Lecture audio:", normalizedUrl, "pour message:", messageId);
+
+    // Vérifier le support du format audio dans le navigateur
+    const audioElementTest = document.createElement('audio');
+    const canPlayWebM = audioElementTest.canPlayType('audio/webm; codecs=opus') || 
+                       audioElementTest.canPlayType('audio/webm') || 
+                       audioElementTest.canPlayType('audio/ogg; codecs=opus') ||
+                       audioElementTest.canPlayType('audio/mpeg');
+    
+    if (!canPlayWebM && normalizedUrl.includes('.webm')) {
+      console.warn("⚠️ Format WebM pas totalement supporté, mais tentative de lecture");
+    }
+
+    // Lire l'audio
+    const audio = new Audio(normalizedUrl);
+    audio.crossOrigin = 'anonymous'; // Permettre CORS si nécessaire
+    audio.preload = 'auto';
+    
+    // Gestion du timeout pour les erreurs de chargement
+    let loadTimeout: NodeJS.Timeout;
+    const clearLoadTimeout = () => {
+      if (loadTimeout) clearTimeout(loadTimeout);
+    };
+    
+    // Timeout de 10 secondes pour le chargement
+    loadTimeout = setTimeout(() => {
+      if (audio.readyState < 2) { // HAVE_CURRENT_DATA
+        console.error("❌ Timeout chargement audio:", normalizedUrl);
+        toast({
+          title: "Erreur",
+          description: "Le message vocal prend trop de temps à charger. Vérifiez votre connexion.",
+          variant: "destructive",
+        });
+        setIsPlaying(null);
+        setAudioElement(null);
+        clearLoadTimeout();
+      }
+    }, 10000);
+    
+    // Récupérer la durée quand elle est disponible
+    audio.onloadedmetadata = () => {
+      clearLoadTimeout();
+      console.log(
+        "✅ Métadonnées audio chargées:",
+        audio.duration,
+        "secondes"
+      );
+      setAudioDuration(prev => ({ ...prev, [messageId]: audio.duration }));
+    };
+    
+    // Mettre à jour la progression pendant la lecture
+    audio.ontimeupdate = () => {
+      if (audio.duration && !isNaN(audio.duration)) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+        setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
+      }
+    };
+    
+    audio.onended = () => {
+      clearLoadTimeout();
+      console.log("✅ Audio terminé");
+      setIsPlaying(null);
+      setAudioElement(null);
+      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+    };
+    
+    audio.onerror = (e) => {
+      clearLoadTimeout();
+      console.error("❌ Erreur lecture audio:", e, "URL:", normalizedUrl);
+      console.error("Erreur audio détail:", {
+        error: audio.error,
+        code: audio.error?.code,
+        message: audio.error?.message,
+        networkState: audio.networkState,
+        readyState: audio.readyState,
+      });
+      
+      // Messages d'erreur plus descriptifs selon le code d'erreur
+      // MediaError.MEDIA_ERR_ABORTED = 1
+      // MediaError.MEDIA_ERR_NETWORK = 2
+      // MediaError.MEDIA_ERR_DECODE = 3
+      // MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+      let errorMessage = "Format non supporté";
+      if (audio.error) {
+        switch (audio.error.code) {
+          case 1: // MEDIA_ERR_ABORTED
+            errorMessage = "Lecture interrompue";
+            break;
+          case 2: // MEDIA_ERR_NETWORK
+            errorMessage = "Erreur réseau. Vérifiez votre connexion.";
+            break;
+          case 3: // MEDIA_ERR_DECODE
+            errorMessage = "Format audio non supporté par votre navigateur";
+            break;
+          case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+            errorMessage = "Format audio non supporté ou fichier corrompu";
+            break;
+          default:
+            errorMessage = audio.error.message || "Erreur de lecture audio";
+        }
+      }
+      
+      toast({
+        title: "Erreur",
+        description: `Impossible de lire le message vocal: ${errorMessage}`,
+        variant: "destructive",
+      });
+      setIsPlaying(null);
+      setAudioElement(null);
+      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+    };
+    
+    // Gestion des événements de chargement
+    audio.oncanplay = () => {
+      clearLoadTimeout();
+      console.log("✅ Audio prêt à être lu");
+    };
+    
+    audio.oncanplaythrough = () => {
+      clearLoadTimeout();
+      console.log("✅ Audio complètement chargé");
+    };
+    
+    audio.onloadstart = () => {
+      console.log("🔄 Début chargement audio:", normalizedUrl);
+    };
+    
+    audio.onstalled = () => {
+      console.warn("⚠️ Chargement audio bloqué:", normalizedUrl);
+    };
+    
+    setAudioElement(audio);
+    setIsPlaying(messageId);
+    
+    // Essayer de jouer l'audio avec meilleure gestion d'erreur
+    audio.play().catch((error) => {
+      clearLoadTimeout();
+      console.error("❌ Erreur play audio:", error, "URL:", normalizedUrl);
+      let errorMessage = "Vérifiez votre connexion";
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = "Lecture bloquée. Autorisez la lecture audio dans votre navigateur.";
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage = "Format audio non supporté par votre navigateur";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Erreur",
+        description: `Impossible de lire le message vocal: ${errorMessage}`,
+        variant: "destructive",
+      });
+      setIsPlaying(null);
+      setAudioElement(null);
+      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+    });
   };
 
   // Gestion de la sélection de fichiers
@@ -711,7 +912,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
   // Télécharger un fichier
   const downloadFile = (fileUrl: string, fileName: string) => {
     const link = document.createElement('a');
-    link.href = `http://localhost:8081/api/chat-files/${fileUrl}`;
+    link.href = `${API_URL}/api/chat-files/${fileUrl}`;
     link.download = fileName;
     link.target = '_blank';
     document.body.appendChild(link);
@@ -744,7 +945,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -780,7 +981,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -826,7 +1027,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/reactions`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -941,7 +1142,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
 
   // Prévisualiser un fichier
   const previewFile = (fileUrl: string, fileType: string) => {
-    const fullUrl = `http://localhost:8081/api/chat-files/${fileUrl}`;
+    const fullUrl = `${API_URL}/api/chat-files/${fileUrl}`;
     
     if (fileType.startsWith('image/')) {
       // Ouvrir l'image dans un nouvel onglet
@@ -1019,7 +1220,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/pinned-messages`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/pinned-messages`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -1039,7 +1240,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/pin`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/pin`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1076,7 +1277,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     if (!group?.id) return;
     
     try {
-      const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages/${messageId}/pin`, {
+      const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages/${messageId}/pin`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1324,6 +1525,16 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                         const isImageMessage = msg.messageType === 'IMAGE';
                         const isFileMessage = msg.messageType === 'FILE';
                         
+                        // Debug pour les messages vocaux
+                        if (isVoiceMessage) {
+                          console.log("🎤 Message vocal détecté:", {
+                            id: msg.id,
+                            messageType: msg.messageType,
+                            audioUrl: msg.audioUrl,
+                            hasAudioUrl: !!msg.audioUrl
+                          });
+                        }
+                        
                         return (
                           <div
                             key={msg.id}
@@ -1344,7 +1555,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                                 >
                                   {msg.user.profilePhoto ? (
                                     <AvatarImage 
-                                      src={`http://localhost:8081/api/profile/photos/${msg.user.profilePhoto}`}
+                                      src={`${API_URL}/api/profile/photos/${msg.user.profilePhoto}`}
                                       alt={`${msg.user.firstName} ${msg.user.lastName}`}
                                       className="object-cover"
                                     />
@@ -1491,17 +1702,55 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                                           ? 'bg-white/20 hover:bg-white/30 text-white' 
                                           : 'bg-blue-100 hover:bg-blue-200 text-blue-600'
                                       )}
-                                      onClick={() => {
-                                        if (msg.audioUrl) {
-                                          playAudio(
-                                            `http://localhost:8081/api/audio/${msg.audioUrl}`,
-                                            msg.id
-                                          );
+                                      onClick={async () => {
+                                        console.log("🎵 Clic sur bouton play audio pour message:", msg.id);
+                                        console.log("🎵 Données du message:", {
+                                          id: msg.id,
+                                          messageType: msg.messageType,
+                                          audioUrl: msg.audioUrl,
+                                          audioUrlType: typeof msg.audioUrl,
+                                          audioUrlLength: msg.audioUrl?.length
+                                        });
+                                        
+                                        if (msg.audioUrl && typeof msg.audioUrl === 'string' && msg.audioUrl.trim() !== '') {
+                                          const audioUrl = getAudioUrl(msg.audioUrl);
+                                          console.log("🎵 URL audio générée:", audioUrl, "depuis:", msg.audioUrl);
+                                          
+                                          if (audioUrl && audioUrl.trim() !== "") {
+                                            // Test si l'URL est accessible avant de jouer
+                                            try {
+                                              const testResponse = await fetch(audioUrl, { method: 'HEAD' });
+                                              if (testResponse.ok) {
+                                                console.log("✅ Fichier audio accessible, lecture...");
+                                                playAudio(audioUrl, msg.id);
+                                              } else {
+                                                console.error("❌ Fichier audio non accessible:", testResponse.status, testResponse.statusText);
+                                                toast({
+                                                  title: "Erreur",
+                                                  description: `Fichier audio non accessible (${testResponse.status}). Veuillez réessayer.`,
+                                                  variant: "destructive",
+                                                });
+                                              }
+                                            } catch (fetchError) {
+                                              console.error("❌ Erreur lors de la vérification de l'URL audio:", fetchError);
+                                              // Essayer quand même de jouer l'audio
+                                              console.log("⚠️ Tentative de lecture malgré l'erreur de vérification...");
+                                              playAudio(audioUrl, msg.id);
+                                            }
+                                          } else {
+                                            console.error("❌ Impossible de générer une URL audio valide depuis:", msg.audioUrl);
+                                            toast({
+                                              title: "Erreur",
+                                              description: "Impossible de charger le message vocal. URL invalide.",
+                                              variant: "destructive",
+                                            });
+                                          }
                                         } else {
+                                          console.error("❌ Message vocal sans audioUrl valide:", msg);
                                           toast({
                                             title: "Erreur",
-                                            description: "Fichier audio non disponible",
-                                            variant: "destructive"
+                                            description: "Fichier audio non disponible pour ce message",
+                                            variant: "destructive",
                                           });
                                         }
                                       }}
@@ -1560,7 +1809,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                                   <div className="space-y-2">
                                     <div className="relative group">
                                       <img
-                                        src={`http://localhost:8081/api/chat-files/${msg.fileUrl}`}
+                                        src={`${API_URL}/api/chat-files/${msg.fileUrl}`}
                                         alt={msg.fileName || 'Image'}
                                         className={cn(
                                           "max-w-full max-h-80 object-cover cursor-pointer transition-transform hover:scale-105",
@@ -1568,7 +1817,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                                             ? 'rounded-2xl rounded-br-md' 
                                             : 'rounded-2xl rounded-bl-md'
                                         )}
-                                        onClick={() => window.open(`http://localhost:8081/api/chat-files/${msg.fileUrl}`, '_blank')}
+                                        onClick={() => window.open(`${API_URL}/api/chat-files/${msg.fileUrl}`, '_blank')}
                                       />
                                       {/* Overlay pour l'effet hover */}
                                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-2xl transition-colors" />
@@ -2073,7 +2322,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                           return;
                         }
 
-                        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/join`, {
+                        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/join`, {
                           method: 'POST',
                           headers: {
                             'Authorization': `Bearer ${token}`,
@@ -2198,7 +2447,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                 <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
                   {selectedUser.profilePhoto ? (
                     <AvatarImage 
-                      src={`http://localhost:8081/api/profile/photos/${selectedUser.profilePhoto}`}
+                      src={`${API_URL}/api/profile/photos/${selectedUser.profilePhoto}`}
                       alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
                       className="object-cover"
                     />

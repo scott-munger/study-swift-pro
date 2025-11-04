@@ -188,6 +188,26 @@ const AdminUsersUnified = () => {
         }
       }
 
+      if (!token) {
+        toast({ 
+          title: "Erreur", 
+          description: "Token d'authentification manquant", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Validation email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(userForm.email)) {
+        toast({ 
+          title: "Erreur", 
+          description: "Email invalide", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
       const response = await fetch('http://localhost:8081/api/admin/users', {
         method: 'POST',
         headers: {
@@ -195,10 +215,10 @@ const AdminUsersUnified = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          email: userForm.email,
+          email: userForm.email.trim().toLowerCase(),
           password: userForm.password || 'password123', // Mot de passe par défaut
-          firstName: userForm.firstName,
-          lastName: userForm.lastName,
+          firstName: userForm.firstName.trim(),
+          lastName: userForm.lastName.trim(),
           role: userForm.role,
           userClass: userForm.userClass || null,
           section: userForm.section || null,
@@ -209,10 +229,11 @@ const AdminUsersUnified = () => {
       });
 
       if (response.ok) {
+        const newUser = await response.json();
         toast({ title: "Succès", description: "Utilisateur créé avec succès" });
         setShowUserModal(false);
         resetForm();
-        loadUsers();
+        loadUsers(token);
       } else if (response.status === 401) {
         // Token invalide ou expiré
         toast({
@@ -299,7 +320,7 @@ const AdminUsersUnified = () => {
         setShowUserModal(false);
         setEditingUser(null);
         resetForm();
-        loadUsers();
+        loadUsers(token);
       } else if (response.status === 401) {
         // Token invalide ou expiré
         toast({
@@ -350,7 +371,7 @@ const AdminUsersUnified = () => {
 
       if (response.ok) {
         toast({ title: "Succès", description: "Utilisateur supprimé avec succès" });
-        loadUsers();
+        loadUsers(token);
       } else if (response.status === 401) {
         // Token invalide ou expiré
         toast({

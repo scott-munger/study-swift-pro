@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { ClassSectionSelector } from '@/components/ui/ClassSectionSelector';
 import { validateClassSection } from '@/lib/classConfig';
+import { API_CONFIG } from '@/config/api';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface User {
   id: number;
@@ -56,6 +58,8 @@ const AdminUsersFixed = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<number | null>(null);
   const [userForm, setUserForm] = useState({
     email: '',
     password: '',
@@ -106,7 +110,7 @@ const AdminUsersFixed = () => {
 
       console.log('🔐 AdminUsersFixed - Token trouvé, chargement des utilisateurs...');
       
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -170,15 +174,8 @@ const AdminUsersFixed = () => {
 
       // Validation spécifique selon le rôle
       if (userForm.role === 'STUDENT') {
-        if (!userForm.userClass) {
-          toast({ 
-            title: "Erreur", 
-            description: "La classe est requise pour les étudiants", 
-            variant: "destructive" 
-          });
-          return;
-        }
-        if (!validateClassSection(userForm.userClass, userForm.section || '')) {
+        // Si une classe est fournie, valider la combinaison classe/section
+        if (userForm.userClass && !validateClassSection(userForm.userClass, userForm.section || '')) {
           toast({ 
             title: "Erreur", 
             description: "La combinaison classe/section n'est pas valide", 
@@ -188,38 +185,19 @@ const AdminUsersFixed = () => {
         }
       }
 
-      if (userForm.role === 'TUTOR') {
-        if (!userForm.department) {
-          toast({ 
-            title: "Erreur", 
-            description: "Le département est requis pour les tuteurs", 
-            variant: "destructive" 
-          });
-          return;
-        }
-      }
+      // Le département est optionnel pour les tuteurs (peut être ajouté plus tard)
 
-      // Validation des champs obligatoires
-      if (!userForm.phone) {
-        toast({ 
-          title: "Erreur", 
-          description: "Le numéro de téléphone est requis", 
-          variant: "destructive" 
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Erreur",
+          description: "Token d'authentification manquant",
+          variant: "destructive"
         });
         return;
       }
 
-      if (!userForm.address) {
-        toast({ 
-          title: "Erreur", 
-          description: "L'adresse est requise", 
-          variant: "destructive" 
-        });
-        return;
-      }
-
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/users', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -234,7 +212,7 @@ const AdminUsersFixed = () => {
           userClass: userForm.userClass || null,
           section: userForm.section || null,
           department: userForm.department || null,
-          phone: userForm.phone ? `+509${userForm.phone.replace(/\D/g, '')}` : null,
+          phone: userForm.phone ? userForm.phone.replace(/\D/g, '') : null,
           address: userForm.address || null
         })
       });
@@ -301,7 +279,7 @@ const AdminUsersFixed = () => {
       }
 
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/users/${editingUser.id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -356,12 +334,26 @@ const AdminUsersFixed = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
+  const handleDeleteUser = (userId: number) => {
+    setUserToDelete(userId);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/users/${userId}`, {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Erreur",
+          description: "Token d'authentification manquant",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/users/${userToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -399,6 +391,9 @@ const AdminUsersFixed = () => {
       }
     } catch (error) {
       toast({ title: "Erreur", description: "Erreur de connexion", variant: "destructive" });
+    } finally {
+      setShowDeleteDialog(false);
+      setUserToDelete(null);
     }
   };
 
@@ -611,16 +606,16 @@ const AdminUsersFixed = () => {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="department">Département {userForm.role === 'TUTOR' ? '*' : ''}</Label>
+                      <Label htmlFor="department">Département</Label>
                       <Input
                         id="department"
                         value={userForm.department}
                         onChange={(e) => setUserForm({...userForm, department: e.target.value})}
-                        placeholder={userForm.role === 'TUTOR' ? "Département requis pour les tuteurs" : "Ex: Éducation, Mathématiques"}
+                        placeholder="Ex: Éducation, Mathématiques"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="phone">Téléphone *</Label>
+                      <Label htmlFor="phone">Téléphone</Label>
                       <div className="flex">
                         <div className="flex items-center px-3 py-2 border border-input bg-muted rounded-l-md text-sm text-muted-foreground">
                           +509
@@ -638,7 +633,7 @@ const AdminUsersFixed = () => {
                       </p>
                     </div>
                     <div className="col-span-2">
-                      <Label htmlFor="address">Adresse *</Label>
+                      <Label htmlFor="address">Adresse</Label>
                       <Input
                         id="address"
                         value={userForm.address}
@@ -818,6 +813,18 @@ const AdminUsersFixed = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog de confirmation de suppression */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={confirmDeleteUser}
+        title="Supprimer l'utilisateur"
+        description="Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
     </div>
   );
 };

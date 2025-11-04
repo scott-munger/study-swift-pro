@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useToast } from '@/hooks/use-toast';
+import { API_URL } from '@/config/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -166,7 +167,7 @@ const AdminDashboardSidebar = () => {
     try {
       setLoading(true);
       
-      const statsResponse = await fetch('http://localhost:8081/api/admin/stats', {
+      const statsResponse = await fetch(`${API_URL}/api/admin/stats`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -196,17 +197,17 @@ const AdminDashboardSidebar = () => {
         setStats(normalized);
       }
 
-      const activityResponse = await fetch('http://localhost:8081/api/admin/activity-data', {
+      const activityResponse = await fetch(`${API_URL}/api/admin/activity-data`, {
         headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }
       });
       if (activityResponse.ok) setUserActivity(await activityResponse.json());
 
-      const subjectStatsResponse = await fetch('http://localhost:8081/api/admin/subject-stats', {
+      const subjectStatsResponse = await fetch(`${API_URL}/api/admin/subject-stats`, {
         headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }
       });
       if (subjectStatsResponse.ok) setSubjectStats(await subjectStatsResponse.json());
 
-      const systemHealthResponse = await fetch('http://localhost:8081/api/admin/system-health', {
+      const systemHealthResponse = await fetch(`${API_URL}/api/admin/system-health`, {
         headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }
       });
       if (systemHealthResponse.ok) setSystemHealth(await systemHealthResponse.json());

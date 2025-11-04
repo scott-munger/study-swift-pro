@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { API_CONFIG } from '@/config/api';
 import { 
   BookOpen, 
   Plus, 
@@ -61,6 +63,8 @@ const AdminFlashcardsCRUD: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedFlashcard, setSelectedFlashcard] = useState<Flashcard | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [flashcardToDelete, setFlashcardToDelete] = useState<number | null>(null);
   
   // Formulaire
   const [formData, setFormData] = useState({
@@ -82,7 +86,7 @@ const AdminFlashcardsCRUD: React.FC = () => {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       
       // Charger les flashcards
-      const flashcardsResponse = await fetch('http://localhost:8081/api/admin/flashcards', {
+      const flashcardsResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/flashcards`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -90,7 +94,7 @@ const AdminFlashcardsCRUD: React.FC = () => {
       });
 
       // Charger les matières
-      const subjectsResponse = await fetch('http://localhost:8081/api/admin/subjects', {
+      const subjectsResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/subjects`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -101,8 +105,22 @@ const AdminFlashcardsCRUD: React.FC = () => {
         const flashcardsData = await flashcardsResponse.json();
         const subjectsData = await subjectsResponse.json();
         
-        setFlashcards(flashcardsData.flashcards || flashcardsData);
-        setSubjects(subjectsData.subjects || subjectsData);
+        // Transformer les flashcards du backend (question/answer) vers le format frontend (front/back)
+        const transformedFlashcards = Array.isArray(flashcardsData) 
+          ? flashcardsData.map((fc: any) => ({
+              id: fc.id,
+              front: fc.question || fc.front,
+              back: fc.answer || fc.back,
+              subject: fc.subject,
+              difficulty: fc.difficulty,
+              tags: fc.tags || '',
+              createdAt: fc.createdAt,
+              updatedAt: fc.updatedAt
+            }))
+          : [];
+        
+        setFlashcards(transformedFlashcards);
+        setSubjects(Array.isArray(subjectsData) ? subjectsData : []);
       } else {
         toast({
           title: "Erreur",
@@ -146,13 +164,18 @@ const AdminFlashcardsCRUD: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/admin/flashcards', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/flashcards`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          question: formData.front,
+          answer: formData.back,
+          subjectId: parseInt(formData.subjectId),
+          difficulty: formData.difficulty
+        })
       });
 
       if (response.ok) {
@@ -203,13 +226,18 @@ const AdminFlashcardsCRUD: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${selectedFlashcard.id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/flashcards/${selectedFlashcard.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          question: formData.front,
+          answer: formData.back,
+          subjectId: parseInt(formData.subjectId),
+          difficulty: formData.difficulty
+        })
       });
 
       if (response.ok) {
@@ -236,12 +264,17 @@ const AdminFlashcardsCRUD: React.FC = () => {
     }
   };
 
-  const handleDeleteFlashcard = async (id: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
+  const handleDeleteFlashcard = (id: number) => {
+    setFlashcardToDelete(id);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!flashcardToDelete) return;
 
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/admin/flashcards/${flashcardToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -714,6 +747,18 @@ const AdminFlashcardsCRUD: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Supprimer la flashcard"
+        description="Êtes-vous sûr de vouloir supprimer cette flashcard ? Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+      />
     </div>
   );
 };

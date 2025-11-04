@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './dialog';
 import { Button } from './enhanced-button';
 import { Input } from './input';
@@ -6,6 +7,8 @@ import { Label } from './label';
 import { Textarea } from './textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 import { Users, BookOpen, GraduationCap } from 'lucide-react';
+import { API_URL } from '@/config/api';
+import { useToast } from '@/hooks/use-toast';
 // Classes disponibles pour les groupes d'étude
 const AVAILABLE_CLASSES = [
   {
@@ -41,6 +44,8 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   subjects, 
   onGroupCreated 
 }) => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -69,7 +74,7 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8081/api/study-groups', {
+      const response = await fetch(`${API_URL}/api/study-groups`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,16 +91,30 @@ export const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
       });
 
       if (response.ok) {
+        const groupData = await response.json();
         setOpen(false);
         setName('');
         setDescription('');
         setUserClass('');
         setSection('');
         setSubjectId(null);
-        // Forcer le rafraîchissement des groupes
-        setTimeout(() => {
+        
+        toast({
+          title: 'Groupe créé',
+          description: `Le groupe "${name}" a été créé avec succès`,
+        });
+        
+        // Rediriger vers Messages avec le groupe pré-sélectionné
+        navigate('/messages', {
+          state: {
+            groupId: groupData.id
+          }
+        });
+        
+        // Appeler onGroupCreated si fourni (pour rafraîchir la liste dans Forum)
+        if (onGroupCreated) {
           onGroupCreated();
-        }, 500);
+        }
       } else {
         const error = await response.json();
         alert(error.error || 'Erreur lors de la création du groupe');

@@ -4,6 +4,7 @@ import { Badge } from './badge';
 import { Button } from './enhanced-button';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationPanel from './NotificationPanel';
+import { API_URL } from '@/config/api';
 
 const NotificationBell = () => {
   const { user } = useAuth();
@@ -15,7 +16,7 @@ const NotificationBell = () => {
     if (!user) return;
     
     try {
-      const response = await fetch('http://localhost:8081/api/notifications/unread-count', {
+      const response = await fetch(`${API_URL}/api/notifications/unread-count`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -71,6 +72,8 @@ const NotificationBell = () => {
 };
 
 export default NotificationBell;
+
+
 
 
 

@@ -67,13 +67,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // En développement (localhost), ne pas cacher les modules React/Vite
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    // Laisser passer toutes les requêtes sans cache en développement
+    return;
+  }
+
   // Stratégie pour les API
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirstStrategy(request));
     return;
   }
 
-  // Stratégie pour les assets statiques
+  // Stratégie pour les assets statiques (seulement en production)
   if (
     request.destination === 'image' ||
     request.destination === 'style' ||
@@ -217,6 +223,7 @@ self.addEventListener('message', (event) => {
 });
 
 console.log('[SW] Service Worker Tyala chargé');
+
 
 
 

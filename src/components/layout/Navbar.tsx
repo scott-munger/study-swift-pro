@@ -2,12 +2,15 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/enhanced-button";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye, ClipboardCheck, Image } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Menu, User, LogOut, Shield, GraduationCap, BookOpen, Settings, Users, BarChart3, FileText, MessageSquare, Eye, ClipboardCheck, Image, Mail, Languages, Globe } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import NotificationBell from "@/components/ui/NotificationBell";
 import { NotificationCenter } from "@/components/ui/NotificationCenter";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import LanguageSelector from "@/components/ui/LanguageSelector";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -16,6 +19,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isAdmin: contextIsAdmin } = useAdmin();
+  const { language, setLanguage, t } = useLanguage();
   
   // Vérification de l'état de connexion
   const isLoggedIn = (() => {
@@ -73,35 +77,28 @@ const Navbar = () => {
   // Navigation basée sur le rôle
   const getNavigation = () => {
     if (isAdmin) {
-      // Menu admin avec redirection vers les pages d'administration
+      // Menu admin - tout est dans le dashboard avec sidebar
       return [
-        { name: "Dashboard", href: "/admin/dashboard-modern", icon: "dashboard", admin: true },
-        { name: "Utilisateurs", href: "/admin/users", icon: "users", admin: true },
-        { name: "Matières", href: "/admin/subjects", icon: "subjects", admin: true },
-        { name: "Flashcards", href: "/admin/flashcards", icon: "flashcards", admin: true },
-        { name: "Images", href: "/admin/forum-images", icon: "images", admin: true },
-        { name: "Modération", href: "/admin/moderation", icon: "moderation", admin: true },
+        { name: t.nav.dashboard, href: "/admin/dashboard", icon: "dashboard", admin: true },
       ];
     } else if (user?.role === 'TUTOR') {
       return [
-        { name: "Accueil", href: "/" },
-        { name: "Mon Profil", href: "/profile" },
-        { name: "Forum", href: "/forum" },
+        { name: t.nav.profile, href: "/profile" },
+        { name: t.nav.messages, href: "/messages", icon: "messages" },
+        { name: t.nav.forum, href: "/forum" },
       ];
     } else if (user?.role === 'STUDENT') {
       return [
-        { name: "Accueil", href: "/" },
-        { name: "Dashboard", href: "/student/dashboard" },
-        { name: "Flashcards", href: "/flashcards" },
-        { name: "Examens", href: "/knowledge-tests" },
-        { name: "Tuteurs", href: "/tutors" },
-        { name: "Forum", href: "/forum" },
+        { name: t.nav.dashboard, href: "/student/dashboard" },
+        { name: t.nav.flashcards, href: "/flashcards" },
+        { name: t.nav.tests, href: "/knowledge-tests" },
+        { name: t.nav.tutors, href: "/tutors" },
+        { name: t.nav.messages, href: "/messages", icon: "messages" },
+        { name: t.nav.forum, href: "/forum" },
       ];
     } else {
       // Menu général du site pour les utilisateurs non connectés
-      return [
-        { name: "Accueil", href: "/" },
-      ];
+      return [];
     }
   };
 
@@ -156,6 +153,9 @@ const Navbar = () => {
         return <User className="w-4 h-4 mr-2" />;
       case "Forum":
         return <MessageSquare className="w-4 h-4 mr-2" />;
+      case "Messages":
+      case "messages":
+        return <Mail className="w-4 h-4 mr-2" />;
       default:
         return null;
     }
@@ -180,21 +180,20 @@ const Navbar = () => {
     <nav className={`${isAdmin ? 'bg-purple-800 dark:bg-purple-900 border-b border-purple-600 dark:border-purple-700' : 'bg-white dark:bg-card border-b border-border'} backdrop-blur-sm sticky top-0 z-50 shadow-sm`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center">
-            <Link to={getHomeRoute()} className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                <img 
-                  src="/Asset 2Tyala copie.png" 
-                  alt="Tyala Logo" 
-                  className="h-8 w-auto"
-                />
-                {isAdmin && (
-                  <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
-                    ADMIN
-                  </span>
-                )}
-              </div>
+          {/* Logo cliquable */}
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <img 
+                src="/Asset 2Tyala copie.png" 
+                alt="Tyala Logo" 
+                className="h-6 w-auto object-contain cursor-pointer"
+                style={{ maxWidth: '90px', height: 'auto' }}
+              />
+              {isAdmin && (
+                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
+                  ADMIN
+                </span>
+              )}
             </Link>
           </div>
 
@@ -223,20 +222,23 @@ const Navbar = () => {
                   {isAdmin ? (
                     <div className="flex items-center space-x-1 px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
                       <Shield className="w-3 h-3" />
-                      <span>Admin</span>
+                      <span>{t.nav.admin}</span>
                     </div>
                   ) : user?.role === 'TUTOR' ? (
                     <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
                       <BookOpen className="w-3 h-3" />
-                      <span>Tuteur</span>
+                      <span>{t.nav.tutors}</span>
                     </div>
                   ) : (
                     <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
                       <GraduationCap className="w-3 h-3" />
-                      <span>Étudiant</span>
+                      <span>{t.nav.home}</span>
                     </div>
                   )}
                 </div>
+                
+                {/* Sélecteur de langue */}
+                <LanguageSelector />
                 
                 {/* Toggle de thème */}
                 <ThemeToggle />
@@ -244,30 +246,33 @@ const Navbar = () => {
                 {/* Centre de notifications moderne */}
                 <NotificationCenter />
                 
-                <Link to={isAdmin ? "/admin/dashboard-modern?tab=profile" : "/"}>
+                <Link to="/profile">
                   <Button variant="ghost" size="sm">
                     <User className="w-4 h-4 mr-2" />
-                    Profil
+                    {t.nav.profile}
                   </Button>
                 </Link>
                 <Button variant="outline" size="sm" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" />
-                  Déconnexion
+                  {t.nav.logout}
                 </Button>
               </>
             ) : (
               <>
+                {/* Sélecteur de langue */}
+                <LanguageSelector />
+                
                 {/* Toggle de thème - Visible même non connecté */}
                 <ThemeToggle />
                 
                 <Link to="/login">
                   <Button variant="ghost" size="sm">
-                    Connexion
+                    {t.nav.login}
                   </Button>
                 </Link>
                 <Link to="/register">
                   <Button variant="premium" size="sm">
-                    S'inscrire
+                    {t.nav.register}
                   </Button>
                 </Link>
               </>
@@ -282,21 +287,23 @@ const Navbar = () => {
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[300px] sm:w-[400px]">
-                <SheetHeader>
+              <SheetContent side="right" className="w-[300px] sm:w-[400px] flex flex-col p-0">
+                <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
                   <SheetTitle>Menu de navigation</SheetTitle>
                   <SheetDescription>
                     Accédez aux différentes sections de l'application
                   </SheetDescription>
                 </SheetHeader>
-                <div className="flex flex-col space-y-4 mt-8">
+                <ScrollArea className="flex-1 px-6">
+                <div className="flex flex-col space-y-4 py-4">
                   {/* Logo mobile */}
                   <div className="flex items-center gap-2 mb-8 pb-4 border-b border-border">
-                    <Link to={getHomeRoute()} onClick={() => setIsOpen(false)} className="flex items-center gap-2">
+                    <Link to="/" onClick={() => setIsOpen(false)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                       <img 
                         src="/Asset 2Tyala copie.png" 
                         alt="Tyala Logo" 
-                        className="h-6 w-auto"
+                        className="h-5 w-auto object-contain cursor-pointer"
+                        style={{ maxWidth: '85px', height: 'auto' }}
                       />
                       {isAdmin && (
                         <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
@@ -322,11 +329,51 @@ const Navbar = () => {
                   </div>
                   
                   <div className="pt-6 border-t border-border space-y-3">
+                    {/* Sélecteur de langue mobile */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-muted rounded-lg">
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        <Globe className="w-4 h-4" />
+                        {t.nav.home === 'Accueil' ? 'Langue' : 'Lang'}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={language === 'fr' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setLanguage('fr');
+                            setIsOpen(false);
+                          }}
+                          className="text-xs"
+                        >
+                          🇫🇷 FR
+                        </Button>
+                        <Button
+                          variant={language === 'ht' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setLanguage('ht');
+                            setIsOpen(false);
+                          }}
+                          className="text-xs"
+                        >
+                          🇭🇹 HT
+                        </Button>
+                      </div>
+                    </div>
+                    
                     {/* Toggle de thème - Toujours visible */}
                     <div className="flex items-center justify-between px-4 py-3 bg-muted rounded-lg">
                       <span className="text-sm font-medium">Mode d'affichage</span>
                       <ThemeToggle />
                     </div>
+                    
+                    {/* Lien Privacy Policy */}
+                    <Link to="/privacy-policy" onClick={() => setIsOpen(false)}>
+                      <Button variant="ghost" className="w-full justify-start text-sm">
+                        <Shield className="w-4 h-4 mr-2" />
+                        Politique de Confidentialité
+                      </Button>
+                    </Link>
                     
                     {isLoggedIn ? (
                       <>
@@ -357,6 +404,7 @@ const Navbar = () => {
                     )}
                   </div>
                 </div>
+                </ScrollArea>
               </SheetContent>
             </Sheet>
           </div>

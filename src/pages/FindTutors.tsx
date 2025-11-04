@@ -14,8 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { TutorChat } from '@/components/ui/TutorChat';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { TutorChat } from '@/components/ui/TutorChat';
 
 interface TutorSubject {
   subject: {
@@ -37,7 +38,7 @@ interface Review {
 interface Tutor {
   id: number;
   rating: number;
-  hourlyRate: number;
+  hourlyRate: number | null;
   isOnline: boolean;
   isAvailable: boolean;
   bio: string;
@@ -67,13 +68,14 @@ interface Message {
 
 export default function FindTutors() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
+  const [chatConversation, setChatConversation] = useState<any>(null);
   const [showChat, setShowChat] = useState(false);
-  const [chatTutor, setChatTutor] = useState<any>(null);
 
   useEffect(() => {
     loadTutors();
@@ -89,7 +91,11 @@ export default function FindTutors() {
       }
       
       const data = await response.json();
-      setTutors(data);
+      // Filtrer les tuteurs avec N/A dans firstName ou lastName
+      const filteredData = data.filter((tutor: Tutor) => 
+        tutor.user?.firstName !== 'N/A' && tutor.user?.lastName !== 'N/A'
+      );
+      setTutors(filteredData);
     } catch (error) {
       console.error('Erreur:', error);
       toast({
@@ -112,30 +118,98 @@ export default function FindTutors() {
            tutor.bio?.toLowerCase().includes(searchLower);
   });
 
-  const handleContact = (tutor: Tutor) => {
-    // Transformer le tuteur en format "groupe" pour réutiliser TutorChat
-    const groupData = {
-      id: tutor.id,
-      name: `${tutor.user.firstName} ${tutor.user.lastName}`,
-      description: tutor.bio || `Tuteur - ${tutor.hourlyRate?.toLocaleString()} HTG/heure`,
-      userClass: 'Tuteur',
-      section: tutor.isOnline ? '🟢 En ligne' : '⚫ Hors ligne',
-      creatorId: tutor.user.id,
-      isTutorChat: true, // Flag pour indiquer que c'est un chat tuteur
-      tutorId: tutor.id, // ID du tuteur pour les API calls
-      _count: { members: 2 },
-      members: [
-        { 
-          user: {
-            ...tutor.user,
-            role: 'TUTOR'
+  const handleContact = async (tutor: Tutor) => {
+    try {
+      // Créer ou récupérer une conversation avec le tuteur
+      const token = localStorage.getItem('token');
+      if (!token || !user) {
+        toast({
+          title: 'Erreur',
+          description: 'Vous devez être connecté pour contacter un tuteur',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/conversations`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tutorId: tutor.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la création de la conversation');
+      }
+
+      const conversationData = await response.json();
+      
+      // Ouvrir directement le chat style WhatsApp au lieu de naviguer
+      setChatConversation({
+        id: tutor.id,
+        name: `${tutor.user.firstName} ${tutor.user.lastName}`,
+        description: `Tuteur - Conversation privée`,
+        userClass: 'Tuteur',
+        section: tutor.isOnline ? 'En ligne' : 'Hors ligne',
+        creatorId: tutor.user.id,
+        isTutorChat: true,
+        tutorId: tutor.id,
+        conversationId: conversationData.id,
+        studentId: user.id,
+        tutorUserId: tutor.user.id,
+        _count: { members: 2 },
+        members: [
+          { 
+            user: {
+              ...tutor.user,
+              role: 'TUTOR'
+            }
           }
+        ],
+        tutor: {
+          id: tutor.id,
+          userId: tutor.user.id,
+          user: tutor.user,
+          isOnline: tutor.isOnline
         }
-      ]
-    };
-    setChatTutor(groupData as any);
-    setShowChat(true);
+      });
+      setShowChat(true);
+      // Fermer le modal si ouvert
+      setSelectedTutor(null);
+    } catch (error) {
+      console.error('Erreur lors du contact avec le tuteur:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de contacter le tuteur. Veuillez réessayer.',
+        variant: 'destructive'
+      });
+    }
   };
+
+  // Si le chat est ouvert, afficher le chat en plein écran style WhatsApp
+  if (showChat && chatConversation) {
+    return (
+      <div className="h-screen flex flex-col bg-white dark:bg-slate-900">
+        <TutorChat
+          group={chatConversation}
+          open={true}
+          onClose={() => {
+            setShowChat(false);
+            setChatConversation(null);
+          }}
+          inline={true}
+          onBack={() => {
+            setShowChat(false);
+            setChatConversation(null);
+          }}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -344,11 +418,15 @@ export default function FindTutors() {
                     <div>
                       <div className="flex items-baseline gap-1 mb-0.5">
                         <span className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                          {tutor.hourlyRate.toLocaleString()}
+                          {tutor.hourlyRate ? tutor.hourlyRate.toLocaleString() : 'N/A'}
                         </span>
-                        <span className="text-xs sm:text-sm font-bold text-gray-500 dark:text-gray-400">HTG</span>
+                        {tutor.hourlyRate && (
+                          <span className="text-xs sm:text-sm font-bold text-gray-500 dark:text-gray-400">HTG</span>
+                        )}
                       </div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">par heure</div>
+                      <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                        {tutor.hourlyRate ? 'par heure' : 'Prix sur demande'}
+                      </div>
                     </div>
                     
                     <Button 
@@ -432,11 +510,15 @@ export default function FindTutors() {
                       <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Tarif horaire</div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-5xl font-black text-gray-900 dark:text-white">
-                          {selectedTutor.hourlyRate.toLocaleString()}
+                          {selectedTutor.hourlyRate ? selectedTutor.hourlyRate.toLocaleString() : 'N/A'}
                         </span>
-                        <span className="text-2xl font-bold text-gray-600 dark:text-gray-400">HTG</span>
+                        {selectedTutor.hourlyRate && (
+                          <span className="text-2xl font-bold text-gray-600 dark:text-gray-400">HTG</span>
+                        )}
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">par heure de cours</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {selectedTutor.hourlyRate ? 'par heure de cours' : 'Prix sur demande'}
+                      </div>
                     </div>
                     <div className="text-right">
                       <Badge className="bg-green-500 text-white text-sm px-4 py-2">
@@ -495,7 +577,6 @@ export default function FindTutors() {
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-lg py-6 font-bold shadow-lg"
                   onClick={() => {
-                    setSelectedTutor(null);
                     handleContact(selectedTutor);
                   }}
                 >
@@ -508,15 +589,6 @@ export default function FindTutors() {
         </DialogContent>
       </Dialog>
 
-      {/* Chat avec le tuteur - Même composant que le chat de groupe */}
-      <TutorChat 
-        group={chatTutor}
-        open={showChat}
-        onClose={() => {
-          setShowChat(false);
-          setChatTutor(null);
-        }}
-      />
     </div>
   );
 }

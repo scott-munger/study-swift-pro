@@ -1,3 +1,7 @@
+# Robots.txt pour TYALA - Plateforme Éducative
+# https://tyala.online
+
+# Autoriser tous les robots de recherche
 User-agent: Googlebot
 Allow: /
 
@@ -12,3 +16,17 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# Pages à ne pas indexer
+Disallow: /api/
+Disallow: /admin/
+Disallow: /clear-cache.html
+Disallow: /clear-storage.html
+Disallow: /clear-everything.html
+Disallow: /test-admin.html
+
+# Sitemap
+Sitemap: https://tyala.online/sitemap.xml
+
+# Crawl-delay (optionnel - permet de ralentir légèrement le crawl)
+Crawl-delay: 1

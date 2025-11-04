@@ -71,7 +71,7 @@ const Admin = () => {
             </div>
             
             <h1 className="text-3xl font-bold text-foreground mb-4">
-              Administration Study Swift Pro
+              Administration Tyala
           </h1>
             <p className="text-lg text-muted-foreground mb-8">
               Accès sécurisé au panneau d'administration complet

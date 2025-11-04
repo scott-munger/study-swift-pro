@@ -87,10 +87,33 @@ class OfflineStorage {
 
   // FLASHCARDS
 
-  async saveFlashcards(flashcards: any[]): Promise<boolean> {
+  async saveFlashcards(flashcards: any[], replaceAll: boolean = false): Promise<boolean> {
     if (!this.db) await this.init();
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      // Si replaceAll est true, synchroniser complètement (supprimer les anciennes)
+      if (replaceAll) {
+        try {
+          // D'abord, récupérer les flashcards existantes
+          const existingFlashcards = await this.getFlashcards();
+          const newFlashcardIds = new Set(flashcards.map(f => f.id));
+          
+          // Supprimer les flashcards qui ne sont plus dans la nouvelle liste
+          const flashcardsToDelete = existingFlashcards.filter((existing: any) => 
+            !newFlashcardIds.has(existing.id)
+          );
+          
+          for (const flashcardToDelete of flashcardsToDelete) {
+            await this.deleteFlashcard(flashcardToDelete.id);
+          }
+          
+          console.log(`[DB] ${flashcardsToDelete.length} flashcards supprimées du cache`);
+        } catch (error) {
+          console.error('[DB] Erreur lors de la synchronisation:', error);
+        }
+      }
+
+      // Maintenant, ajouter ou mettre à jour toutes les flashcards
       const transaction = this.db!.transaction([STORES.FLASHCARDS], 'readwrite');
       const store = transaction.objectStore(STORES.FLASHCARDS);
 
@@ -102,12 +125,52 @@ class OfflineStorage {
       });
 
       transaction.oncomplete = () => {
-        console.log('[DB] Flashcards sauvegardées:', flashcards.length);
+        console.log(`[DB] ${flashcards.length} flashcards sauvegardées/synchronisées`);
         resolve(true);
       };
 
       transaction.onerror = () => {
         console.error('[DB] Erreur sauvegarde flashcards:', transaction.error);
+        reject(false);
+      };
+    });
+  }
+
+  async deleteFlashcard(flashcardId: number): Promise<boolean> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORES.FLASHCARDS], 'readwrite');
+      const store = transaction.objectStore(STORES.FLASHCARDS);
+      const request = store.delete(flashcardId);
+
+      request.onsuccess = () => {
+        console.log('[DB] Flashcard supprimée du cache:', flashcardId);
+        resolve(true);
+      };
+
+      request.onerror = () => {
+        console.error('[DB] Erreur suppression flashcard:', request.error);
+        reject(false);
+      };
+    });
+  }
+
+  async clearFlashcards(): Promise<boolean> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORES.FLASHCARDS], 'readwrite');
+      const store = transaction.objectStore(STORES.FLASHCARDS);
+      const request = store.clear();
+
+      request.onsuccess = () => {
+        console.log('[DB] Cache flashcards vidé');
+        resolve(true);
+      };
+
+      request.onerror = () => {
+        console.error('[DB] Erreur vidage flashcards:', request.error);
         reject(false);
       };
     });
@@ -382,15 +445,26 @@ class OfflineStorage {
       syncQueue: 0
     };
 
+    // Mapping des clés STORES vers les noms de propriétés dans stats
+    const keyMapping: Record<string, keyof typeof stats> = {
+      FLASHCARDS: 'flashcards',
+      TESTS: 'tests',
+      TEST_RESULTS: 'testResults',
+      SYNC_QUEUE: 'syncQueue'
+    };
+
     for (const [key, storeName] of Object.entries(STORES)) {
       const transaction = this.db!.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
       const request = store.count();
       
-      stats[key.toLowerCase() as keyof typeof stats] = await new Promise((resolve) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => resolve(0);
-      });
+      const mappedKey = keyMapping[key];
+      if (mappedKey) {
+        stats[mappedKey] = await new Promise((resolve) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => resolve(0);
+        });
+      }
     }
 
     return stats;
@@ -399,6 +473,9 @@ class OfflineStorage {
 
 // Export singleton
 export const offlineStorage = OfflineStorage.getInstance();
+
+
+
 
 
 

@@ -29,7 +29,7 @@ const RoleBasedRedirect: React.FC = () => {
       const userData = JSON.parse(savedUser);
       if (userData.role === 'ADMIN') {
         console.log('RoleBasedRedirect - Admin détecté, redirection vers dashboard admin');
-        navigate('/admin/dashboard-modern', { replace: true });
+        navigate('/admin/dashboard', { replace: true });
         return null;
       }
     } catch (error) {
@@ -71,11 +71,11 @@ const RoleBasedRedirect: React.FC = () => {
       if (currentUser) {
         console.log('RoleBasedRedirect - Redirection pour:', currentUser.role);
         if (currentUser.role === 'ADMIN') {
-          navigate('/admin/dashboard-modern', { replace: true });
+          navigate('/admin/dashboard', { replace: true });
         } else if (currentUser.role === 'STUDENT') {
           navigate('/student/dashboard');
         } else if (currentUser.role === 'TUTOR') {
-          navigate('/profile');
+          navigate('/tutor/dashboard', { replace: true });
         } else {
           navigate('/');
         }
@@ -167,7 +167,7 @@ const RoleBasedRedirect: React.FC = () => {
             <Button
               variant="outline"
               className="h-auto p-6 flex flex-col items-center space-y-3"
-              onClick={() => navigate('/admin/dashboard-modern')}
+              onClick={() => navigate('/admin/dashboard')}
             >
               <Shield className="h-8 w-8 text-purple-600" />
               <div className="text-center">

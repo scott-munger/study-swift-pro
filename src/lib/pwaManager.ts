@@ -16,6 +16,24 @@ export class PWAManager {
 
   // Enregistrer le Service Worker
   async register(): Promise<boolean> {
+    // NE PAS enregistrer le Service Worker en développement (localhost)
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('[PWA] Mode développement détecté - Service Worker désactivé');
+      
+      // Déregistrer les anciens Service Workers
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+          console.log('[PWA] Service Worker déregistré:', registration.scope);
+        }
+      } catch (error) {
+        console.warn('[PWA] Erreur lors du déregistrement:', error);
+      }
+      
+      return false;
+    }
+
     if (!('serviceWorker' in navigator)) {
       console.warn('[PWA] Service Worker non supporté');
       return false;
@@ -132,6 +150,7 @@ export class PWAManager {
 
 // Export singleton
 export const pwaManager = PWAManager.getInstance();
+
 
 
 

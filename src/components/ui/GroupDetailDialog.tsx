@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AddMemberDialog } from './AddMemberDialog';
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { API_URL } from "@/config/api";
 
 interface GroupDetailDialogProps {
   group: any;
@@ -98,7 +99,7 @@ export const GroupDetailDialog: React.FC<GroupDetailDialogProps> = ({
         formData.append('type', 'voice');
         formData.append('audio', audioBlob, 'voice-message.webm');
 
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -117,7 +118,7 @@ export const GroupDetailDialog: React.FC<GroupDetailDialogProps> = ({
         }
       } else {
         // Envoyer un message texte
-        const response = await fetch(`http://localhost:8081/api/study-groups/${group.id}/messages`, {
+        const response = await fetch(`${API_URL}/api/study-groups/${group.id}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

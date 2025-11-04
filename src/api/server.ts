@@ -5,8 +5,10 @@ import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
+import crypto from 'crypto';
 import { Role } from '@prisma/client';
 import { prisma, connectDatabase } from '../lib/database';
+import { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } from '../lib/emailService';
 
 // Type definitions for authenticated requests
 interface AuthenticatedUser {
@@ -572,6 +574,11 @@ app.get('/api/tutors/search', async (req, res) => {
       );
     }
 
+    // Filtrer les tuteurs avec N/A dans firstName ou lastName
+    filteredTutors = filteredTutors.filter(tutor => 
+      tutor.user.firstName !== 'N/A' && tutor.user.lastName !== 'N/A'
+    );
+
     console.log(`📊 Base de données: ${tutors.length} tuteurs trouvés`);
     console.log(`✅ Après filtres: ${filteredTutors.length} tuteurs retournés`);
     console.log('🔍 Détails des tuteurs:', filteredTutors.map(t => ({
@@ -846,9 +853,26 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, userClass, section, department, phone, address, role, tutorData } = req.body;
 
+    console.log('📝 Inscription - Données reçues:', {
+      email: email ? 'présent' : 'manquant',
+      password: password ? 'présent' : 'manquant',
+      firstName: firstName ? 'présent' : 'manquant',
+      lastName: lastName ? 'présent' : 'manquant',
+      role: role || 'non défini',
+      hasTutorData: !!tutorData
+    });
+
     if (!email || !password || !firstName || !lastName) {
+      const missingFields = [];
+      if (!email) missingFields.push('email');
+      if (!password) missingFields.push('password');
+      if (!firstName) missingFields.push('firstName');
+      if (!lastName) missingFields.push('lastName');
+      
+      console.error('❌ Inscription - Champs manquants:', missingFields);
       return res.status(400).json({ 
-        error: 'Email, mot de passe, prénom et nom sont requis' 
+        error: 'Email, mot de passe, prénom et nom sont requis',
+        missingFields: missingFields
       });
     }
 
@@ -879,6 +903,11 @@ app.post('/api/auth/register', async (req, res) => {
       userRole = 'ADMIN';
     }
 
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 24); // 24 heures
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -891,7 +920,13 @@ app.post('/api/auth/register', async (req, res) => {
         section: section || null,
         department: department || null,
         phone: phone || null,
-        address: address || null
+        address: address || null,
+        // @ts-ignore - Fields exist in schema but TypeScript types may not be updated
+        emailVerified: false,
+        // @ts-ignore
+        emailVerificationToken: verificationToken,
+        // @ts-ignore
+        emailVerificationExpires: verificationExpires
       }
     });
 
@@ -909,18 +944,26 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Send verification email
+    try {
+      const emailResult = await sendVerificationEmail(email, verificationToken, firstName);
+      if (emailResult.success) {
+        console.log(`✅ Email de vérification envoyé à: ${email}`);
+      } else {
+        console.warn(`⚠️ Échec envoi email de vérification à: ${email}`, emailResult.error);
+        // Continue même si l'email échoue - l'inscription est réussie
+      }
+    } catch (emailError) {
+      console.error('Erreur lors de l\'envoi de l\'email de vérification:', emailError);
+      // Continue même si l'email échoue - l'inscription est réussie
+    }
 
-    // Return user data without password
-    const { password: _, ...userWithoutPassword } = user;
+    // NE PAS créer de token JWT - l'utilisateur doit vérifier son email avant de se connecter
+    // Return success message only (no token, no automatic login)
     res.json({
-      user: userWithoutPassword,
-      token
+      success: true,
+      message: 'Inscription réussie. Veuillez vérifier votre email pour activer votre compte.',
+      email: email
     });
   } catch (error) {
     console.error('Erreur lors de l\'inscription:', error);
@@ -1013,7 +1056,18 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log(`✅ Utilisateur trouvé: ${user.email} (ID: ${user.id}, Role: ${user.role})`);
 
+    // Vérifier si l'email est vérifié - OBLIGATOIRE pour se connecter
+    // @ts-ignore - Field exists in schema
+    if (!user.emailVerified) {
+      return res.status(401).json({ error: 'Veuillez vérifier votre email avant de vous connecter. Un email de vérification a été envoyé lors de votre inscription.' });
+    }
+
     // Check password
+    if (!user.password) {
+      console.error(`❌ Utilisateur sans mot de passe: ${email}`);
+      return res.status(401).json({ error: 'Identifiants invalides' });
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       console.error(`❌ Mot de passe invalide pour: ${email}`);
@@ -1131,6 +1185,463 @@ app.post('/api/auth/refresh-token', authenticateToken, async (req: Authenticated
   }
 });
 
+// ============================================
+// EMAIL VERIFICATION ROUTES
+// ============================================
+
+// POST /api/auth/verify-email - Vérifier l'email avec un token
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token de vérification requis' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    // Trouver l'utilisateur avec ce token
+    // @ts-ignore - Field exists in schema
+    const user = await prisma.user.findUnique({
+      where: { emailVerificationToken: token }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Token de vérification invalide' });
+    }
+
+    // Vérifier que le token n'a pas expiré
+    // @ts-ignore - Field exists in schema
+    if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+      return res.status(400).json({ error: 'Le token de vérification a expiré. Veuillez demander un nouvel email de vérification.' });
+    }
+
+    // Vérifier l'email et supprimer le token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        // @ts-ignore - Fields exist in schema
+        emailVerified: true,
+        // @ts-ignore
+        emailVerificationToken: null,
+        // @ts-ignore
+        emailVerificationExpires: null
+      }
+    });
+
+    // Envoyer l'email de bienvenue après la vérification
+    try {
+      const welcomeResult = await sendWelcomeEmail(user.email, user.firstName);
+      if (welcomeResult.success) {
+        console.log(`✅ Email de bienvenue envoyé à: ${user.email}`);
+      } else {
+        console.warn(`⚠️ Échec envoi email de bienvenue à: ${user.email}`, welcomeResult.error);
+      }
+    } catch (welcomeError) {
+      console.error('Erreur lors de l\'envoi de l\'email de bienvenue:', welcomeError);
+      // Continuer même si l'email de bienvenue échoue
+    }
+
+    console.log(`✅ Email vérifié pour: ${user.email}`);
+    res.json({ message: 'Email vérifié avec succès', email: user.email });
+  } catch (error) {
+    console.error('Erreur lors de la vérification de l\'email:', error);
+    res.status(500).json({ error: 'Échec de la vérification de l\'email' });
+  }
+});
+
+// POST /api/auth/resend-verification - Renvoyer l'email de vérification
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email requis' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    // Trouver l'utilisateur
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() }
+    });
+
+    if (!user) {
+      // Ne pas révéler si l'email existe ou non pour des raisons de sécurité
+      return res.json({ message: 'Si cet email existe et n\'est pas encore vérifié, un email de vérification a été envoyé.' });
+    }
+
+    // @ts-ignore - Field exists in schema
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Cet email est déjà vérifié' });
+    }
+
+    // Générer un nouveau token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 24); // 24 heures
+
+    // Mettre à jour le token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        // @ts-ignore - Fields exist in schema
+        emailVerificationToken: verificationToken,
+        // @ts-ignore
+        emailVerificationExpires: verificationExpires
+      }
+    });
+
+    // Envoyer l'email
+    try {
+      await sendVerificationEmail(user.email, verificationToken, user.firstName);
+      console.log(`✅ Email de vérification renvoyé à: ${user.email}`);
+      res.json({ message: 'Email de vérification envoyé' });
+    } catch (emailError) {
+      console.error('Erreur lors de l\'envoi de l\'email:', emailError);
+      res.status(500).json({ error: 'Échec de l\'envoi de l\'email de vérification' });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la demande de renvoi de vérification:', error);
+    res.status(500).json({ error: 'Échec de la demande' });
+  }
+});
+
+// ============================================
+// PASSWORD RESET ROUTES
+// ============================================
+
+// POST /api/auth/forgot-password - Demander la réinitialisation du mot de passe
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email requis' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    // Trouver l'utilisateur
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() }
+    });
+
+    // Ne pas révéler si l'email existe ou non pour des raisons de sécurité
+    if (!user || !user.password) {
+      // Retourner le même message même si l'utilisateur n'existe pas (sécurité)
+      return res.json({ message: 'Si cet email existe, un lien de réinitialisation a été envoyé.' });
+    }
+
+    // Générer un token de réinitialisation
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date();
+    resetExpires.setHours(resetExpires.getHours() + 1); // 1 heure
+
+    // Sauvegarder le token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        // @ts-ignore - Fields exist in schema
+        resetPasswordToken: resetToken,
+        // @ts-ignore
+        resetPasswordExpires: resetExpires
+      }
+    });
+
+    // Envoyer l'email
+    try {
+      const emailResult = await sendPasswordResetEmail(user.email, resetToken, user.firstName);
+      if (emailResult.success) {
+        console.log(`✅ Email de réinitialisation envoyé à: ${user.email}`);
+        res.json({ message: 'Si cet email existe, un lien de réinitialisation a été envoyé.' });
+      } else {
+        console.warn(`⚠️ Échec envoi email de réinitialisation à: ${user.email}`, emailResult.error);
+        // Continuer même si l'email échoue - retourner le token dans la réponse pour le développement
+        // En production, on ne devrait pas retourner le token, mais pour le debug on peut le faire temporairement
+        res.json({ 
+          message: 'L\'email n\'a pas pu être envoyé (domaine non vérifié). Contactez le support ou utilisez le lien ci-dessous.',
+          // En développement seulement - ne pas faire en production
+          resetLink: process.env.NODE_ENV === 'development' ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}` : undefined
+        });
+      }
+    } catch (emailError) {
+      console.error('Erreur lors de l\'envoi de l\'email:', emailError);
+      // Même en cas d'erreur, retourner un message pour que l'utilisateur puisse contacter le support
+      res.json({ 
+        message: 'L\'email n\'a pas pu être envoyé. Veuillez contacter mail@tyala.online pour obtenir un lien de réinitialisation.',
+        // En développement seulement
+        resetLink: process.env.NODE_ENV === 'development' ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}` : undefined
+      });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la demande de réinitialisation:', error);
+    res.status(500).json({ error: 'Échec de la demande' });
+  }
+});
+
+// POST /api/auth/reset-password - Réinitialiser le mot de passe avec un token
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token et nouveau mot de passe requis' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 6 caractères' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    // Trouver l'utilisateur avec ce token
+    // @ts-ignore - Field exists in schema
+    const user = await prisma.user.findUnique({
+      where: { resetPasswordToken: token }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Token de réinitialisation invalide' });
+    }
+
+    // Vérifier que le token n'a pas expiré
+    // @ts-ignore - Field exists in schema
+    if (user.resetPasswordExpires && user.resetPasswordExpires < new Date()) {
+      return res.status(400).json({ error: 'Le token de réinitialisation a expiré. Veuillez demander un nouveau lien.' });
+    }
+
+    // Vérifier que le nouveau mot de passe est différent de l'ancien
+    if (user.password) {
+      const isSamePassword = await bcrypt.compare(password, user.password);
+      if (isSamePassword) {
+        return res.status(400).json({ error: 'Le nouveau mot de passe doit être différent de l\'ancien mot de passe.' });
+      }
+    }
+
+    // Hasher le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Mettre à jour le mot de passe et supprimer le token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        // @ts-ignore - Fields exist in schema
+        resetPasswordToken: null,
+        // @ts-ignore
+        resetPasswordExpires: null
+      }
+    });
+
+    console.log(`✅ Mot de passe réinitialisé pour: ${user.email}`);
+    res.json({ message: 'Mot de passe réinitialisé avec succès' });
+  } catch (error) {
+    console.error('Erreur lors de la réinitialisation du mot de passe:', error);
+    res.status(500).json({ error: 'Échec de la réinitialisation du mot de passe' });
+  }
+});
+
+// ============================================
+// CONTACT SUPPORT ROUTES
+// ============================================
+
+// POST /api/contact/support - Envoyer un message au support
+app.post('/api/contact/support', async (req, res) => {
+  try {
+    const { email, userName, subject, message } = req.body;
+
+    if (!email || !subject || !message) {
+      return res.status(400).json({ error: 'Email, sujet et message sont requis' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    // Importer le service email
+    const { sendSupportEmail } = await import('../lib/emailService');
+
+    // Envoyer l'email au support
+    try {
+      const emailResult = await sendSupportEmail(email, userName || 'Utilisateur', subject, message);
+      if (emailResult.success) {
+        console.log(`✅ Email de support envoyé de: ${email}`);
+        res.json({ 
+          success: true, 
+          message: 'Votre message a été envoyé avec succès. Notre équipe vous répondra dans les plus brefs délais.' 
+        });
+      } else {
+        console.error('Erreur envoi email support:', emailResult.error);
+        res.status(500).json({ 
+          error: 'Échec de l\'envoi de l\'email. Veuillez contacter directement mail@tyala.online' 
+        });
+      }
+    } catch (emailError) {
+      console.error('Erreur lors de l\'envoi de l\'email de support:', emailError);
+      res.status(500).json({ 
+        error: 'Échec de l\'envoi de l\'email. Veuillez contacter directement mail@tyala.online' 
+      });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la demande de contact support:', error);
+    res.status(500).json({ error: 'Échec de la demande' });
+  }
+});
+
+// ============================================
+// CHATBOT API ROUTES
+// ============================================
+
+// POST /api/chatbot/search - Rechercher dans la base de données (chapitres, matières)
+app.post('/api/chatbot/search', async (req, res) => {
+  try {
+    const { query } = req.body;
+
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Requête de recherche invalide' });
+    }
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    const searchTerm = query.toLowerCase().trim();
+    
+    // Rechercher dans les matières
+    const subjects = await prisma.subject.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } }
+        ],
+        name: {
+          notIn: ['SMP', 'SVT', 'SES', 'LLA'] // Exclure les sections
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        section: true,
+        description: true
+      },
+      take: 5
+    });
+
+    // Rechercher dans les chapitres
+    const chapters = await prisma.chapter.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } }
+        ]
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        order: true,
+        subject: {
+          select: { id: true, name: true, level: true, section: true }
+        }
+      },
+      take: 5
+    });
+
+    res.json({
+      subjects: subjects || [],
+      chapters: chapters || []
+    });
+  } catch (error) {
+    console.error('Erreur lors de la recherche chatbot:', error);
+    res.status(500).json({ error: 'Échec de la recherche' });
+  }
+});
+
+// GET /api/chatbot/subjects - Lister toutes les matières disponibles
+app.get('/api/chatbot/subjects', async (req, res) => {
+  try {
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    const subjects = await prisma.subject.findMany({
+      where: {
+        name: {
+          notIn: ['SMP', 'SVT', 'SES', 'LLA'] // Exclure les sections
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        section: true,
+        description: true,
+        _count: {
+          select: {
+            chapters: true,
+            flashcards: true
+          }
+        }
+      },
+      orderBy: [
+        { level: 'asc' },
+        { name: 'asc' }
+      ]
+    });
+
+    res.json({ subjects });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des matières:', error);
+    res.status(500).json({ error: 'Échec de la récupération' });
+  }
+});
+
+// GET /api/chatbot/chapters/:subjectId - Récupérer les chapitres d'une matière
+app.get('/api/chatbot/chapters/:subjectId', async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Service temporairement indisponible' });
+    }
+
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) },
+      select: { id: true, name: true, level: true, section: true }
+    });
+
+    if (!subject) {
+      return res.status(404).json({ error: 'Matière non trouvée' });
+    }
+
+    const chapters = await prisma.chapter.findMany({
+      where: { subjectId: parseInt(subjectId) },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        order: true,
+        description: true
+      }
+    });
+
+    res.json({ subject, chapters });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des chapitres:', error);
+    res.status(500).json({ error: 'Échec de la récupération' });
+  }
+});
+
 // GET - Récupérer tous les chapitres
 app.get('/api/chapters', authenticateToken, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
@@ -1156,7 +1667,15 @@ app.get('/api/chapters', authenticateToken, async (req: AuthenticatedRequest, re
 // Get all subjects
 app.get('/api/subjects', async (req, res) => {
   try {
+    // Sections à exclure (elles ne sont pas des matières, juste des sections)
+    const sectionsToExclude = ['SMP', 'SVT', 'SES', 'LLA'];
+    
     const subjects = await prisma.subject.findMany({
+      where: {
+        name: {
+          notIn: sectionsToExclude // Exclure les sections
+        }
+      },
       select: {
         id: true,
         name: true,
@@ -1222,24 +1741,26 @@ app.get('/api/tutors', async (req, res) => {
       }
     });
 
-    // Mapper vers le format attendu par le frontend
-    const mapped = tutors.map((t) => ({
-      // Expose userId as primary id for chat routing; keep tutorId separately
-      id: t.user.id,
-      tutorId: t.id,
-      name: `${t.user.firstName} ${t.user.lastName}`.trim(),
-      subjects: t.tutorSubjects.map(ts => ts.subject.name),
-      rating: t.rating ?? 0,
-      reviews: 0,
-      location: t.user?.department || '—',
-      experience: `${t.experience}+ ans`,
-      price: t.hourlyRate ? `${t.hourlyRate.toLocaleString('fr-HT', { minimumFractionDigits: 0 })} HTG/heure` : undefined,
-      avatar: '/placeholder.svg',
-      verified: true,
-      isOnline: t.isOnline,
-      studentsCount: 0,
-      successRate: 0
-    }));
+    // Mapper vers le format attendu par le frontend et filtrer les tuteurs avec N/A
+    const mapped = tutors
+      .filter(t => t.user.firstName !== 'N/A' && t.user.lastName !== 'N/A')
+      .map((t) => ({
+        // Expose userId as primary id for chat routing; keep tutorId separately
+        id: t.user.id,
+        tutorId: t.id,
+        name: `${t.user.firstName} ${t.user.lastName}`.trim(),
+        subjects: t.tutorSubjects.map(ts => ts.subject.name),
+        rating: t.rating ?? 0,
+        reviews: 0,
+        location: t.user?.department || '—',
+        experience: `${t.experience}+ ans`,
+        price: t.hourlyRate ? `${t.hourlyRate.toLocaleString('fr-HT', { minimumFractionDigits: 0 })} HTG/heure` : undefined,
+        avatar: '/placeholder.svg',
+        verified: true,
+        isOnline: t.isOnline,
+        studentsCount: 0,
+        successRate: 0
+      }));
 
     res.json(mapped);
   } catch (error) {
@@ -1556,8 +2077,10 @@ app.put('/api/forum/posts/:id', authenticateToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const { title, content, subjectId } = req.body;
-    const userId = req.user.userId;
-    const userRole = req.user.role;
+    // Convertir userId en nombre si nécessaire
+    const userIdRaw = req.user?.userId || req.user?.id;
+    const userIdNum = typeof userIdRaw === 'string' ? parseInt(userIdRaw) : (userIdRaw as number);
+    const userRole = req.user?.role;
     
     if (!title || !content) {
       return res.status(400).json({ error: 'Titre et contenu requis' });
@@ -1573,7 +2096,8 @@ app.put('/api/forum/posts/:id', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Post non trouvé' });
     }
 
-    if (post.authorId !== userId && userRole !== 'ADMIN') {
+    // Comparer les IDs numériques
+    if (post.authorId !== userIdNum && userRole !== 'ADMIN') {
       return res.status(403).json({ error: 'Non autorisé à modifier ce post' });
     }
 
@@ -3242,37 +3766,150 @@ app.get('/api/profile/photos/:filename', (req: any, res) => {
 app.get('/api/audio/:filename', (req: any, res) => {
   try {
     const { filename } = req.params;
-    const audioPath = path.join(process.cwd(), 'uploads/audio-messages', filename);
+    console.log('🎵 Requête audio reçue pour:', filename);
+    
+    // Sanitize filename pour éviter les attaques path traversal
+    const sanitizedFilename = path.basename(filename);
+    if (sanitizedFilename !== filename) {
+      console.error('❌ Tentative d\'accès non autorisé:', filename);
+      return res.status(400).json({ error: 'Nom de fichier invalide' });
+    }
+    
+    const audioPath = path.join(process.cwd(), 'uploads/audio-messages', sanitizedFilename);
+    console.log('🎵 Chemin audio:', audioPath);
     
     if (!fs.existsSync(audioPath)) {
+      console.error('❌ Fichier audio non trouvé:', audioPath);
       return res.status(404).json({ error: 'Fichier audio non trouvé' });
     }
     
+    // Vérifier que c'est un fichier (pas un répertoire)
+    const stats = fs.statSync(audioPath);
+    if (!stats.isFile()) {
+      console.error('❌ Le chemin n\'est pas un fichier:', audioPath);
+      return res.status(400).json({ error: 'Le chemin n\'est pas un fichier' });
+    }
+    
+    const fileSize = stats.size;
+    console.log('🎵 Taille du fichier:', fileSize, 'bytes');
+    
+    if (fileSize === 0) {
+      console.error('❌ Fichier audio vide:', audioPath);
+      return res.status(400).json({ error: 'Fichier audio vide' });
+    }
+    
     // Déterminer le type MIME selon l'extension
-    const ext = path.extname(filename).toLowerCase();
+    const ext = path.extname(sanitizedFilename).toLowerCase();
     let contentType = 'audio/webm'; // Par défaut
     
     if (ext === '.webm') {
-      contentType = 'audio/webm';
+      contentType = 'audio/webm; codecs=opus';
     } else if (ext === '.mp4' || ext === '.m4a') {
       contentType = 'audio/mp4';
     } else if (ext === '.mp3') {
       contentType = 'audio/mpeg';
     } else if (ext === '.ogg') {
-      contentType = 'audio/ogg';
+      contentType = 'audio/ogg; codecs=opus';
     } else if (ext === '.wav') {
       contentType = 'audio/wav';
     }
     
-    // Définir les headers pour permettre la lecture audio
+    console.log('🎵 Content-Type:', contentType);
+    
+    // Gérer les requêtes OPTIONS (preflight)
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+      return res.status(200).end();
+    }
+    
+    // Définir les headers pour permettre la lecture audio avec CORS
     res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     
-    res.sendFile(audioPath);
-  } catch (error) {
-    console.error('Erreur lors du service du fichier audio:', error);
-    res.status(500).json({ error: 'Erreur lors du chargement du fichier audio' });
+    // Lire le fichier et l'envoyer avec gestion du range (pour la lecture progressive)
+    const rangeHeader = req.headers.range;
+    
+    if (rangeHeader) {
+      try {
+        const parts = rangeHeader.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        
+        if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+          console.error('❌ Range invalide:', rangeHeader);
+          return res.status(416).json({ error: 'Range invalide' });
+        }
+        
+        const chunksize = (end - start) + 1;
+        const file = fs.createReadStream(audioPath, { start, end });
+        
+        file.on('error', (err) => {
+          console.error('❌ Erreur lors de la lecture du fichier:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Erreur lors de la lecture du fichier audio' });
+          }
+        });
+        
+        const head = {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': contentType,
+        };
+        res.writeHead(206, head);
+        file.pipe(res);
+      } catch (rangeError) {
+        console.error('❌ Erreur lors du traitement du range:', rangeError);
+        // Si le range est invalide, envoyer tout le fichier
+        const file = fs.createReadStream(audioPath);
+        file.on('error', (err) => {
+          console.error('❌ Erreur lors de la lecture du fichier:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Erreur lors de la lecture du fichier audio' });
+          }
+        });
+        const head = {
+          'Content-Length': fileSize,
+          'Content-Type': contentType,
+        };
+        res.writeHead(200, head);
+        file.pipe(res);
+      }
+    } else {
+      const file = fs.createReadStream(audioPath);
+      
+      file.on('error', (err) => {
+        console.error('❌ Erreur lors de la lecture du fichier:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Erreur lors de la lecture du fichier audio' });
+        }
+      });
+      
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+      };
+      res.writeHead(200, head);
+      file.pipe(res);
+    }
+    
+    console.log('✅ Fichier audio servi avec succès:', sanitizedFilename);
+  } catch (error: any) {
+    console.error('❌ Erreur lors du service du fichier audio:', error);
+    console.error('Stack:', error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Erreur lors du chargement du fichier audio',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
   }
 });
 
@@ -3696,9 +4333,17 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
     // Si c'est un tuteur ou admin, donner accès à toutes les matières
     let subjects;
     
+    // Sections à exclure (elles ne sont pas des matières, juste des sections)
+    const sectionsToExclude = ['SMP', 'SVT', 'SES', 'LLA'];
+    
     if (user.role === 'TUTOR' || user.role === 'ADMIN') {
-      // Tuteurs et admins : accès à toutes les matières
+      // Tuteurs et admins : accès à toutes les matières (sauf les sections)
       subjects = await prisma.subject.findMany({
+        where: {
+          name: {
+            notIn: sectionsToExclude // Exclure les sections
+          }
+        },
         select: {
           id: true,
           name: true,
@@ -3725,9 +4370,12 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
         return res.json([]); // Retourner un tableau vide si pas de classe définie
       }
 
-      // Filtrer selon le niveau ET la section
+      // Filtrer selon le niveau ET la section, et exclure les sections
       subjects = await prisma.subject.findMany({
         where: {
+          name: {
+            notIn: sectionsToExclude // Exclure les sections
+          },
           level: user.userClass,
           OR: [
             { section: null }, // Matières générales (accessibles à tous)
@@ -3789,9 +4437,17 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
         const accuracy = subjectAttempts.length > 0 ? (correctAttempts / subjectAttempts.length) * 100 : 0;
         const progress = totalFlashcards > 0 ? (completedFlashcards / totalFlashcards) * 100 : 0;
 
-        // Enrichir les chapitres avec leurs questions
-        const chaptersWithQuestions = await Promise.all(
+        // Enrichir les chapitres avec leurs flashcards et questions
+        const chaptersWithFlashcards = await Promise.all(
           subject.chapters.map(async (chapter) => {
+            // Compter les flashcards pour ce chapitre dans cette matière
+            const flashcardCount = await prisma.flashcard.count({
+              where: {
+                subjectId: subject.id,
+                chapterId: chapter.id
+              }
+            });
+            
             // Compter les questions pour ce chapitre dans cette matière
             const questionCount = await prisma.knowledgeQuestion.count({
               where: {
@@ -3805,6 +4461,7 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
 
             return {
               ...chapter,
+              flashcardCount: flashcardCount,
               questionCount: questionCount
             };
           })
@@ -3837,7 +4494,7 @@ app.get('/api/subjects-flashcards', authenticateToken, async (req: any, res) => 
           level: subject.level,
           section: subject.section,
           description: subject.description,
-          chapters: chaptersWithQuestions,
+          chapters: chaptersWithFlashcards,
           totalFlashcards: totalFlashcards,
           completedFlashcards: completedFlashcards,
           accuracy: Math.round(accuracy * 100) / 100,
@@ -5255,8 +5912,13 @@ app.get('/api/admin/tutors', authenticateToken, requireAdmin, async (req: Authen
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`✅ Admin: ${tutors.length} tuteurs trouvés`);
-    res.json(tutors);
+    // Filtrer les tuteurs avec N/A dans firstName ou lastName
+    const filteredTutors = tutors.filter(tutor => 
+      tutor.user.firstName !== 'N/A' && tutor.user.lastName !== 'N/A'
+    );
+
+    console.log(`✅ Admin: ${filteredTutors.length} tuteurs trouvés (${tutors.length - filteredTutors.length} avec N/A filtrés)`);
+    res.json(filteredTutors);
   } catch (error) {
     console.error('❌ Erreur lors de la récupération des tuteurs admin:', error);
     res.status(500).json({ error: 'Échec de la récupération des tuteurs' });
@@ -6567,24 +7229,23 @@ app.delete('/api/admin/subjects/:subjectId', authenticateToken, requireAdmin, as
 // GET - Toutes les flashcards (public pour tous les utilisateurs connectés)
 app.get('/api/flashcards', authenticateToken, async (req: any, res) => {
   try {
-    // Détecter le mode démo si ce n'est pas déjà fait (fallback)
-    const isDemoMode = req.user.demoMode || 
-                       (typeof req.user.userId === 'string' && req.user.userId.includes('@')) ||
-                       (typeof req.user.originalEmail === 'string' && req.user.originalEmail.includes('@'));
+    // Ne PAS bloquer les flashcards en mode démo - permettre l'accès à tous les utilisateurs connectés
+    // const isDemoMode = req.user.demoMode || 
+    //                    (typeof req.user.userId === 'string' && req.user.userId.includes('@')) ||
+    //                    (typeof req.user.originalEmail === 'string' && req.user.originalEmail.includes('@'));
     
     console.log('🔍 /api/flashcards DEBUG:', { 
       demoMode: req.user.demoMode, 
-      isDemoMode, 
       userId: req.user.userId, 
       userIdType: typeof req.user.userId,
       originalEmail: req.user.originalEmail 
     });
     
-    // En mode démo, retourner un tableau vide ou des données factices
-    if (req.user.demoMode || isDemoMode) {
-      console.log('🔵 /api/flashcards: Mode démo activé, retourne []');
-      return res.json({ flashcards: [], total: 0 });
-    }
+    // Ne plus bloquer en mode démo - permettre l'accès
+    // if (req.user.demoMode || isDemoMode) {
+    //   console.log('🔵 /api/flashcards: Mode démo activé, retourne []');
+    //   return res.json({ flashcards: [], total: 0 });
+    // }
     
     console.log('🔵 /api/flashcards: Mode normal, userId =', req.user.userId);
 
@@ -6617,9 +7278,9 @@ app.get('/api/flashcards', authenticateToken, async (req: any, res) => {
       return res.json({ flashcards: [], total: 0, pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), pages: 0 } });
     }
 
-    // Pour les admins, accès à toutes les flashcards
-    // Pour les autres utilisateurs, filtrer selon le niveau et la section
-    if (user.role !== 'ADMIN' && user.userClass) {
+    // Pour les admins et tuteurs, accès à toutes les flashcards
+    // Pour les étudiants, filtrer selon le niveau et la section (mais être moins restrictif)
+    if (user.role !== 'ADMIN' && user.role !== 'TUTOR' && user.userClass) {
       // Filtrer par niveau (classe) de l'utilisateur
       whereClause.subject = {
         level: user.userClass,
@@ -6638,6 +7299,7 @@ app.get('/api/flashcards', authenticateToken, async (req: any, res) => {
         )
       };
     }
+    // Pour ADMIN et TUTOR, pas de filtre - accès à tout
     
     if (subjectId) {
       whereClause.subjectId = parseInt(subjectId);
@@ -6675,10 +7337,18 @@ app.get('/api/flashcards', authenticateToken, async (req: any, res) => {
 
     console.log('✅ /api/flashcards - Flashcards retournées:', flashcards.length);
 
-    // Retourner un tableau direct pour compatibilité avec le contexte
-    // Le contexte attend soit un tableau direct, soit { flashcards: [...], total: ... }
-    const response = Array.isArray(flashcards) ? flashcards : (flashcards || []);
-    res.json(response);
+    // Retourner un format standardisé avec flashcards et total
+    // Le contexte peut gérer les deux formats
+    res.json({
+      flashcards: flashcards,
+      total: total,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
     console.error('Erreur lors de la récupération des flashcards:', error);
     res.status(500).json({ error: 'Échec de la récupération des flashcards' });
@@ -8979,7 +9649,42 @@ app.get('/api/study-groups/:id/messages', authenticateToken, async (req: any, re
       take: 100 // Limiter à 100 messages récents
     });
 
-    res.json(messages);
+    // Enrichir les messages avec le message cité (replyTo)
+    const enrichedMessages = await Promise.all(
+      messages.map(async (msg: any) => {
+        let replyTo = null;
+        if (msg.replyToId) {
+          const replyToMsg = await prisma.groupMessage.findUnique({
+            where: { id: msg.replyToId },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  profilePhoto: true
+                }
+              }
+            }
+          });
+          if (replyToMsg) {
+            replyTo = {
+              id: replyToMsg.id,
+              content: replyToMsg.content,
+              messageType: replyToMsg.messageType,
+              fileName: replyToMsg.fileName,
+              user: replyToMsg.user
+            };
+          }
+        }
+        return {
+          ...msg,
+          replyTo
+        };
+      })
+    );
+
+    res.json(enrichedMessages);
   } catch (error) {
     console.error('Erreur lors de la récupération des messages:', error);
     res.status(500).json({ error: 'Échec de la récupération des messages' });
@@ -9060,6 +9765,41 @@ app.post('/api/study-groups/:id/messages', authenticateToken, (req: any, res: an
       return res.status(400).json({ error: 'Erreur upload fichier: ' + err.message });
     }
     console.log('✅ Multer OK - Files:', req.files);
+    
+    // Vérifier les fichiers uploadés
+    const files = req.files as Express.Multer.File[];
+    if (files && files.length > 0) {
+      files.forEach((file) => {
+        console.log('📁 Fichier uploadé:', {
+          fieldname: file.fieldname,
+          originalname: file.originalname,
+          filename: file.filename,
+          mimetype: file.mimetype,
+          size: file.size,
+          path: file.path
+        });
+        
+        // Vérifier que le fichier a une taille valide
+        if (file.size === 0) {
+          console.error('❌ Fichier vide détecté:', file.filename);
+        }
+        
+        // Vérifier que le fichier existe sur le disque
+        if (file.path && fs.existsSync(file.path)) {
+          const stats = fs.statSync(file.path);
+          console.log('📊 Stats fichier:', {
+            size: stats.size,
+            isFile: stats.isFile(),
+            modified: stats.mtime
+          });
+          
+          if (stats.size === 0) {
+            console.error('❌ Fichier sauvegardé mais vide:', file.path);
+          }
+        }
+      });
+    }
+    
     next();
   });
 }, async (req: any, res) => {
@@ -9073,7 +9813,7 @@ app.post('/api/study-groups/:id/messages', authenticateToken, (req: any, res: an
     
     const groupId = parseInt(req.params.id);
     const userId = req.user.userId;
-    const { content, messageType } = req.body;
+    const { content, messageType, replyToId } = req.body;
     
     // Récupérer les fichiers uploadés
     const files = req.files as Express.Multer.File[];
@@ -9114,12 +9854,23 @@ app.post('/api/study-groups/:id/messages', authenticateToken, (req: any, res: an
       return res.status(400).json({ error: 'Le message ne peut pas être vide' });
     }
 
+    // Vérifier que replyToId existe et appartient au groupe si fourni
+    if (replyToId) {
+      const replyToMsg = await prisma.groupMessage.findUnique({
+        where: { id: parseInt(replyToId) }
+      });
+      if (!replyToMsg || replyToMsg.groupId !== groupId) {
+        return res.status(400).json({ error: 'Le message auquel vous répondez n\'existe pas ou n\'appartient pas à ce groupe' });
+      }
+    }
+
     // Construire les données du message
     const messageData: any = {
       groupId,
       userId,
       messageType: finalMessageType as 'TEXT' | 'VOICE' | 'IMAGE' | 'FILE',
-      content: content?.trim() || getDefaultContent(finalMessageType)
+      content: content?.trim() || getDefaultContent(finalMessageType),
+      replyToId: replyToId ? parseInt(replyToId) : null
     };
 
     // Ajouter les informations de fichier selon le type
@@ -9271,7 +10022,9 @@ app.get('/api/study-groups/:groupId/pinned-messages', authenticateToken, async (
 app.put('/api/study-groups/:groupId/messages/:messageId', authenticateToken, async (req: any, res) => {
   try {
     const { groupId, messageId } = req.params;
-    const userId = req.user.userId;
+    // Convertir userId en nombre si nécessaire
+    const userIdRaw = req.user?.userId || req.user?.id;
+    const userIdNum = typeof userIdRaw === 'string' ? parseInt(userIdRaw) : (userIdRaw as number);
     const { content } = req.body;
 
     // Vérifier que le message existe et appartient à l'utilisateur
@@ -9284,7 +10037,8 @@ app.put('/api/study-groups/:groupId/messages/:messageId', authenticateToken, asy
       return res.status(404).json({ error: 'Message non trouvé' });
     }
 
-    if (message.userId !== userId) {
+    // Comparer les IDs numériques
+    if (message.userId !== userIdNum) {
       return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres messages' });
     }
 
@@ -9330,7 +10084,9 @@ app.put('/api/study-groups/:groupId/messages/:messageId', authenticateToken, asy
 app.delete('/api/study-groups/:groupId/messages/:messageId', authenticateToken, async (req: any, res) => {
   try {
     const { groupId, messageId } = req.params;
-    const userId = req.user.userId;
+    // Convertir userId en nombre si nécessaire
+    const userIdRaw = req.user?.userId || req.user?.id;
+    const userIdNum = typeof userIdRaw === 'string' ? parseInt(userIdRaw) : (userIdRaw as number);
 
     // Vérifier que le message existe
     const message = await prisma.groupMessage.findUnique({
@@ -9356,26 +10112,51 @@ app.delete('/api/study-groups/:groupId/messages/:messageId', authenticateToken, 
     // - L'utilisateur est l'auteur du message
     // - L'utilisateur est le créateur du groupe
     // - L'utilisateur est admin
-    const isAuthor = message.userId === userId;
-    const isGroupCreator = message.group.creatorId === userId;
-    const isAdmin = req.user.role === 'ADMIN';
+    // Comparer les IDs numériques
+    const isAuthor = message.userId === userIdNum;
+    const isGroupCreator = message.group.creatorId === userIdNum;
+    const isAdmin = req.user?.role === 'ADMIN';
 
     if (!isAuthor && !isGroupCreator && !isAdmin) {
       return res.status(403).json({ error: 'Vous n\'êtes pas autorisé à supprimer ce message' });
     }
 
-    // Si c'est un message vocal, supprimer le fichier audio
-    if (message.messageType === 'VOICE' && message.audioUrl) {
-      try {
+    // Supprimer les fichiers associés selon le type de message
+    try {
+      if (message.messageType === 'VOICE' && message.audioUrl) {
+        // Message vocal : supprimer le fichier audio
         const audioPath = path.join(process.cwd(), 'uploads/audio-messages', message.audioUrl);
         if (fs.existsSync(audioPath)) {
           fs.unlinkSync(audioPath);
           console.log('✅ Fichier audio supprimé:', message.audioUrl);
         }
-      } catch (fileError) {
-        console.error('Erreur lors de la suppression du fichier audio:', fileError);
-        // Continuer même si la suppression du fichier échoue
+      } else if ((message.messageType === 'IMAGE' || message.messageType === 'FILE') && message.fileUrl) {
+        // Message avec fichier : supprimer le fichier
+        // Déterminer le chemin selon le type
+        let filePath: string;
+        if (message.messageType === 'IMAGE') {
+          // Les images peuvent être dans chat-images ou chat-files selon l'endpoint
+          const chatImagePath = path.join(process.cwd(), 'uploads/chat-images', message.fileUrl);
+          const chatFilePath = path.join(process.cwd(), 'uploads/chat-files', message.fileUrl);
+          if (fs.existsSync(chatImagePath)) {
+            filePath = chatImagePath;
+          } else if (fs.existsSync(chatFilePath)) {
+            filePath = chatFilePath;
+          } else {
+            filePath = chatImagePath; // Par défaut
+          }
+        } else {
+          filePath = path.join(process.cwd(), 'uploads/chat-files', message.fileUrl);
+        }
+        
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log('✅ Fichier supprimé:', message.fileUrl);
+        }
       }
+    } catch (fileError) {
+      console.error('Erreur lors de la suppression du fichier:', fileError);
+      // Continuer même si la suppression du fichier échoue
     }
 
     await prisma.groupMessage.delete({
@@ -10178,12 +10959,18 @@ app.post('/api/admin/messages/broadcast', authenticateToken, requireAdmin, async
             conversationId = conversation.id;
             
             // Créer un message direct dans cette conversation
+            // Si c'est un utilisateur spécifique, utiliser le vrai ID de l'admin comme senderId
+            // Sinon, utiliser senderId: 0 pour messages système/broadcast
+            const adminId = req.user.userId || req.user.id;
+            const adminIdNum = typeof adminId === 'string' ? parseInt(adminId) : adminId;
+            const messageSenderId = (targetAudience === 'specific' && userId) ? adminIdNum : 0;
+            
             await prisma.directMessage.create({
               data: {
                 conversationId: conversation.id,
-                senderId: 0, // ID 0 pour messages système
+                senderId: messageSenderId, // ID de l'admin si message spécifique, 0 si broadcast
                 receiverId: user.id,
-                content: `📢 **${title}**\n\n${message}`,
+                content: targetAudience === 'specific' ? message : `📢 **${title}**\n\n${message}`,
                 messageType: 'TEXT',
                 isRead: false
               }
@@ -10199,11 +10986,22 @@ app.post('/api/admin/messages/broadcast', authenticateToken, requireAdmin, async
           }
           
           // Créer la notification avec le conversationId dans le link
+          // Pour les messages spécifiques, utiliser TUTOR_MESSAGE, sinon SYSTEM
+          const adminIdForNotification = req.user.userId || req.user.id;
+          const adminIdNumForNotification = typeof adminIdForNotification === 'string' ? parseInt(adminIdForNotification) : adminIdForNotification;
+          const notificationType = (targetAudience === 'specific' && userId) ? 'TUTOR_MESSAGE' : 'SYSTEM';
+          const notificationTitle = (targetAudience === 'specific' && userId) ? 'Nouveau message' : `📢 ${title}`;
+          
+          // Pour les messages spécifiques, inclure le nom de l'admin dans le message de notification
+          const notificationMessage = (targetAudience === 'specific' && userId) 
+            ? message 
+            : message;
+          
           const notification = await createNotification(
             user.id,
-            'SYSTEM',
-            `📢 ${title}`,
-            message,
+            notificationType,
+            notificationTitle,
+            notificationMessage,
             conversationId ? `/messages?conversationId=${conversationId}` : `/messages`
           );
           if (notification) {
@@ -10517,6 +11315,49 @@ app.get('/api/admin/study-groups', authenticateToken, requireAdmin, async (req: 
   }
 });
 
+// DELETE - Supprimer un message direct (admin)
+app.delete('/api/admin/messages/:messageId', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { messageId } = req.params;
+    const msgId = parseInt(messageId);
+    
+    console.log(`🗑️ Admin: Suppression message direct ${msgId}`);
+    
+    // Vérifier que le message existe
+    const message = await prisma.directMessage.findUnique({
+      where: { id: msgId }
+    });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Message non trouvé' });
+    }
+    
+    // Supprimer le message
+    await prisma.directMessage.delete({
+      where: { id: msgId }
+    });
+    
+    // Mettre à jour la date du dernier message de la conversation si c'était le dernier
+    const lastMessage = await prisma.directMessage.findFirst({
+      where: { conversationId: message.conversationId },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    await prisma.conversation.update({
+      where: { id: message.conversationId },
+      data: { 
+        lastMessageAt: lastMessage ? lastMessage.createdAt : new Date()
+      }
+    });
+    
+    console.log(`✅ Admin: Message direct ${msgId} supprimé avec succès`);
+    res.json({ message: 'Message supprimé avec succès' });
+  } catch (error) {
+    console.error('❌ Erreur lors de la suppression du message:', error);
+    res.status(500).json({ error: 'Échec de la suppression du message' });
+  }
+});
+
 // DELETE - Supprimer un message de groupe (admin)
 app.delete('/api/admin/group-messages/:messageId', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
@@ -10745,6 +11586,15 @@ app.get('/api/tutors/profile', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Profil tuteur non trouvé' });
     }
 
+    // Récupérer les compteurs (_count) pour reviews et sessions
+    const reviewsCount = await prisma.review.count({
+      where: { tutorId: user.tutor.id }
+    });
+
+    const sessionsCount = await prisma.tutoringSession.count({
+      where: { tutorId: user.tutor.id }
+    });
+
     res.json({
       ...user.tutor,
       user: {
@@ -10753,6 +11603,10 @@ app.get('/api/tutors/profile', authenticateToken, async (req: any, res) => {
         lastName: user.lastName,
         email: user.email,
         profilePhoto: user.profilePhoto
+      },
+      _count: {
+        reviews: reviewsCount,
+        sessions: sessionsCount
       }
     });
   } catch (error) {
@@ -10909,15 +11763,21 @@ app.get('/api/conversations', authenticateToken, async (req: any, res) => {
       // Enrichir avec les informations de l'étudiant
       const enrichedConversations = await Promise.all(
         conversations.map(async (conv) => {
-          const student = await prisma.user.findUnique({
-            where: { id: conv.studentId },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              profilePhoto: true
-            }
-          });
+          // Charger l'étudiant avec gestion d'erreur
+          let student = null;
+          try {
+            student = await prisma.user.findUnique({
+              where: { id: conv.studentId },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                profilePhoto: true
+              }
+            });
+          } catch (error) {
+            console.error(`❌ Erreur lors du chargement de l'étudiant ${conv.studentId}:`, error);
+          }
 
           const unreadCount = await prisma.directMessage.count({
             where: {
@@ -10929,7 +11789,7 @@ app.get('/api/conversations', authenticateToken, async (req: any, res) => {
 
           return {
             ...conv,
-            student,
+            student: student || { id: conv.studentId, firstName: null, lastName: null, profilePhoto: null },
             tutor: {
               id: user.tutor!.id,
               userId: user.id,
@@ -11318,12 +12178,36 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
       orderBy: { createdAt: 'asc' }
     });
 
-    // Enrichir les messages avec les informations utilisateur (surtout pour senderId: 0 = TYALA système)
+    // Enrichir les messages avec les informations utilisateur et le message cité
     const enrichedMessages = await Promise.all(
       messages.map(async (msg: any) => {
         try {
           // Si senderId = 0, c'est un message système TYALA
           if (msg.senderId === 0) {
+            let replyTo = null;
+            if (msg.replyToId) {
+              const replyToMsg = await prisma.directMessage.findUnique({
+                where: { id: msg.replyToId }
+              });
+              if (replyToMsg) {
+                const replyToUser = await prisma.user.findUnique({
+                  where: { id: replyToMsg.senderId },
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    profilePhoto: true
+                  }
+                });
+                replyTo = {
+                  id: replyToMsg.id,
+                  content: replyToMsg.content,
+                  messageType: replyToMsg.messageType,
+                  fileName: replyToMsg.fileName,
+                  user: replyToUser
+                };
+              }
+            }
             return {
               ...msg,
               userId: 0, // Pour compatibilité avec le frontend
@@ -11333,7 +12217,8 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
                 lastName: '',
                 profilePhoto: null,
                 email: 'system@tyala.com'
-              }
+              },
+              replyTo
             };
           }
 
@@ -11349,6 +12234,32 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
             }
           });
 
+          // Récupérer le message cité si présent
+          let replyTo = null;
+          if (msg.replyToId) {
+            const replyToMsg = await prisma.directMessage.findUnique({
+              where: { id: msg.replyToId }
+            });
+            if (replyToMsg) {
+              const replyToUser = await prisma.user.findUnique({
+                where: { id: replyToMsg.senderId },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  profilePhoto: true
+                }
+              });
+              replyTo = {
+                id: replyToMsg.id,
+                content: replyToMsg.content,
+                messageType: replyToMsg.messageType,
+                fileName: replyToMsg.fileName,
+                user: replyToUser
+              };
+            }
+          }
+
           return {
             ...msg,
             userId: msg.senderId, // Pour compatibilité avec le frontend
@@ -11357,7 +12268,8 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
               firstName: 'Utilisateur',
               lastName: 'Inconnu',
               profilePhoto: null
-            }
+            },
+            replyTo
           };
         } catch (error) {
           console.error(`❌ Erreur enrichissement message ${msg.id}:`, error);
@@ -11369,7 +12281,8 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
               firstName: 'TYALA',
               lastName: '',
               profilePhoto: null
-            } : null
+            } : null,
+            replyTo: null
           };
         }
       })
@@ -11383,19 +12296,114 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req: any, r
   }
 });
 
+// POST /api/admin/conversations/:conversationId/messages - Envoyer un message direct (admin)
+app.post('/api/admin/conversations/:conversationId/messages', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const conversationId = parseInt(req.params.conversationId);
+    const adminId = req.user.userId || req.user.id;
+    const adminIdNum = typeof adminId === 'string' ? parseInt(adminId) : adminId;
+    const { content, messageType = 'TEXT' } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: 'Le contenu du message est requis' });
+    }
+
+    // Vérifier que la conversation existe
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation non trouvée' });
+    }
+
+    // Récupérer les informations de l'étudiant et du tuteur
+    const student = await prisma.user.findUnique({
+      where: { id: conversation.studentId }
+    });
+    
+    const tutor = await prisma.tutor.findUnique({
+      where: { id: conversation.tutorId },
+      include: { user: true }
+    });
+
+    // Déterminer le receiverId (l'utilisateur qui recevra le message de l'admin)
+    const receiverId = conversation.studentId === adminIdNum ? (tutor?.userId || null) : conversation.studentId;
+
+    if (!receiverId) {
+      return res.status(400).json({ error: 'Impossible de déterminer le destinataire' });
+    }
+
+    // Créer le message
+    const message = await prisma.directMessage.create({
+      data: {
+        conversationId,
+        senderId: adminIdNum, // ID de l'admin comme expéditeur
+        receiverId,
+        content,
+        messageType,
+        isRead: false
+      }
+    });
+    
+    // Récupérer les informations de l'expéditeur
+    const sender = await prisma.user.findUnique({
+      where: { id: adminIdNum },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        profilePhoto: true
+      }
+    });
+
+    // Mettre à jour la date du dernier message
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: new Date() }
+    });
+
+    // Créer une notification pour le destinataire
+    await createNotification(
+      receiverId,
+      'TUTOR_MESSAGE',
+      'Nouveau message',
+      `Message de l'administrateur: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+      `/messages?conversationId=${conversationId}`
+    );
+
+    // Enrichir le message avec les informations de l'expéditeur
+    const enrichedMessage = {
+      ...message,
+      sender: sender || {
+        id: adminIdNum,
+        firstName: 'Admin',
+        lastName: '',
+        profilePhoto: null
+      }
+    };
+    
+    res.json(enrichedMessage);
+  } catch (error) {
+    console.error('Erreur lors de l\'envoi du message admin:', error);
+    res.status(500).json({ error: 'Échec de l\'envoi du message' });
+  }
+});
+
 // POST /api/conversations/:id/messages - Envoyer un message texte
 app.post('/api/conversations/:id/messages', authenticateToken, async (req: any, res) => {
   try {
     const conversationId = parseInt(req.params.id);
     let userId = req.user.userId || req.user.id;
-    const { content, messageType = 'TEXT', receiverId } = req.body;
+    const { content, messageType = 'TEXT', receiverId, replyToId } = req.body;
 
     console.log('📤 POST /api/conversations/:id/messages:', { 
       conversationId, 
       userId, 
       userIdType: typeof userId,
       hasContent: !!content,
-      hasReceiverId: !!receiverId 
+      hasReceiverId: !!receiverId,
+      replyToId 
     });
 
     if (!content || !receiverId) {
@@ -11444,19 +12452,85 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req: any, 
       return res.status(403).json({ error: 'Accès non autorisé à cette conversation' });
     }
 
-    // Créer le message
-    const receiverIdNum = typeof receiverId === 'string' ? parseInt(receiverId) : receiverId;
+    // CORRECTION CRITIQUE : Déterminer automatiquement le receiverId depuis la conversation
+    // pour éviter les erreurs où l'utilisateur s'envoie son propre message
+    let actualReceiverId: number;
+    
+    if (isStudent) {
+      // Si c'est l'étudiant qui envoie, le receiverId doit être l'userId du tuteur
+      const tutor = await prisma.tutor.findUnique({
+        where: { id: conversation.tutorId },
+        select: { userId: true }
+      });
+      
+      if (!tutor || !tutor.userId) {
+        console.error('❌ Tuteur non trouvé dans la conversation:', conversation.tutorId);
+        return res.status(404).json({ error: 'Tuteur non trouvé dans la conversation' });
+      }
+      
+      actualReceiverId = tutor.userId;
+      console.log('📤 Étudiant envoie au tuteur - receiverId déterminé:', actualReceiverId);
+    } else if (isTutor) {
+      // Si c'est le tuteur qui envoie, le receiverId doit être le studentId
+      actualReceiverId = conversation.studentId;
+      console.log('📤 Tuteur envoie à l\'étudiant - receiverId déterminé:', actualReceiverId);
+    } else {
+      console.error('❌ Impossible de déterminer le receiverId');
+      return res.status(400).json({ error: 'Impossible de déterminer le destinataire' });
+    }
+
+    // Vérifier que le receiverId envoyé par le frontend correspond (pour sécurité)
+    // mais utiliser celui déterminé automatiquement
+    const frontendReceiverId = typeof receiverId === 'string' ? parseInt(receiverId) : receiverId;
+    if (frontendReceiverId && frontendReceiverId !== actualReceiverId) {
+      console.warn('⚠️ receiverId frontend ne correspond pas, utilisation de celui déterminé:', {
+        frontend: frontendReceiverId,
+        backend: actualReceiverId
+      });
+    }
+
+    // Vérifier que replyToId existe et appartient à la conversation si fourni
+    let replyToMessage = null;
+    if (replyToId) {
+      replyToMessage = await prisma.directMessage.findUnique({
+        where: { id: parseInt(replyToId) }
+      });
+      if (!replyToMessage || replyToMessage.conversationId !== conversationId) {
+        return res.status(400).json({ error: 'Le message auquel vous répondez n\'existe pas ou n\'appartient pas à cette conversation' });
+      }
+      // Récupérer l'utilisateur du message cité
+      const replyToUser = await prisma.user.findUnique({
+        where: { id: replyToMessage.senderId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          profilePhoto: true
+        }
+      });
+      replyToMessage.user = replyToUser;
+    }
+
+    // Créer le message avec le receiverId déterminé automatiquement
     const message = await prisma.directMessage.create({
       data: {
         conversationId,
         senderId: userId,
-        receiverId: receiverIdNum,
+        receiverId: actualReceiverId, // Utiliser le receiverId déterminé automatiquement
         content,
-        messageType
+        messageType,
+        replyToId: replyToId ? parseInt(replyToId) : null
       }
     });
 
-    console.log('✅ Message créé:', { id: message.id, senderId: message.senderId, receiverId: message.receiverId });
+    console.log('✅ Message créé:', { 
+      id: message.id, 
+      senderId: message.senderId, 
+      receiverId: message.receiverId,
+      conversationId: conversation.id,
+      isStudent,
+      isTutor
+    });
 
     // Récupérer l'expéditeur pour enrichir le message et créer la notification
     const sender = await prisma.user.findUnique({
@@ -11476,17 +12550,25 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req: any, 
     });
 
     // Créer une notification pour le destinataire (sauf si c'est lui qui envoie)
-    if (receiverIdNum !== userId && sender) {
+    if (actualReceiverId !== userId && sender) {
+      console.log('📬 Création notification pour receiverId:', actualReceiverId, 'depuis senderId:', userId);
       await createNotification(
-        receiverIdNum,
+        actualReceiverId,
         'TUTOR_MESSAGE',
         'Nouveau message',
         `${sender.firstName} ${sender.lastName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
         `/messages`
       );
+      console.log('✅ Notification créée avec succès');
+    } else {
+      console.warn('⚠️ Notification non créée - même utilisateur ou sender non trouvé', {
+        actualReceiverId,
+        userId,
+        hasSender: !!sender
+      });
     }
 
-    // Enrichir le message avec les informations utilisateur pour compatibilité frontend
+    // Enrichir le message avec les informations utilisateur et le message cité
     const enrichedMessage = {
       ...message,
       userId: message.senderId,
@@ -11495,7 +12577,19 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req: any, 
         firstName: 'Utilisateur',
         lastName: 'Inconnu',
         profilePhoto: null
-      }
+      },
+      replyTo: replyToMessage ? {
+        id: replyToMessage.id,
+        content: replyToMessage.content,
+        messageType: replyToMessage.messageType,
+        fileName: replyToMessage.fileName,
+        user: replyToMessage.user || {
+          id: replyToMessage.senderId,
+          firstName: 'Utilisateur',
+          lastName: 'Inconnu',
+          profilePhoto: null
+        }
+      } : null
     };
 
     res.json(enrichedMessage);
@@ -11585,13 +12679,31 @@ app.post('/api/conversations/:id/messages/audio', authenticateToken, chatUpload.
       return res.status(403).json({ error: 'Accès non autorisé à cette conversation' });
     }
 
+    // CORRECTION CRITIQUE : Déterminer automatiquement le receiverId depuis la conversation
+    let actualReceiverId: number;
+    
+    if (isStudent) {
+      const tutor = await prisma.tutor.findUnique({
+        where: { id: conversation.tutorId },
+        select: { userId: true }
+      });
+      if (!tutor || !tutor.userId) {
+        return res.status(404).json({ error: 'Tuteur non trouvé dans la conversation' });
+      }
+      actualReceiverId = tutor.userId;
+    } else if (isTutor) {
+      actualReceiverId = conversation.studentId;
+    } else {
+      return res.status(400).json({ error: 'Impossible de déterminer le destinataire' });
+    }
+
     const audioUrl = `/uploads/audio-messages/${req.file.filename}`;
 
     const message = await prisma.directMessage.create({
       data: {
         conversationId,
         senderId: userId,
-        receiverId: parseInt(receiverId),
+        receiverId: actualReceiverId, // Utiliser le receiverId déterminé automatiquement
         content: 'Message vocal',
         messageType: 'VOICE',
         audioUrl,
@@ -11611,10 +12723,9 @@ app.post('/api/conversations/:id/messages/audio', authenticateToken, chatUpload.
     });
 
     // Créer une notification pour le destinataire (sauf si c'est lui qui envoie)
-    const receiverIdNum = typeof receiverId === 'string' ? parseInt(receiverId) : receiverId;
-    if (receiverIdNum !== userId && sender) {
+    if (actualReceiverId !== userId && sender) {
       await createNotification(
-        receiverIdNum,
+        actualReceiverId,
         'TUTOR_MESSAGE',
         'Nouveau message vocal',
         `${sender.firstName} ${sender.lastName} vous a envoyé un message vocal`,
@@ -11681,6 +12792,24 @@ app.post('/api/conversations/:id/messages/file', authenticateToken, chatUpload.s
       return res.status(403).json({ error: 'Accès non autorisé à cette conversation' });
     }
 
+    // CORRECTION CRITIQUE : Déterminer automatiquement le receiverId depuis la conversation
+    let actualReceiverId: number;
+    
+    if (isStudent) {
+      const tutor = await prisma.tutor.findUnique({
+        where: { id: conversation.tutorId },
+        select: { userId: true }
+      });
+      if (!tutor || !tutor.userId) {
+        return res.status(404).json({ error: 'Tuteur non trouvé dans la conversation' });
+      }
+      actualReceiverId = tutor.userId;
+    } else if (isTutor) {
+      actualReceiverId = conversation.studentId;
+    } else {
+      return res.status(400).json({ error: 'Impossible de déterminer le destinataire' });
+    }
+
     const isImage = req.file.mimetype.startsWith('image/');
     const fileUrl = isImage 
       ? `/uploads/chat-images/${req.file.filename}`
@@ -11690,7 +12819,7 @@ app.post('/api/conversations/:id/messages/file', authenticateToken, chatUpload.s
       data: {
         conversationId,
         senderId: userId,
-        receiverId: parseInt(receiverId),
+        receiverId: actualReceiverId, // Utiliser le receiverId déterminé automatiquement
         content: req.file.originalname,
         messageType: isImage ? 'IMAGE' : 'FILE',
         fileUrl,
@@ -11712,11 +12841,10 @@ app.post('/api/conversations/:id/messages/file', authenticateToken, chatUpload.s
     });
 
     // Créer une notification pour le destinataire (sauf si c'est lui qui envoie)
-    const receiverIdNum = typeof receiverId === 'string' ? parseInt(receiverId) : receiverId;
-    if (receiverIdNum !== userId && sender) {
+    if (actualReceiverId !== userId && sender) {
       const fileType = isImage ? 'image' : 'fichier';
       await createNotification(
-        receiverIdNum,
+        actualReceiverId,
         'TUTOR_MESSAGE',
         'Nouveau message',
         `${sender.firstName} ${sender.lastName} vous a envoyé une ${fileType}: ${req.file.originalname}`,
@@ -11727,6 +12855,246 @@ app.post('/api/conversations/:id/messages/file', authenticateToken, chatUpload.s
     res.json(message);
   } catch (error) {
     console.error('Erreur lors de l\'envoi du fichier:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/conversations/:conversationId/messages/:messageId - Modifier un message
+app.put('/api/conversations/:conversationId/messages/:messageId', authenticateToken, async (req: any, res) => {
+  try {
+    const conversationId = parseInt(req.params.conversationId);
+    const messageId = parseInt(req.params.messageId);
+    let userId = req.user.userId || req.user.id;
+    const { content } = req.body;
+
+    // Gérer les deux formats de userId
+    if (typeof userId === 'string' && userId.includes('@')) {
+      const userByEmail = await prisma.user.findUnique({
+        where: { email: userId },
+        select: { id: true }
+      });
+      if (userByEmail) {
+        userId = userByEmail.id;
+      }
+    } else if (typeof userId === 'string') {
+      userId = parseInt(userId);
+    }
+
+    // Convertir userId en nombre pour comparaison
+    const userIdNum = typeof userId === 'number' ? userId : parseInt(userId as string);
+
+    // Vérifier que le message existe et appartient à la conversation
+    const message = await prisma.directMessage.findUnique({
+      where: { id: messageId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message non trouvé' });
+    }
+
+    if (message.conversationId !== conversationId) {
+      return res.status(400).json({ error: 'Le message n\'appartient pas à cette conversation' });
+    }
+
+    // Vérifier que l'utilisateur est l'auteur du message (comparer en nombres)
+    if (message.senderId !== userIdNum) {
+      return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres messages' });
+    }
+
+    // Vérifier l'accès à la conversation
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation non trouvée' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { tutor: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const isStudent = conversation.studentId === userId;
+    const isTutor = user?.tutor && conversation.tutorId === user.tutor.id;
+
+    if (!isStudent && !isTutor) {
+      return res.status(403).json({ error: 'Accès non autorisé à cette conversation' });
+    }
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Le contenu du message ne peut pas être vide' });
+    }
+
+    // Mettre à jour le message
+    const updatedMessage = await prisma.directMessage.update({
+      where: { id: messageId },
+      data: {
+        content: content.trim()
+      }
+    });
+
+    // Récupérer l'expéditeur pour enrichir le message
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        profilePhoto: true
+      }
+    });
+
+    // Enrichir le message avec les informations utilisateur
+    const enrichedMessage = {
+      ...updatedMessage,
+      userId: updatedMessage.senderId,
+      user: sender || {
+        id: updatedMessage.senderId,
+        firstName: 'Utilisateur',
+        lastName: 'Inconnu',
+        profilePhoto: null
+      }
+    };
+
+    res.json(enrichedMessage);
+  } catch (error) {
+    console.error('Erreur lors de la modification du message:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/conversations/:conversationId/messages/:messageId - Supprimer un message
+app.delete('/api/conversations/:conversationId/messages/:messageId', authenticateToken, async (req: any, res) => {
+  try {
+    const conversationId = parseInt(req.params.conversationId);
+    const messageId = parseInt(req.params.messageId);
+    let userId = req.user.userId || req.user.id;
+
+    // Gérer les deux formats de userId
+    if (typeof userId === 'string' && userId.includes('@')) {
+      const userByEmail = await prisma.user.findUnique({
+        where: { email: userId },
+        select: { id: true }
+      });
+      if (userByEmail) {
+        userId = userByEmail.id;
+      }
+    } else if (typeof userId === 'string') {
+      userId = parseInt(userId);
+    }
+
+    // Convertir userId en nombre pour comparaison
+    const userIdNum = typeof userId === 'number' ? userId : parseInt(userId as string);
+
+    // Vérifier que le message existe et appartient à la conversation
+    const message = await prisma.directMessage.findUnique({
+      where: { id: messageId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message non trouvé' });
+    }
+
+    if (message.conversationId !== conversationId) {
+      return res.status(400).json({ error: 'Le message n\'appartient pas à cette conversation' });
+    }
+
+    // Vérifier que l'utilisateur est l'auteur du message (comparer en nombres)
+    if (message.senderId !== userIdNum) {
+      return res.status(403).json({ error: 'Vous ne pouvez supprimer que vos propres messages' });
+    }
+
+    // Vérifier l'accès à la conversation
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation non trouvée' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { tutor: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const isStudent = conversation.studentId === userId;
+    const isTutor = user?.tutor && conversation.tutorId === user.tutor.id;
+
+    if (!isStudent && !isTutor) {
+      return res.status(403).json({ error: 'Accès non autorisé à cette conversation' });
+    }
+
+    // Supprimer les fichiers associés selon le type de message
+    try {
+      if (message.messageType === 'VOICE' && message.audioUrl) {
+        // Message vocal : supprimer le fichier audio
+        const audioPath = path.join(process.cwd(), 'uploads/audio-messages', message.audioUrl.replace(/^\/uploads\/audio-messages\//, ''));
+        if (fs.existsSync(audioPath)) {
+          fs.unlinkSync(audioPath);
+          console.log('✅ Fichier audio supprimé:', message.audioUrl);
+        }
+      } else if ((message.messageType === 'IMAGE' || message.messageType === 'FILE') && message.fileUrl) {
+        // Message avec fichier : supprimer le fichier
+        // Déterminer le chemin selon le type
+        let filePath: string;
+        const fileName = message.fileUrl.replace(/^\/uploads\//, '');
+        
+        if (message.messageType === 'IMAGE') {
+          // Les images peuvent être dans chat-images ou chat-files selon l'endpoint
+          const chatImagePath = path.join(process.cwd(), 'uploads/chat-images', fileName);
+          const chatFilePath = path.join(process.cwd(), 'uploads/chat-files', fileName);
+          if (fs.existsSync(chatImagePath)) {
+            filePath = chatImagePath;
+          } else if (fs.existsSync(chatFilePath)) {
+            filePath = chatFilePath;
+          } else {
+            filePath = chatImagePath; // Par défaut
+          }
+        } else {
+          filePath = path.join(process.cwd(), 'uploads/chat-files', fileName);
+        }
+        
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log('✅ Fichier supprimé:', message.fileUrl);
+        }
+      }
+    } catch (fileError) {
+      console.error('Erreur lors de la suppression du fichier:', fileError);
+      // Continuer même si la suppression du fichier échoue
+    }
+
+    // Supprimer le message
+    await prisma.directMessage.delete({
+      where: { id: messageId }
+    });
+
+    // Mettre à jour la date du dernier message de la conversation si c'était le dernier
+    const lastMessage = await prisma.directMessage.findFirst({
+      where: { conversationId: conversationId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        lastMessageAt: lastMessage ? lastMessage.createdAt : new Date()
+      }
+    });
+
+    res.json({ message: 'Message supprimé avec succès' });
+  } catch (error) {
+    console.error('Erreur lors de la suppression du message:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
