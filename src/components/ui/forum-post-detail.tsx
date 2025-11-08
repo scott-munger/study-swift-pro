@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/enhanced-button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -81,6 +82,9 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
   const { toast } = useToast();
   const [replyContent, setReplyContent] = useState('');
   const [replying, setReplying] = useState(false);
+  const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
+  const [showDeleteReplyConfirm, setShowDeleteReplyConfirm] = useState(false);
+  const [replyToDelete, setReplyToDelete] = useState<number | null>(null);
 
   const handleReply = async () => {
     if (!replyContent.trim() || !post) return;
@@ -98,20 +102,45 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    if (!post) return;
+    setShowDeletePostConfirm(true);
+  };
+
+  const confirmDeletePost = async () => {
     if (!post) return;
     
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce post ?')) {
-      try {
-        await onDelete(post.id);
-        onClose();
-      } catch (error) {
-        toast({
-          title: "Erreur",
-          description: "Impossible de supprimer le post",
-          variant: "destructive"
-        });
-      }
+    try {
+      await onDelete(post.id);
+      onClose();
+      setShowDeletePostConfirm(false);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer le post",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteReply = (replyId: number) => {
+    setReplyToDelete(replyId);
+    setShowDeleteReplyConfirm(true);
+  };
+
+  const confirmDeleteReply = async () => {
+    if (!replyToDelete) return;
+    
+    try {
+      await onDeleteReply(replyToDelete);
+      setShowDeleteReplyConfirm(false);
+      setReplyToDelete(null);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer la réponse",
+        variant: "destructive"
+      });
     }
   };
 
@@ -282,11 +311,7 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            if (confirm('Supprimer cette réponse ?')) {
-                              onDeleteReply(reply.id);
-                            }
-                          }}
+                          onClick={() => handleDeleteReply(reply.id)}
                           className="text-red-600 hover:text-red-700"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -309,6 +334,48 @@ const ForumPostDetail: React.FC<ForumPostDetailProps> = ({
           </div>
         </div>
       </DialogContent>
+
+      {/* AlertDialog de confirmation de suppression de post */}
+      <AlertDialog open={showDeletePostConfirm} onOpenChange={setShowDeletePostConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le post</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer ce post ? Cette action est irréversible et supprimera toutes les réponses associées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePost}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog de confirmation de suppression de réponse */}
+      <AlertDialog open={showDeleteReplyConfirm} onOpenChange={setShowDeleteReplyConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la réponse</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette réponse ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteReply}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

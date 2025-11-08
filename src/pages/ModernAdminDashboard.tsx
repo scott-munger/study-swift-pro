@@ -352,7 +352,7 @@ const ModernAdminDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Système opérationnel
               </Badge>
@@ -466,17 +466,7 @@ const ModernAdminDashboard = () => {
 
           {/* Analytics */}
           {activeSection === 'analytics' && (
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Analytiques Avancées</CardTitle>
-                  <CardDescription>Statistiques détaillées de la plateforme</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Contenu des analytiques...</p>
-                </CardContent>
-              </Card>
-            </div>
+            <AnalyticsSection token={token} />
           )}
 
           {/* Users */}
@@ -567,6 +557,272 @@ const ModernAdminDashboard = () => {
           )}
         </div>
       </main>
+    </div>
+  );
+};
+
+// Composant Analytics Section avec graphiques et filtres
+const AnalyticsSection = ({ token }: { token: string | null }) => {
+  const [loading, setLoading] = useState(true);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [studentsBreakdown, setStudentsBreakdown] = useState<any>(null);
+  const [filters, setFilters] = useState({
+    department: '',
+    userClass: '',
+    section: ''
+  });
+  const { toast } = useToast();
+
+  const loadAnalyticsData = async () => {
+    if (!token) return;
+    
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (filters.department) params.append('department', filters.department);
+      if (filters.userClass) params.append('userClass', filters.userClass);
+      if (filters.section) params.append('section', filters.section);
+
+      const [analyticsRes, breakdownRes] = await Promise.all([
+        fetch(`${API_URL}/api/admin/analytics/detailed?${params.toString()}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/admin/analytics/students-breakdown`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      if (analyticsRes.ok) {
+        setAnalyticsData(await analyticsRes.json());
+      }
+      if (breakdownRes.ok) {
+        setStudentsBreakdown(await breakdownRes.json());
+      }
+    } catch (error) {
+      console.error('Erreur chargement analytics:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les données analytiques",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [token, filters.department, filters.userClass, filters.section]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const COLORS = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe', '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#330867'];
+
+  return (
+    <div className="space-y-6">
+      {/* Filtres */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filtres d'analyse</CardTitle>
+          <CardDescription>Filtrez les statistiques par département, classe ou section</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Département</label>
+              <select
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                value={filters.department}
+                onChange={(e) => setFilters({ ...filters, department: e.target.value })}
+              >
+                <option value="">Tous les départements</option>
+                {studentsBreakdown?.uniqueDepartments?.map((dept: string) => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Classe</label>
+              <select
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                value={filters.userClass}
+                onChange={(e) => setFilters({ ...filters, userClass: e.target.value })}
+              >
+                <option value="">Toutes les classes</option>
+                {studentsBreakdown?.uniqueClasses?.map((cls: string) => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Section</label>
+              <select
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                value={filters.section}
+                onChange={(e) => setFilters({ ...filters, section: e.target.value })}
+              >
+                <option value="">Toutes les sections</option>
+                {studentsBreakdown?.uniqueSections?.map((sec: string) => (
+                  <option key={sec} value={sec}>{sec}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Total avec filtres : <strong>{analyticsData?.totalFiltered || 0}</strong> étudiants
+            </p>
+            <Button onClick={loadAnalyticsData} size="sm" variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Actualiser
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Graphiques */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Graphique par département */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Répartition par Département</CardTitle>
+            <CardDescription>Nombre d'étudiants par département</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analyticsData?.byDepartment || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="department" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#667eea" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Graphique par classe */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Répartition par Classe</CardTitle>
+            <CardDescription>Nombre d'étudiants par classe</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analyticsData?.byClass || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="userClass" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#764ba2" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Graphique circulaire par section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Répartition par Section</CardTitle>
+            <CardDescription>Distribution des étudiants par section</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={analyticsData?.bySection || []}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={(entry: any) => `${entry.section}: ${entry.count}`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="count"
+                >
+                  {(analyticsData?.bySection || []).map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Graphique combiné département + classe */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Département × Classe</CardTitle>
+            <CardDescription>Répartition combinée département et classe</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {analyticsData?.departmentClass?.map((item: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{item.department}</p>
+                    <p className="text-sm text-muted-foreground">{item.userClass}</p>
+                  </div>
+                  <Badge variant="secondary" className="text-lg px-3 py-1">
+                    {item.count}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tableau détaillé */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue détaillée</CardTitle>
+          <CardDescription>Tableau complet des répartitions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <h3 className="font-semibold mb-3">Par Département</h3>
+              <div className="space-y-2">
+                {analyticsData?.byDepartment?.map((item: any, index: number) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                    <span className="text-sm">{item.department}</span>
+                    <Badge>{item.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold mb-3">Par Classe</h3>
+              <div className="space-y-2">
+                {analyticsData?.byClass?.map((item: any, index: number) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                    <span className="text-sm">{item.userClass}</span>
+                    <Badge>{item.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold mb-3">Par Section</h3>
+              <div className="space-y-2">
+                {analyticsData?.bySection?.map((item: any, index: number) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                    <span className="text-sm">{item.section}</span>
+                    <Badge>{item.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

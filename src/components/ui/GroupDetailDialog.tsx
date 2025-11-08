@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogPortal, DialogOverlay } from './dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './alert-dialog';
 import { Button } from './enhanced-button';
 import { Input } from './input';
 import { ScrollArea } from './scroll-area';
@@ -36,6 +37,8 @@ export const GroupDetailDialog: React.FC<GroupDetailDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState<number | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -235,17 +238,23 @@ export const GroupDetailDialog: React.FC<GroupDetailDialogProps> = ({
   };
 
   const handleLeaveGroup = () => {
-    if (window.confirm('Êtes-vous sûr de vouloir quitter ce groupe ?')) {
-      onLeave?.();
-      onClose();
-    }
+    setShowLeaveConfirm(true);
+  };
+
+  const confirmLeaveGroup = () => {
+    onLeave?.();
+    onClose();
+    setShowLeaveConfirm(false);
   };
 
   const handleDeleteGroup = () => {
-    if (window.confirm('⚠️ ATTENTION : Voulez-vous vraiment supprimer ce groupe ? Cette action est irréversible !')) {
-      onDelete?.();
-      onClose();
-    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteGroup = () => {
+    onDelete?.();
+    onClose();
+    setShowDeleteConfirm(false);
   };
 
   if (!group) return null;
@@ -548,6 +557,48 @@ export const GroupDetailDialog: React.FC<GroupDetailDialogProps> = ({
           if (onLeave) onLeave(); // Cela va déclencher un rechargement
         }}
       />
+
+      {/* AlertDialog de confirmation pour quitter le groupe */}
+      <AlertDialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitter le groupe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir quitter ce groupe ? Vous ne recevrez plus de messages de ce groupe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmLeaveGroup}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Quitter
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog de confirmation pour supprimer le groupe */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠️ Supprimer le groupe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous vraiment supprimer ce groupe ? Cette action est irréversible et supprimera tous les messages et membres du groupe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteGroup}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

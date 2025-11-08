@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { 
   BookOpen, 
@@ -45,6 +46,8 @@ const AdminSubjects = () => {
   const [loading, setLoading] = useState(true);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [subjectToDelete, setSubjectToDelete] = useState<number | null>(null);
   const [subjectForm, setSubjectForm] = useState({
     name: '',
     level: '',
@@ -194,8 +197,13 @@ const AdminSubjects = () => {
     }
   };
 
-  const handleDeleteSubject = async (subjectId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) return;
+  const handleDeleteSubject = (subjectId: number) => {
+    setSubjectToDelete(subjectId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteSubject = async () => {
+    if (!subjectToDelete) return;
 
     try {
       if (!token) {
@@ -207,7 +215,7 @@ const AdminSubjects = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/subjects/${subjectToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -474,6 +482,27 @@ const AdminSubjects = () => {
           )}
         </div>
       </main>
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la matière</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette matière ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSubject}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

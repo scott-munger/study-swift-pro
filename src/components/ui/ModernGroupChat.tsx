@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogPortal, DialogOverlay } from './dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './alert-dialog';
 import { Button } from './enhanced-button';
 import { Input } from './input';
 import { ScrollArea } from './scroll-area';
@@ -111,6 +112,8 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set());
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingMessage, setEditingMessage] = useState<number | null>(null);
   const [editContent, setEditContent] = useState<string>('');
   const [showMessageActions, setShowMessageActions] = useState<number | null>(null);
@@ -198,11 +201,11 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         const audioUrl = getAudioUrl(msg.audioUrl);
         if (audioUrl) {
           const audio = new Audio(audioUrl);
-          audio.onloadedmetadata = () => {
-            setAudioDuration(prev => ({ ...prev, [msg.id]: audio.duration }));
-          };
-          // Charger seulement les métadonnées (pas l'audio complet)
-          audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+          setAudioDuration(prev => ({ ...prev, [msg.id]: audio.duration }));
+        };
+        // Charger seulement les métadonnées (pas l'audio complet)
+        audio.preload = 'metadata';
         }
       }
     });
@@ -668,15 +671,15 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
       return;
     }
     
-    // Arrêter toute autre lecture en cours
-    if (audioElement) {
-      audioElement.pause();
-      setAudioProgress(prev => {
-        const newProgress = { ...prev };
-        if (isPlaying) newProgress[isPlaying] = 0;
-        return newProgress;
-      });
-    }
+      // Arrêter toute autre lecture en cours
+      if (audioElement) {
+        audioElement.pause();
+        setAudioProgress(prev => {
+          const newProgress = { ...prev };
+          if (isPlaying) newProgress[isPlaying] = 0;
+          return newProgress;
+        });
+      }
 
     // Vérifier que l'URL est valide
     if (!audioUrl || audioUrl.trim() === "") {
@@ -720,7 +723,7 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
       console.warn("⚠️ Format WebM pas totalement supporté, mais tentative de lecture");
     }
 
-    // Lire l'audio
+      // Lire l'audio
     const audio = new Audio(normalizedUrl);
     audio.crossOrigin = 'anonymous'; // Permettre CORS si nécessaire
     audio.preload = 'auto';
@@ -745,35 +748,35 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         clearLoadTimeout();
       }
     }, 10000);
-    
-    // Récupérer la durée quand elle est disponible
-    audio.onloadedmetadata = () => {
+      
+      // Récupérer la durée quand elle est disponible
+      audio.onloadedmetadata = () => {
       clearLoadTimeout();
       console.log(
         "✅ Métadonnées audio chargées:",
         audio.duration,
         "secondes"
       );
-      setAudioDuration(prev => ({ ...prev, [messageId]: audio.duration }));
-    };
-    
-    // Mettre à jour la progression pendant la lecture
-    audio.ontimeupdate = () => {
+        setAudioDuration(prev => ({ ...prev, [messageId]: audio.duration }));
+      };
+      
+      // Mettre à jour la progression pendant la lecture
+      audio.ontimeupdate = () => {
       if (audio.duration && !isNaN(audio.duration)) {
         const progress = (audio.currentTime / audio.duration) * 100;
         setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
       }
-    };
-    
-    audio.onended = () => {
+      };
+      
+      audio.onended = () => {
       clearLoadTimeout();
       console.log("✅ Audio terminé");
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-    };
-    
-    audio.onerror = (e) => {
+        setIsPlaying(null);
+        setAudioElement(null);
+        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+      };
+      
+      audio.onerror = (e) => {
       clearLoadTimeout();
       console.error("❌ Erreur lecture audio:", e, "URL:", normalizedUrl);
       console.error("Erreur audio détail:", {
@@ -809,15 +812,15 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         }
       }
       
-      toast({
-        title: "Erreur",
+        toast({
+          title: "Erreur",
         description: `Impossible de lire le message vocal: ${errorMessage}`,
         variant: "destructive",
-      });
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-    };
+        });
+        setIsPlaying(null);
+        setAudioElement(null);
+        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
+      };
     
     // Gestion des événements de chargement
     audio.oncanplay = () => {
@@ -837,12 +840,12 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
     audio.onstalled = () => {
       console.warn("⚠️ Chargement audio bloqué:", normalizedUrl);
     };
-    
-    setAudioElement(audio);
-    setIsPlaying(messageId);
+      
+      setAudioElement(audio);
+      setIsPlaying(messageId);
     
     // Essayer de jouer l'audio avec meilleure gestion d'erreur
-    audio.play().catch((error) => {
+      audio.play().catch((error) => {
       clearLoadTimeout();
       console.error("❌ Erreur play audio:", error, "URL:", normalizedUrl);
       let errorMessage = "Vérifiez votre connexion";
@@ -855,15 +858,15 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
         errorMessage = error.message;
       }
       
-      toast({
-        title: "Erreur",
+        toast({
+          title: "Erreur",
         description: `Impossible de lire le message vocal: ${errorMessage}`,
         variant: "destructive",
+        });
+        setIsPlaying(null);
+        setAudioElement(null);
+        setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
       });
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
-    });
   };
 
   // Gestion de la sélection de fichiers
@@ -1333,17 +1336,23 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
   };
 
   const handleLeaveGroup = () => {
-    if (window.confirm('Êtes-vous sûr de vouloir quitter ce groupe ?')) {
-      onLeave?.();
-      onClose();
-    }
+    setShowLeaveConfirm(true);
+  };
+
+  const confirmLeaveGroup = () => {
+    onLeave?.();
+    onClose();
+    setShowLeaveConfirm(false);
   };
 
   const handleDeleteGroup = () => {
-    if (window.confirm('⚠️ ATTENTION : Voulez-vous vraiment supprimer ce groupe ? Cette action est irréversible !')) {
-      onDelete?.();
-      onClose();
-    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteGroup = () => {
+    onDelete?.();
+    onClose();
+    setShowDeleteConfirm(false);
   };
 
   if (!group) return null;
@@ -1723,10 +1732,10 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
                                               if (testResponse.ok) {
                                                 console.log("✅ Fichier audio accessible, lecture...");
                                                 playAudio(audioUrl, msg.id);
-                                              } else {
+                                        } else {
                                                 console.error("❌ Fichier audio non accessible:", testResponse.status, testResponse.statusText);
-                                                toast({
-                                                  title: "Erreur",
+                                          toast({
+                                            title: "Erreur",
                                                   description: `Fichier audio non accessible (${testResponse.status}). Veuillez réessayer.`,
                                                   variant: "destructive",
                                                 });
@@ -2613,6 +2622,48 @@ export const ModernGroupChat: React.FC<GroupDetailDialogProps> = ({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* AlertDialog de confirmation pour quitter le groupe */}
+      <AlertDialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitter le groupe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir quitter ce groupe ? Vous ne recevrez plus de messages de ce groupe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmLeaveGroup}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Quitter
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog de confirmation pour supprimer le groupe */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠️ Supprimer le groupe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous vraiment supprimer ce groupe ? Cette action est irréversible et supprimera tous les messages et membres du groupe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteGroup}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

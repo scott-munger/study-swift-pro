@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './card';
 import { Badge } from './badge';
 import { Button } from './button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './alert-dialog';
 import { Database, WifiOff, RefreshCw, Trash2, CheckCircle } from 'lucide-react';
 import { offlineStorage } from '@/lib/offlineStorage';
 import { useOffline } from '@/hooks/useOffline';
@@ -16,6 +17,7 @@ export const OfflineStats = () => {
     syncQueue: 0
   });
   const [loading, setLoading] = useState(true);
+  const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
   const { isOnline, syncOfflineData } = useOffline();
   const { toast } = useToast();
 
@@ -62,11 +64,11 @@ export const OfflineStats = () => {
     }
   };
 
-  const handleClearCache = async () => {
-    if (!confirm('Voulez-vous vraiment effacer toutes les données en cache ? Vous devrez les retélécharger.')) {
-      return;
-    }
+  const handleClearCache = () => {
+    setShowClearCacheConfirm(true);
+  };
 
+  const confirmClearCache = async () => {
     try {
       await offlineStorage.clearAll();
       await loadStats();
@@ -81,6 +83,8 @@ export const OfflineStats = () => {
         description: "Impossible de vider le cache",
         variant: "destructive"
       });
+    } finally {
+      setShowClearCacheConfirm(false);
     }
   };
 
@@ -199,6 +203,27 @@ export const OfflineStats = () => {
           💡 Les données sont automatiquement mises en cache pour un accès hors ligne
         </div>
       </CardContent>
+
+      {/* AlertDialog de confirmation pour vider le cache */}
+      <AlertDialog open={showClearCacheConfirm} onOpenChange={setShowClearCacheConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Vider le cache</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous vraiment effacer toutes les données en cache ? Vous devrez les retélécharger la prochaine fois que vous vous connecterez.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmClearCache}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Vider le cache
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

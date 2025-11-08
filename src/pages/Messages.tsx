@@ -413,7 +413,7 @@ export default function Messages() {
 
   if (showChatOnMobile && selectedConversation) {
     return (
-      <div className="h-screen flex flex-col bg-white dark:bg-slate-900">
+      <div className="h-[100dvh] flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
         <TutorChat
           group={selectedConversation.type === 'group' 
             ? selectedConversation.group 
@@ -424,19 +424,27 @@ export default function Messages() {
                   userClass: 'Tuteur',
                   section: selectedConversation.isOnline ? 'En ligne' : 'Hors ligne',
                 creatorId: selectedConversation.tutorUserId || selectedConversation.tutor!.userId,
-                isTutorChat: true,
+                isTutorChat: true, 
                 tutorId: selectedConversation.tutor!.id,
                 conversationId: selectedConversation.id,
                 studentId: selectedConversation.studentId,
                 tutorUserId: selectedConversation.tutorUserId || selectedConversation.tutor!.userId,
                   _count: { members: 2 },
                   members: [
+                    // Tuteur
                     { 
                       user: {
                         ...selectedConversation.tutor!.user,
                         role: 'TUTOR'
                       }
-                    }
+                    },
+                    // Étudiant (si disponible)
+                    ...(selectedConversation.student ? [{
+                      user: {
+                        ...selectedConversation.student,
+                        role: 'STUDENT'
+                      }
+                    }] : [])
                   ]
                 }}
           open={true}
@@ -461,7 +469,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="h-screen flex overflow-hidden bg-white dark:bg-slate-900">
+    <div className="h-[100dvh] flex overflow-hidden bg-white dark:bg-slate-900">
       {/* Liste des conversations - Colonne gauche style WhatsApp */}
       <div className={cn(
         "w-full lg:w-[35%] lg:max-w-[380px] flex flex-col bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 overflow-hidden",
@@ -712,9 +720,9 @@ export default function Messages() {
 
       {/* Zone de chat - Colonne droite style WhatsApp */}
       <div className={cn(
-        "hidden lg:flex flex-1 bg-white dark:bg-slate-900 overflow-hidden",
+        "hidden lg:flex flex-1 bg-white dark:bg-slate-900 overflow-hidden min-h-0 h-full",
         selectedConversation || "lg:flex"
-      )}>
+      )} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {selectedConversation ? (
           <TutorChat
             group={selectedConversation.type === 'group' 
@@ -735,12 +743,20 @@ export default function Messages() {
                 blockReason: selectedConversation.blockReason || null,
                   _count: { members: 2 },
                   members: [
+                    // Tuteur
                     { 
                       user: {
                         ...selectedConversation.tutor!.user,
                         role: 'TUTOR'
                       }
-                    }
+                    },
+                    // Étudiant (si disponible)
+                    ...(selectedConversation.student ? [{
+                      user: {
+                        ...selectedConversation.student,
+                        role: 'STUDENT'
+                      }
+                    }] : [])
                   ]
                 }}
             open={true}

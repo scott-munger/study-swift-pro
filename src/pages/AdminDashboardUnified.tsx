@@ -294,7 +294,7 @@ const AdminDashboardUnified = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
+              <CheckCircle className="h-5 w-5 mr-2 text-green-600 dark:text-green-400" />
               Santé du Système
             </CardTitle>
             <CardDescription>
@@ -304,21 +304,21 @@ const AdminDashboardUnified = () => {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm">Base de données</span>
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Opérationnel
               </Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">API Server</span>
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Opérationnel
               </Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">Stockage</span>
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Disponible
               </Badge>
@@ -415,6 +415,7 @@ const AdminDashboardUnified = () => {
           } else {
             const errorText = await statsRes.text();
             console.error('❌ Erreur stats:', statsRes.status, statsRes.statusText, errorText);
+            setAnalyticsData({});
           }
           
           // Charger les données d'activité
@@ -435,25 +436,35 @@ const AdminDashboardUnified = () => {
           
           // Générer les données de croissance des 6 derniers mois
           const growthData = [];
-          const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin'];
+          const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
           const now = new Date();
           for (let i = 5; i >= 0; i--) {
             const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
             
-            // Appeler l'API pour récupérer les données
-            const monthDataRes = await fetch(`${API_URL}/api/admin/growth-data?month=${date.toISOString()}`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (monthDataRes.ok) {
-              const monthData = await monthDataRes.json();
-              growthData.push({
-                month: months[(now.getMonth() - i + 12) % 12],
-                users: monthData.users || 0,
-                tutors: monthData.tutors || 0,
-                posts: monthData.posts || 0
+            try {
+              // Appeler l'API pour récupérer les données
+              const monthDataRes = await fetch(`${API_URL}/api/admin/growth-data?month=${date.toISOString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
               });
-            } else {
+              
+              if (monthDataRes.ok) {
+                const monthData = await monthDataRes.json();
+                growthData.push({
+                  month: months[(now.getMonth() - i + 12) % 12],
+                  users: monthData.users || 0,
+                  tutors: monthData.tutors || 0,
+                  posts: monthData.posts || 0
+                });
+              } else {
+                growthData.push({
+                  month: months[(now.getMonth() - i + 12) % 12],
+                  users: 0,
+                  tutors: 0,
+                  posts: 0
+                });
+              }
+            } catch (error) {
+              console.error(`Erreur chargement données mois ${i}:`, error);
               growthData.push({
                 month: months[(now.getMonth() - i + 12) % 12],
                 users: 0,
@@ -474,23 +485,74 @@ const AdminDashboardUnified = () => {
       loadAnalytics();
     }, []);
 
-    const subjectDistribution = [
-      { name: 'Mathématiques', value: 35, color: '#3b82f6' },
-      { name: 'Physique', value: 25, color: '#10b981' },
-      { name: 'SVT', value: 20, color: '#f59e0b' },
-      { name: 'Histoire', value: 12, color: '#ef4444' },
-      { name: 'Français', value: 8, color: '#8b5cf6' },
-    ];
+    const [subjectDistribution, setSubjectDistribution] = React.useState<any[]>([]);
+    const [engagementData, setEngagementData] = React.useState<any[]>([]);
 
-    const engagementData = [
-      { time: '00h', active: 12 },
-      { time: '04h', active: 8 },
-      { time: '08h', active: 45 },
-      { time: '12h', active: 120 },
-      { time: '16h', active: 150 },
-      { time: '20h', active: 95 },
-      { time: '23h', active: 35 },
-    ];
+    // Charger les données de matières et engagement
+    React.useEffect(() => {
+      const loadSubjectAndEngagementData = async () => {
+        try {
+          const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+          
+          // Charger les stats par matière
+          const subjectRes = await fetch(`${API_URL}/api/admin/subject-stats`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (subjectRes.ok) {
+            const subjects = await subjectRes.json();
+            if (subjects && Array.isArray(subjects) && subjects.length > 0) {
+              const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+              const total = subjects.reduce((sum: number, s: any) => sum + (s.posts || 0) + (s.flashcards || 0), 0);
+              const distribution = subjects
+                .map((s: any, idx: number) => ({
+                  name: s.name,
+                  value: total > 0 ? Math.round(((s.posts || 0) + (s.flashcards || 0)) / total * 100) : 0,
+                  color: colors[idx % colors.length]
+                }))
+                .filter((s: any) => s.value > 0)
+                .slice(0, 5);
+              setSubjectDistribution(distribution);
+            } else {
+              setSubjectDistribution([]);
+            }
+          }
+          
+          // Générer les données d'engagement par heure (basé sur les messages récents)
+          const engagementByHour = [];
+          
+          // Charger les données d'activité une seule fois
+          const activityRes = await fetch(`${API_URL}/api/admin/activity-data`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          let activityData: any[] = [];
+          if (activityRes.ok) {
+            const activity = await activityRes.json();
+            if (activity && Array.isArray(activity)) {
+              activityData = activity;
+            }
+          }
+          
+          // Générer les tranches horaires
+          for (let hour = 0; hour < 24; hour += 4) {
+            // Estimer l'activité par heure basée sur la moyenne des jours
+            const avgActivity = activityData.length > 0 
+              ? Math.round(activityData.reduce((sum: number, a: any) => sum + (a.users || 0), 0) / activityData.length / 6)
+              : 0;
+            
+            engagementByHour.push({
+              time: `${hour.toString().padStart(2, '0')}h`,
+              active: avgActivity
+            });
+          }
+          setEngagementData(engagementByHour);
+        } catch (error) {
+          console.error('Erreur chargement données matières/engagement:', error);
+        }
+      };
+      
+      loadSubjectAndEngagementData();
+    }, []);
 
     // Afficher un écran de chargement pendant le chargement initial
     if (loading && !analyticsData) {
@@ -510,71 +572,87 @@ const AdminDashboardUnified = () => {
     return (
       <div className="p-6 space-y-6">
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Taux de Croissance</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-l-green-500 hover:shadow-md transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Croissance</CardTitle>
+                <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold mb-1">
                 {loading ? (
-                  <span className="text-gray-400">...</span>
+                  <span className="text-muted-foreground">-</span>
                 ) : analyticsData?.growthRate ? (
-                  <span className={parseFloat(analyticsData.growthRate.replace('%', '')) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  <span className={parseFloat(analyticsData.growthRate.replace('%', '')) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
                     {parseFloat(analyticsData.growthRate.replace('%', '')) >= 0 ? '+' : ''}{analyticsData.growthRate}
                   </span>
                 ) : (
-                  <span className="text-gray-400">+0.0%</span>
+                  <span className="text-muted-foreground">+0.0%</span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">Par rapport au mois dernier</p>
+              <p className="text-xs text-muted-foreground">vs mois précédent</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Taux d'Engagement</CardTitle>
-              <Activity className="h-4 w-4 text-blue-600" />
+          <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Engagement</CardTitle>
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                  <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-3xl font-bold mb-1 text-blue-600 dark:text-blue-400">
                 {loading ? (
-                  <span className="text-gray-400">...</span>
+                  <span className="text-muted-foreground">-</span>
                 ) : (
                   analyticsData?.engagementRate || '0%'
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">Utilisateurs actifs quotidiens</p>
+              <p className="text-xs text-muted-foreground">Utilisateurs actifs/jour</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Temps Moyen</CardTitle>
-              <Clock className="h-4 w-4 text-purple-600" />
+          <Card className="border-l-4 border-l-purple-500 hover:shadow-md transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Temps Moyen</CardTitle>
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                  <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
+              <div className="text-3xl font-bold mb-1 text-purple-600 dark:text-purple-400">
                 {loading ? (
-                  <span className="text-gray-400">...</span>
+                  <span className="text-muted-foreground">-</span>
                 ) : (
                   analyticsData?.avgSessionDuration || '0 min'
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">Par session utilisateur</p>
+              <p className="text-xs text-muted-foreground">Par session</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Vues Totales</CardTitle>
-              <Eye className="h-4 w-4 text-orange-600" />
+          <Card className="border-l-4 border-l-orange-500 hover:shadow-md transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Vues</CardTitle>
+                <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
+                  <Eye className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">
+              <div className="text-3xl font-bold mb-1 text-orange-600 dark:text-orange-400">
                 {loading ? (
-                  <span className="text-gray-400">...</span>
+                  <span className="text-muted-foreground">-</span>
                 ) : (
                   analyticsData?.totalViewsThisWeek || '0'
                 )}
@@ -585,31 +663,45 @@ const AdminDashboardUnified = () => {
         </div>
 
         {/* Main Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* User Growth Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <TrendingUp className="h-5 w-5 mr-2" />
-                Croissance des Utilisateurs
-              </CardTitle>
-              <CardDescription>Évolution sur les 6 derniers mois</CardDescription>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Croissance des Utilisateurs</CardTitle>
+              <CardDescription className="text-xs">Évolution sur 6 mois</CardDescription>
             </CardHeader>
             <CardContent>
               {userGrowthData && userGrowthData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={280}>
                   <AreaChart data={userGrowthData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Area type="monotone" dataKey="users" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="Utilisateurs" />
-                  <Area type="monotone" dataKey="tutors" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} name="Tuteurs" />
+                    <defs>
+                      <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#667eea" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#667eea" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorTutors" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#764ba2" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#764ba2" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
+                    <YAxis stroke="#6b7280" fontSize={12} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }} 
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="users" stroke="#667eea" strokeWidth={2} fill="url(#colorUsers)" name="Utilisateurs" />
+                    <Area type="monotone" dataKey="tutors" stroke="#764ba2" strokeWidth={2} fill="url(#colorTutors)" name="Tuteurs" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
                   <p>Chargement des données...</p>
                 </div>
               )}
@@ -617,29 +709,33 @@ const AdminDashboardUnified = () => {
           </Card>
 
           {/* Activity Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-5 w-5 mr-2" />
-                Activité Hebdomadaire
-              </CardTitle>
-              <CardDescription>Connexions et interactions</CardDescription>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Activité Hebdomadaire</CardTitle>
+              <CardDescription className="text-xs">Connexions et interactions</CardDescription>
             </CardHeader>
             <CardContent>
               {activityData && activityData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={activityData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="logins" fill="#3b82f6" name="Connexions" />
-                  <Bar dataKey="posts" fill="#10b981" name="Posts" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="day" stroke="#6b7280" fontSize={12} />
+                    <YAxis stroke="#6b7280" fontSize={12} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }} 
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                    <Bar dataKey="logins" fill="#667eea" radius={[4, 4, 0, 0]} name="Connexions" />
+                    <Bar dataKey="posts" fill="#764ba2" radius={[4, 4, 0, 0]} name="Posts" />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
                   <p>Chargement des données...</p>
                 </div>
               )}
@@ -648,94 +744,88 @@ const AdminDashboardUnified = () => {
         </div>
 
         {/* Secondary Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Subject Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <PieChart className="h-5 w-5 mr-2" />
-                Distribution par Matière
-              </CardTitle>
-              <CardDescription>Répartition de l'activité</CardDescription>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Distribution par Matière</CardTitle>
+              <CardDescription className="text-xs">Répartition de l'activité</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <RechartsPieChart>
-                  <Pie
-                    data={subjectDistribution}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {subjectDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </RechartsPieChart>
-              </ResponsiveContainer>
+              {subjectDistribution && subjectDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <RechartsPieChart>
+                    <Pie
+                      data={subjectDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={90}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {subjectDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} stroke="#fff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }} 
+                    />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+                  <p>Aucune donnée disponible</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Engagement Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Clock className="h-5 w-5 mr-2" />
-                Engagement par Heure
-              </CardTitle>
-              <CardDescription>Utilisateurs actifs par tranche horaire</CardDescription>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Engagement par Heure</CardTitle>
+              <CardDescription className="text-xs">Utilisateurs actifs par tranche horaire</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={engagementData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="active" stroke="#8b5cf6" strokeWidth={3} name="Utilisateurs actifs" />
-                </LineChart>
-              </ResponsiveContainer>
+              {engagementData && engagementData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={engagementData}>
+                    <defs>
+                      <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#764ba2" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#764ba2" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
+                    <YAxis stroke="#6b7280" fontSize={12} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }} 
+                    />
+                    <Area type="monotone" dataKey="active" stroke="#764ba2" strokeWidth={2} fill="url(#colorActive)" />
+                    <Line type="monotone" dataKey="active" stroke="#764ba2" strokeWidth={2} dot={{ fill: '#764ba2', r: 4 }} activeDot={{ r: 6 }} name="Utilisateurs actifs" />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+                  <p>Chargement des données...</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
-
-        {/* Detailed Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Statistiques Détaillées</CardTitle>
-            <CardDescription>Vue d'ensemble des performances</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Taux de Rétention</p>
-                <p className="text-3xl font-bold">85%</p>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '85%' }} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Satisfaction Utilisateurs</p>
-                <p className="text-3xl font-bold">4.7/5</p>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '94%' }} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Taux de Complétion</p>
-                <p className="text-3xl font-bold">72%</p>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-purple-600 h-2 rounded-full" style={{ width: '72%' }} />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     );
   };

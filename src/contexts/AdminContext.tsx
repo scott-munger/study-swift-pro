@@ -200,6 +200,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
     
+    // Vérifier que le token existe avant d'appeler adminFetch
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) {
+      console.log('⚠️ refreshStats: Token non trouvé, skip');
+      return;
+    }
+    
     try {
       const response = await adminFetch(`${API_URL}/api/admin/stats`);
       const data = await response.json();
@@ -229,6 +236,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Ne pas charger si l'utilisateur n'est pas admin
     if (!adminUser && (!user || user.role !== 'ADMIN')) {
       console.log('⚠️ refreshActivities: Utilisateur non-admin, skip');
+      return;
+    }
+    
+    // Vérifier que le token existe avant d'appeler adminFetch
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) {
+      console.log('⚠️ refreshActivities: Token non trouvé, skip');
       return;
     }
     
@@ -653,13 +667,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Charger les données initiales UNIQUEMENT pour les admins
   useEffect(() => {
-    // Ne charger les données admin que si l'utilisateur est vraiment admin
+    // Ne charger les données admin que si l'utilisateur est vraiment admin et qu'un token existe
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     const isAdmin = adminUser || (user && user.role === 'ADMIN');
-    if (isAdmin) {
+    
+    if (isAdmin && token && user) {
       refreshStats();
       refreshActivities();
     }
-  }, [adminUser, user?.role]); // Dépendre du rôle pour éviter les rechargements inutiles
+  }, [adminUser, user?.role, user]); // Dépendre du rôle et de l'utilisateur pour éviter les rechargements inutiles
 
   const value: AdminContextType = {
     adminUser,

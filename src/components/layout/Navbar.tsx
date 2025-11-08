@@ -189,11 +189,6 @@ const Navbar = () => {
                 className="h-6 w-auto object-contain cursor-pointer"
                 style={{ maxWidth: '90px', height: 'auto' }}
               />
-              {isAdmin && (
-                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
-                  ADMIN
-                </span>
-              )}
             </Link>
           </div>
 
@@ -225,12 +220,12 @@ const Navbar = () => {
                       <span>{t.nav.admin}</span>
                     </div>
                   ) : user?.role === 'TUTOR' ? (
-                    <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                    <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-xs">
                       <BookOpen className="w-3 h-3" />
                       <span>{t.nav.tutors}</span>
                     </div>
                   ) : (
-                    <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                    <div className="flex items-center space-x-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-xs">
                       <GraduationCap className="w-3 h-3" />
                       <span>{t.nav.home}</span>
                     </div>
@@ -306,7 +301,7 @@ const Navbar = () => {
                         style={{ maxWidth: '85px', height: 'auto' }}
                       />
                       {isAdmin && (
-                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded font-medium">
+                        <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 px-2 py-1 rounded font-medium">
                           ADMIN
                         </span>
                       )}

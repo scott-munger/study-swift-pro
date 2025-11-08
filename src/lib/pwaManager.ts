@@ -4,6 +4,7 @@
 export class PWAManager {
   private static instance: PWAManager;
   private sw: ServiceWorkerRegistration | null = null;
+  private updateCallback: ((shouldUpdate: boolean) => void) | null = null;
 
   private constructor() {}
 
@@ -69,11 +70,27 @@ export class PWAManager {
     }
   }
 
+  // Définir un callback pour gérer les mises à jour
+  setUpdateCallback(callback: (shouldUpdate: boolean) => void) {
+    this.updateCallback = callback;
+  }
+
   // Notifier l'utilisateur d'une mise à jour
   private notifyUpdate() {
-    if (confirm('Une nouvelle version est disponible. Voulez-vous mettre à jour ?')) {
-      window.location.reload();
+    if (this.updateCallback) {
+      // Utiliser le callback React pour afficher un AlertDialog
+      this.updateCallback(true);
+    } else {
+      // Fallback : utiliser confirm() si aucun callback n'est défini
+      if (confirm('Une nouvelle version est disponible. Voulez-vous mettre à jour ?')) {
+        window.location.reload();
+      }
     }
+  }
+
+  // Méthode pour confirmer la mise à jour depuis un composant React
+  confirmUpdate() {
+    window.location.reload();
   }
 
   // Vérifier si l'app est online

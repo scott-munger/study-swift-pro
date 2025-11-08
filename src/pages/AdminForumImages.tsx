@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/enhanced-button';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +49,10 @@ const AdminForumImages = () => {
   const [images, setImages] = useState<ForumImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showDeleteImageConfirm, setShowDeleteImageConfirm] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<number | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [imagesToBulkDelete, setImagesToBulkDelete] = useState<number[]>([]);
   const [filterType, setFilterType] = useState<'all' | 'posts' | 'replies'>('all');
   const [selectedImage, setSelectedImage] = useState<ForumImage | null>(null);
   const [selectedImages, setSelectedImages] = useState<number[]>([]);
@@ -108,14 +113,17 @@ const AdminForumImages = () => {
     }
   }, [user]);
 
-  const handleDeleteImage = async (imageId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette image ?')) {
-      return;
-    }
+  const handleDeleteImage = (imageId: number) => {
+    setImageToDelete(imageId);
+    setShowDeleteImageConfirm(true);
+  };
+
+  const confirmDeleteImage = async () => {
+    if (!imageToDelete) return;
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/forum/images/${imageId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/forum/images/${imageToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -124,7 +132,7 @@ const AdminForumImages = () => {
       });
 
       if (response.ok) {
-        setImages(prev => prev.filter(img => img.id !== imageId));
+        setImages(prev => prev.filter(img => img.id !== imageToDelete));
         toast({
           title: "Image supprimée",
           description: "L'image a été supprimée avec succès",
@@ -140,13 +148,19 @@ const AdminForumImages = () => {
         description: "Impossible de supprimer l'image",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteImageConfirm(false);
+      setImageToDelete(null);
     }
   };
 
-  const handleBulkDelete = async (imageIds: number[]) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${imageIds.length} image(s) ?`)) {
-      return;
-    }
+  const handleBulkDelete = (imageIds: number[]) => {
+    setImagesToBulkDelete(imageIds);
+    setShowBulkDeleteConfirm(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (!imagesToBulkDelete.length) return;
 
     try {
       const token = localStorage.getItem('token');
@@ -156,12 +170,12 @@ const AdminForumImages = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ imageIds })
+        body: JSON.stringify({ imageIds: imagesToBulkDelete })
       });
 
       if (response.ok) {
         const result = await response.json();
-        setImages(prev => prev.filter(img => !imageIds.includes(img.id)));
+        setImages(prev => prev.filter(img => !imagesToBulkDelete.includes(img.id)));
         setSelectedImages([]);
         setIsSelectMode(false);
         toast({
@@ -179,6 +193,9 @@ const AdminForumImages = () => {
         description: "Impossible de supprimer les images",
         variant: "destructive"
       });
+    } finally {
+      setShowBulkDeleteConfirm(false);
+      setImagesToBulkDelete([]);
     }
   };
 
@@ -571,6 +588,48 @@ const AdminForumImages = () => {
           </div>
         )}
       </div>
+
+      {/* AlertDialog de confirmation de suppression d'image */}
+      <AlertDialog open={showDeleteImageConfirm} onOpenChange={setShowDeleteImageConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer l'image</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette image ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteImage}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog de confirmation de suppression en masse */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer les images</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer {imagesToBulkDelete.length} image(s) ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmBulkDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer {imagesToBulkDelete.length} image(s)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

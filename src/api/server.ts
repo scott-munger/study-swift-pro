@@ -2760,6 +2760,96 @@ app.post('/api/seed', async (req, res) => {
   }
 });
 
+// Dev-only: create a test tutor account
+app.post('/api/dev/create-test-tutor', async (req, res) => {
+  try {
+    const { email = 'tutor@test.com', password = 'tutor123', firstName = 'Tuteur', lastName = 'Test' } = req.body || {};
+
+    if (!prisma) {
+      return res.status(503).json({ error: 'Base de données non connectée' });
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: 'Utilisateur déjà existant',
+        user: {
+          id: existingUser.id,
+          email: existingUser.email,
+          role: existingUser.role
+        }
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user with TUTOR role
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: 'TUTOR',
+        // @ts-ignore
+        emailVerified: true // Auto-verify for test account
+      }
+    });
+
+    // Create tutor profile
+    const tutor = await prisma.tutor.create({
+      data: {
+        userId: user.id,
+        experience: 5,
+        rating: 4.8,
+        isOnline: false,
+        isAvailable: true,
+        bio: 'Compte tuteur de test pour le messenger',
+        hourlyRate: 25
+      }
+    });
+
+    // Attach default subjects if available
+    const subjects = await prisma.subject.findMany({ 
+      take: 3 // Attach first 3 subjects
+    });
+    if (subjects.length > 0) {
+      await prisma.tutorSubject.createMany({
+        data: subjects.map((s) => ({ tutorId: tutor.id, subjectId: s.id })),
+        skipDuplicates: true
+      });
+    }
+
+    res.json({ 
+      message: 'Compte tuteur de test créé avec succès',
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role
+      },
+      tutor: {
+        id: tutor.id,
+        experience: tutor.experience,
+        rating: tutor.rating
+      },
+      credentials: {
+        email,
+        password
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur dev create-test-tutor:', error);
+    res.status(500).json({ error: 'Échec création compte tuteur', details: error.message });
+  }
+});
+
 // Dev-only: create or update a tutor profile for an existing user
 app.post('/api/dev/create-tutor', async (req, res) => {
   try {
@@ -3769,14 +3859,24 @@ app.get('/api/audio/:filename', (req: any, res) => {
     console.log('🎵 Requête audio reçue pour:', filename);
     
     // Sanitize filename pour éviter les attaques path traversal
-    const sanitizedFilename = path.basename(filename);
-    if (sanitizedFilename !== filename) {
+    // Nettoyer le filename en enlevant les points, espaces et caractères spéciaux à la fin
+    let cleanFilename = filename.trim();
+    // Enlever les points à la fin
+    while (cleanFilename.endsWith('.') || cleanFilename.endsWith(' ')) {
+      cleanFilename = cleanFilename.slice(0, -1).trim();
+    }
+    
+    const sanitizedFilename = path.basename(cleanFilename);
+    if (sanitizedFilename !== cleanFilename || sanitizedFilename.includes('..') || sanitizedFilename.includes('/')) {
       console.error('❌ Tentative d\'accès non autorisé:', filename);
       return res.status(400).json({ error: 'Nom de fichier invalide' });
     }
     
     const audioPath = path.join(process.cwd(), 'uploads/audio-messages', sanitizedFilename);
     console.log('🎵 Chemin audio:', audioPath);
+    console.log('🎵 Filename original:', filename);
+    console.log('🎵 Filename nettoyé:', cleanFilename);
+    console.log('🎵 Filename sanitized:', sanitizedFilename);
     
     if (!fs.existsSync(audioPath)) {
       console.error('❌ Fichier audio non trouvé:', audioPath);
@@ -3798,40 +3898,110 @@ app.get('/api/audio/:filename', (req: any, res) => {
       return res.status(400).json({ error: 'Fichier audio vide' });
     }
     
+    // Vérifier que le fichier a une taille minimale raisonnable (au moins 100 bytes)
+    if (fileSize < 100) {
+      console.warn('⚠️ Fichier audio très petit (potentiellement corrompu):', audioPath, 'Taille:', fileSize);
+      // Ne pas bloquer, mais avertir
+    }
+    
+    // Vérifier que le fichier est un vrai fichier audio (vérifier les premiers bytes)
+    try {
+      const fileBuffer = fs.readFileSync(audioPath, { start: 0, end: Math.min(12, fileSize - 1) });
+      const header = fileBuffer.toString('hex');
+      console.log('🎵 Header du fichier (hex):', header);
+      
+      // Vérifier les signatures de fichiers audio courants
+      const isWebM = header.startsWith('1a45dfa3'); // WebM signature
+      const isOgg = header.startsWith('4f676753'); // OGG signature
+      const isMP3 = header.startsWith('494433') || header.startsWith('fffb') || header.startsWith('fff3'); // MP3 signatures
+      const isWAV = header.startsWith('52494646'); // WAV signature (RIFF)
+      
+      if (!isWebM && !isOgg && !isMP3 && !isWAV) {
+        console.warn('⚠️ Signature audio non reconnue:', header);
+      }
+    } catch (headerError) {
+      console.warn('⚠️ Impossible de lire le header du fichier:', headerError);
+    }
+    
     // Déterminer le type MIME selon l'extension
     const ext = path.extname(sanitizedFilename).toLowerCase();
     let contentType = 'audio/webm'; // Par défaut
     
     if (ext === '.webm') {
-      contentType = 'audio/webm; codecs=opus';
+      contentType = 'audio/webm';
     } else if (ext === '.mp4' || ext === '.m4a') {
       contentType = 'audio/mp4';
     } else if (ext === '.mp3') {
       contentType = 'audio/mpeg';
     } else if (ext === '.ogg') {
-      contentType = 'audio/ogg; codecs=opus';
+      contentType = 'audio/ogg';
     } else if (ext === '.wav') {
-      contentType = 'audio/wav';
+      contentType = 'audio/wave'; // Type MIME standard pour WAV
+    } else if (ext === '.opus') {
+      contentType = 'audio/opus';
+    } else if (ext === '.aac') {
+      contentType = 'audio/aac';
+    }
+    
+    // Si on ne peut pas déterminer l'extension, essayer de détecter depuis le fichier
+    if (contentType === 'audio/webm' && !ext) {
+      // Par défaut, assumer WebM pour les fichiers audio sans extension
+      contentType = 'audio/webm';
     }
     
     console.log('🎵 Content-Type:', contentType);
     
     // Gérer les requêtes OPTIONS (preflight)
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+      const origin = req.headers.origin || process.env.CORS_ORIGIN || '*';
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:3000',
+        'http://localhost:8080',
+        process.env.CORS_ORIGIN
+      ].filter(Boolean);
+      
+      const finalOrigin = origin === '*' || allowedOrigins.includes(origin) ? origin : '*';
+      
+      res.setHeader('Access-Control-Allow-Origin', finalOrigin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, Accept');
+      // Ne pas utiliser credentials si origin est '*'
+      if (finalOrigin !== '*') {
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      res.setHeader('Access-Control-Max-Age', '86400');
       return res.status(200).end();
     }
     
-    // Définir les headers pour permettre la lecture audio avec CORS
+    // Définir les headers pour permettre la lecture audio avec CORS et éviter CORB
+    const origin = req.headers.origin || process.env.CORS_ORIGIN || '*';
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:3000',
+      'http://localhost:8080',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean);
+    
+    const finalOrigin = origin === '*' || allowedOrigins.includes(origin) ? origin : '*';
+    
     res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=31536000');
-    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+    res.setHeader('Access-Control-Allow-Origin', finalOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, Accept');
+    // Ne pas utiliser credentials si origin est '*'
+    if (finalOrigin !== '*') {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     
     // Lire le fichier et l'envoyer avec gestion du range (pour la lecture progressive)
     const rangeHeader = req.headers.range;
@@ -5358,6 +5528,213 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req: Authent
   } catch (error) {
     console.error('Erreur lors de la récupération des statistiques admin:', error);
     res.status(500).json({ error: 'Échec de la récupération des statistiques' });
+  }
+});
+
+// GET /api/admin/analytics/detailed - Statistiques détaillées par département et classe
+app.get('/api/admin/analytics/detailed', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const { department, userClass, section } = req.query;
+
+    // Construire les filtres
+    const whereClause: any = {
+      role: 'STUDENT'
+    };
+
+    if (department) {
+      whereClause.department = department;
+    }
+    if (userClass) {
+      whereClause.userClass = userClass;
+    }
+    if (section) {
+      whereClause.section = section;
+    }
+
+    // Statistiques par département
+    const studentsByDepartment = await prisma.user.groupBy({
+      by: ['department'],
+      where: {
+        role: 'STUDENT',
+        department: { not: null }
+      },
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      }
+    });
+
+    // Statistiques par classe
+    const studentsByClass = await prisma.user.groupBy({
+      by: ['userClass'],
+      where: {
+        role: 'STUDENT',
+        userClass: { not: null }
+      },
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      }
+    });
+
+    // Statistiques par section
+    const studentsBySection = await prisma.user.groupBy({
+      by: ['section'],
+      where: {
+        role: 'STUDENT',
+        section: { not: null }
+      },
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      }
+    });
+
+    // Statistiques combinées département + classe
+    const departmentClassStats = await prisma.user.groupBy({
+      by: ['department', 'userClass'],
+      where: {
+        role: 'STUDENT',
+        department: { not: null },
+        userClass: { not: null }
+      },
+      _count: {
+        id: true
+      }
+    });
+
+    // Statistiques par département et section
+    const departmentSectionStats = await prisma.user.groupBy({
+      by: ['department', 'section'],
+      where: {
+        role: 'STUDENT',
+        department: { not: null },
+        section: { not: null }
+      },
+      _count: {
+        id: true
+      }
+    });
+
+    // Total avec filtres
+    const totalFiltered = await prisma.user.count({
+      where: whereClause
+    });
+
+    // Répartition par classe et section
+    const classSectionStats = await prisma.user.groupBy({
+      by: ['userClass', 'section'],
+      where: {
+        role: 'STUDENT',
+        userClass: { not: null },
+        section: { not: null }
+      },
+      _count: {
+        id: true
+      }
+    });
+
+    res.json({
+      byDepartment: studentsByDepartment.map(item => ({
+        department: item.department || 'Non spécifié',
+        count: item._count.id
+      })),
+      byClass: studentsByClass.map(item => ({
+        userClass: item.userClass || 'Non spécifié',
+        count: item._count.id
+      })),
+      bySection: studentsBySection.map(item => ({
+        section: item.section || 'Non spécifié',
+        count: item._count.id
+      })),
+      departmentClass: departmentClassStats.map(item => ({
+        department: item.department || 'Non spécifié',
+        userClass: item.userClass || 'Non spécifié',
+        count: item._count.id
+      })),
+      departmentSection: departmentSectionStats.map(item => ({
+        department: item.department || 'Non spécifié',
+        section: item.section || 'Non spécifié',
+        count: item._count.id
+      })),
+      classSection: classSectionStats.map(item => ({
+        userClass: item.userClass || 'Non spécifié',
+        section: item.section || 'Non spécifié',
+        count: item._count.id
+      })),
+      totalFiltered,
+      filters: {
+        department: department || null,
+        userClass: userClass || null,
+        section: section || null
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des statistiques détaillées:', error);
+    res.status(500).json({ error: 'Échec de la récupération des statistiques détaillées' });
+  }
+});
+
+// GET /api/admin/analytics/students-breakdown - Répartition détaillée des étudiants
+app.get('/api/admin/analytics/students-breakdown', authenticateToken, requireAdmin, async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    // Tous les étudiants avec leurs informations
+    const allStudents = await prisma.user.findMany({
+      where: { role: 'STUDENT' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        department: true,
+        userClass: true,
+        section: true,
+        createdAt: true,
+        emailVerified: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    // Statistiques globales
+    const totalStudents = allStudents.length;
+    const studentsWithDepartment = allStudents.filter(s => s.department).length;
+    const studentsWithClass = allStudents.filter(s => s.userClass).length;
+    const studentsWithSection = allStudents.filter(s => s.section).length;
+    const verifiedStudents = allStudents.filter(s => s.emailVerified).length;
+
+    // Listes uniques pour les filtres
+    const uniqueDepartments = [...new Set(allStudents.map(s => s.department).filter(Boolean))] as string[];
+    const uniqueClasses = [...new Set(allStudents.map(s => s.userClass).filter(Boolean))] as string[];
+    const uniqueSections = [...new Set(allStudents.map(s => s.section).filter(Boolean))] as string[];
+
+    res.json({
+      total: totalStudents,
+      verified: verifiedStudents,
+      withDepartment: studentsWithDepartment,
+      withClass: studentsWithClass,
+      withSection: studentsWithSection,
+      uniqueDepartments: uniqueDepartments.sort(),
+      uniqueClasses: uniqueClasses.sort(),
+      uniqueSections: uniqueSections.sort(),
+      students: allStudents
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération de la répartition des étudiants:', error);
+    res.status(500).json({ error: 'Échec de la récupération de la répartition' });
   }
 });
 
@@ -10765,16 +11142,17 @@ app.get('/api/admin/conversations/:conversationId/messages', authenticateToken, 
       return res.status(500).json({ error: 'Base de données non disponible' });
     }
     
-    // Exclure les messages système/broadcast (senderId: 0) - ils ne doivent pas apparaître dans les conversations normales
+    // Inclure les messages système de blocage (senderId: 0) pour que l'admin puisse les voir
+    // Les messages de blocage sont importants pour la modération
     const messages = await prisma.directMessage.findMany({
       where: { 
-        conversationId: convId,
-        senderId: { not: 0 } // Exclure les messages système/broadcast
+        conversationId: convId
+        // Ne plus exclure les messages système - ils peuvent être des messages de blocage importants
       },
       orderBy: { createdAt: 'asc' }
     });
     
-    console.log(`📊 Admin: ${messages.length} messages trouvés pour conversation ${convId} (messages système exclus)`);
+    console.log(`📊 Admin: ${messages.length} messages trouvés pour conversation ${convId} (incluant messages système de blocage)`);
     
     // Enrichir avec les informations de l'expéditeur et du destinataire
     const enrichedMessages = await Promise.all(
@@ -11231,17 +11609,33 @@ app.put('/api/admin/conversations/:conversationId/block', authenticateToken, req
       `;
 
       if (isBlocked) {
-        // Créer un message système de blocage (utiliser TEXT car SYSTEM n'existe pas dans MessageType)
+        const blockMessage = `🚫 Cette conversation a été bloquée par l'administrateur.${reason ? ` Raison: ${reason}` : ' Raison: Violation des règlements du site.'}`;
+        
+        // Créer un message système de blocage pour l'étudiant
         await prisma.directMessage.create({
           data: {
             conversationId: convId,
             senderId: 0, // ID spécial pour messages système
             receiverId: conversation.studentId,
-            content: `🚫 Cette conversation a été bloquée par l'administrateur.${reason ? ` Raison: ${reason}` : ''}`,
+            content: blockMessage,
             messageType: 'TEXT', // Utiliser TEXT car SYSTEM n'est pas dans l'enum MessageType
             isRead: false
           }
         });
+
+        // Créer un message système de blocage pour le tuteur si disponible
+        if (tutor?.user) {
+          await prisma.directMessage.create({
+            data: {
+              conversationId: convId,
+              senderId: 0, // ID spécial pour messages système
+              receiverId: tutor.user.id,
+              content: blockMessage,
+              messageType: 'TEXT',
+              isRead: false
+            }
+          });
+        }
 
         // Créer des notifications pour les deux participants
         await createNotification(
@@ -12634,10 +13028,40 @@ app.post('/api/conversations/:id/messages/audio', authenticateToken, chatUpload.
     let userId = req.user.userId || req.user.id;
     const { receiverId } = req.body;
 
-    console.log('🎤 POST /api/conversations/:id/messages/audio:', { conversationId, userId, hasFile: !!req.file, receiverId });
+    console.log('🎤 POST /api/conversations/:id/messages/audio:', { 
+      conversationId, 
+      userId, 
+      hasFile: !!req.file, 
+      receiverId,
+      fileSize: req.file?.size,
+      fileName: req.file?.filename,
+      filePath: req.file?.path,
+      fileMimetype: req.file?.mimetype,
+      fileOriginalname: req.file?.originalname,
+    });
 
-    if (!req.file || !receiverId) {
-      return res.status(400).json({ error: 'Fichier audio et receiverId requis' });
+    if (!req.file) {
+      console.error('❌ Aucun fichier audio reçu');
+      return res.status(400).json({ error: 'Fichier audio requis' });
+    }
+    
+    // Vérifier que le fichier n'est pas vide
+    if (req.file.size === 0) {
+      console.error('❌ Fichier audio vide reçu:', req.file.filename);
+      // Supprimer le fichier vide
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(400).json({ error: 'Le fichier audio est vide. Veuillez réessayer.' });
+    }
+    
+    // Vérifier que le fichier a une taille minimale raisonnable
+    if (req.file.size < 100) {
+      console.warn('⚠️ Fichier audio très petit (potentiellement corrompu):', req.file.size, 'bytes');
+    }
+    
+    if (!receiverId) {
+      return res.status(400).json({ error: 'receiverId requis' });
     }
 
     // Gérer les deux formats de userId
@@ -12697,6 +13121,26 @@ app.post('/api/conversations/:id/messages/audio', authenticateToken, chatUpload.
       return res.status(400).json({ error: 'Impossible de déterminer le destinataire' });
     }
 
+    // Vérifier à nouveau que le fichier existe et n'est pas vide après traitement
+    const filePath = req.file.path;
+    if (!fs.existsSync(filePath)) {
+      console.error('❌ Fichier audio non trouvé après traitement:', filePath);
+      return res.status(500).json({ error: 'Erreur lors de l\'enregistrement du fichier audio' });
+    }
+    
+    const stats = fs.statSync(filePath);
+    if (stats.size === 0) {
+      console.error('❌ Fichier audio vide après traitement:', filePath);
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'Le fichier audio est vide. Veuillez réessayer.' });
+    }
+    
+    console.log('✅ Fichier audio validé:', {
+      filename: req.file.filename,
+      size: stats.size,
+      path: filePath,
+    });
+    
     const audioUrl = `/uploads/audio-messages/${req.file.filename}`;
 
     const message = await prisma.directMessage.create({

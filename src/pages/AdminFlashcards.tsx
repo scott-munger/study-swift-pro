@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { 
   FileText, 
@@ -99,6 +100,8 @@ const AdminFlashcards = () => {
   const [showFlashcardModal, setShowFlashcardModal] = useState(false);
   const [editingFlashcard, setEditingFlashcard] = useState<Flashcard | null>(null);
   const [showChapterModal, setShowChapterModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [flashcardToDelete, setFlashcardToDelete] = useState<number | null>(null);
   const [chapterForm, setChapterForm] = useState({
     title: '',
     description: '',
@@ -294,8 +297,13 @@ const AdminFlashcards = () => {
     }
   };
 
-  const handleDeleteFlashcard = async (flashcardId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette flashcard ?')) return;
+  const handleDeleteFlashcard = (flashcardId: number) => {
+    setFlashcardToDelete(flashcardId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteFlashcard = async () => {
+    if (!flashcardToDelete) return;
 
     try {
       if (!token) {
@@ -307,7 +315,7 @@ const AdminFlashcards = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/flashcards/${flashcardToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -316,10 +324,10 @@ const AdminFlashcards = () => {
       });
 
       if (response.ok) {
-        console.log('🗑️ Flashcard supprimée:', flashcardId);
+        console.log('🗑️ Flashcard supprimée:', flashcardToDelete);
         
         // Supprimer la flashcard du contexte global
-        removeFlashcard(flashcardId);
+        removeFlashcard(flashcardToDelete);
         
         toast({ title: "Succès", description: "Flashcard supprimée avec succès" });
       } else {
@@ -946,6 +954,27 @@ const AdminFlashcards = () => {
           </CardContent>
         </Card>
       </main>
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la flashcard</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette flashcard ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteFlashcard}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { 
   Users, 
   BookOpen, 
@@ -131,6 +132,10 @@ const SimpleAdminDashboard = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showDeleteUserConfirm, setShowDeleteUserConfirm] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<number | null>(null);
+  const [showDeleteSubjectConfirm, setShowDeleteSubjectConfirm] = useState(false);
+  const [subjectToDelete, setSubjectToDelete] = useState<number | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
   // États pour les formulaires
@@ -368,11 +373,16 @@ const SimpleAdminDashboard = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
+  const handleDeleteUser = (userId: number) => {
+    setUserToDelete(userId);
+    setShowDeleteUserConfirm(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_URL}/api/admin/users/${userToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -421,6 +431,9 @@ const SimpleAdminDashboard = () => {
         description: "Erreur de connexion",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteUserConfirm(false);
+      setUserToDelete(null);
     }
   };
 
@@ -530,6 +543,9 @@ const SimpleAdminDashboard = () => {
         description: "Erreur de connexion",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteSubjectConfirm(false);
+      setSubjectToDelete(null);
     }
   };
 
@@ -1195,6 +1211,48 @@ const SimpleAdminDashboard = () => {
             </Card>
           </TabsContent>)}
         </Tabs>
+
+        {/* AlertDialog de confirmation de suppression d'utilisateur */}
+        <AlertDialog open={showDeleteUserConfirm} onOpenChange={setShowDeleteUserConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer l'utilisateur</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeleteUser}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* AlertDialog de confirmation de suppression de matière */}
+        <AlertDialog open={showDeleteSubjectConfirm} onOpenChange={setShowDeleteSubjectConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer la matière</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer cette matière ? Cette action est irréversible.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeleteSubject}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   );

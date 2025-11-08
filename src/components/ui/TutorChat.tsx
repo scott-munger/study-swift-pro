@@ -205,6 +205,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
     null
   ); // Message auquel on répond
   const [lastMessageId, setLastMessageId] = useState<number | null>(null); // ID du dernier message pour détecter les nouveaux
+  const lastNotificationTimeRef = useRef<number>(0); // Timestamp du dernier son joué pour éviter les répétitions
   // États pour les dialogs de confirmation
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -223,15 +224,39 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
 
-  // Helper uniforme pour obtenir l'ID utilisateur d'un message (supporte userId, senderId ou user.id)
-  // Helper pour obtenir l'ID utilisateur d'un message de manière cohérente
-  // Supporte userId, senderId, et user.id avec normalisation
-  const getMessageUserId = (m: any): number | null => {
-    if (!m) return null;
-    // CRITIQUE: Toujours normaliser pour garantir la cohérence
-    // Ordre de priorité: userId -> senderId -> user.id
-    const id = normalizeId(m.userId ?? (m as any).senderId ?? m.user?.id);
-    return id;
+  // Helper simplifié pour vérifier si un message appartient à l'utilisateur actuel
+  const isOwnMessage = (msg: any): boolean => {
+    if (!user?.id || !msg) {
+      console.log("🔍 isOwnMessage: user ou msg manquant", { userId: user?.id, hasMsg: !!msg });
+      return false;
+    }
+    
+    const msgId = msg.userId ?? msg.senderId ?? msg.user?.id;
+    const currentUserId = user.id;
+    
+    // Normalisation robuste : convertir en nombre puis en string pour comparaison
+    const msgIdNum = Number(msgId);
+    const currentUserIdNum = Number(currentUserId);
+    
+    const isOwn = msgIdNum === currentUserIdNum && !isNaN(msgIdNum) && !isNaN(currentUserIdNum);
+    
+    // Debug uniquement si activé
+    if (typeof window !== 'undefined' && localStorage.getItem('debugChatIds') === '1') {
+      console.log("🔍 isOwnMessage:", {
+        msgId,
+        currentUserId,
+        msgIdNum,
+        currentUserIdNum,
+        isOwn,
+        msg: {
+          userId: msg.userId,
+          senderId: msg.senderId,
+          user_id: msg.user?.id
+        }
+      });
+    }
+    
+    return isOwn;
   };
 
   // Mode debug léger : afficher les IDs des messages (activable via localStorage.debugChatIds = '1')
@@ -275,19 +300,32 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           console.warn("⚠️ getAudioUrl: filename vide après split");
           return "";
         }
-        const fullUrl = `${API_URL}/api/audio/${filename}`;
-        console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl);
+        // Nettoyer le filename en enlevant les points, espaces et caractères spéciaux à la fin
+        let cleanFilename = filename.trim();
+        while (cleanFilename.endsWith('.') || cleanFilename.endsWith(' ')) {
+          cleanFilename = cleanFilename.slice(0, -1).trim();
+        }
+        
+        const fullUrl = `${API_URL}/api/audio/${encodeURIComponent(cleanFilename)}`;
+        console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl, "filename nettoyé:", cleanFilename);
         return fullUrl;
     }
     
     // Si c'est juste un filename ou un chemin relatif, utiliser l'endpoint /api/audio
-      const filename = audioUrl.split("/").pop() || audioUrl;
+      let filename = audioUrl.split("/").pop() || audioUrl;
       if (!filename || filename.trim() === "") {
         console.warn("⚠️ getAudioUrl: filename vide après extraction");
         return "";
       }
-      const fullUrl = `${API_URL}/api/audio/${filename}`;
-      console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl);
+      
+      // Nettoyer le filename en enlevant les points, espaces et caractères spéciaux à la fin
+      filename = filename.trim();
+      while (filename.endsWith('.') || filename.endsWith(' ')) {
+        filename = filename.slice(0, -1).trim();
+      }
+      
+      const fullUrl = `${API_URL}/api/audio/${encodeURIComponent(filename)}`;
+      console.log("🎵 getAudioUrl construit:", fullUrl, "depuis:", audioUrl, "filename nettoyé:", filename);
       return fullUrl;
     } catch (error) {
       console.error("❌ Erreur dans getAudioUrl:", error, "audioUrl:", audioUrl);
@@ -306,6 +344,8 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
   // Précharger les durées des messages vocaux
   useEffect(() => {
+    const preloadPromises: Promise<void>[] = [];
+    
     messages.forEach((msg) => {
       if (
         msg.messageType === "VOICE" &&
@@ -314,55 +354,98 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
       ) {
         // Construire l'URL correcte pour l'audio
         const audioUrl = getAudioUrl(msg.audioUrl);
-        if (!audioUrl) {
-          console.warn("⚠️ Impossible de construire l'URL audio pour le message:", msg.id);
+        if (!audioUrl || !audioUrl.trim()) {
           return;
         }
-        const audio = new Audio(audioUrl);
-        audio.onloadedmetadata = () => {
-          setAudioDuration((prev) => ({ ...prev, [msg.id]: audio.duration }));
-        };
-        audio.onerror = (e) => {
-          console.error("Erreur préchargement audio:", msg.audioUrl, e);
-          console.error("Détails de l'erreur:", {
-            error: audio.error,
-            code: audio.error?.code,
-            message: audio.error?.message,
-            networkState: audio.networkState,
-            readyState: audio.readyState
-          });
-        };
-        // Charger seulement les métadonnées (pas l'audio complet)
-        audio.preload = "metadata";
+        
+        // Vérifier que l'URL est valide avant de créer l'élément audio
+        if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+          return;
+        }
+        
+        const preloadPromise = new Promise<void>((resolve) => {
+          const audio = new Audio();
+          let hasResolved = false;
+          
+          // Timeout pour éviter les attentes infinies
+          const timeout = setTimeout(() => {
+            if (!hasResolved) {
+              hasResolved = true;
+              resolve();
+            }
+          }, 5000); // 5 secondes max
+          
+          audio.onloadedmetadata = () => {
+            if (!hasResolved) {
+              hasResolved = true;
+              clearTimeout(timeout);
+              if (audio.duration && !isNaN(audio.duration)) {
+                setAudioDuration((prev) => ({ ...prev, [msg.id]: audio.duration }));
+              }
+              resolve();
+            }
+          };
+          
+          audio.onerror = () => {
+            // Erreur silencieuse - ne pas polluer la console
+            // L'audio sera chargé à la demande lors de la lecture
+            if (!hasResolved) {
+              hasResolved = true;
+              clearTimeout(timeout);
+              resolve();
+            }
+          };
+          
+          // Charger seulement les métadonnées (pas l'audio complet)
+          audio.preload = "metadata";
+          audio.src = audioUrl;
+        });
+        
+        preloadPromises.push(preloadPromise);
       }
     });
+    
+    // Nettoyer les références après le chargement
+    Promise.allSettled(preloadPromises);
   }, [messages]);
 
   // Fonction pour aller aux nouveaux messages
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: "smooth",
-        block: "end",
-        inline: "nearest",
-      });
-      setShowNewMessagesButton(false);
-      setIsAtBottom(true);
-    } else if (scrollRef.current) {
-      // Fallback si messagesEndRef n'est pas disponible
-      const scrollElement = scrollRef.current.querySelector(
-        "[data-radix-scroll-area-viewport]"
-      );
-      if (scrollElement) {
-        scrollElement.scrollTo({
-          top: scrollElement.scrollHeight,
+    // Используем requestAnimationFrame для гарантии, что DOM обновился
+    requestAnimationFrame(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
           behavior: "smooth",
+          block: "end",
+          inline: "nearest",
         });
         setShowNewMessagesButton(false);
         setIsAtBottom(true);
+      } else if (scrollRef.current) {
+        // Fallback si messagesEndRef n'est pas disponible
+        const scrollElement = scrollRef.current.querySelector(
+          "[data-radix-scroll-area-viewport]"
+        ) as HTMLElement;
+        if (scrollElement) {
+          // Для Chrome используем более надежный метод
+          scrollElement.scrollTo({
+            top: scrollElement.scrollHeight,
+            behavior: "smooth",
+          });
+          // Дополнительная проверка через небольшую задержку для Chrome
+          setTimeout(() => {
+            if (scrollElement.scrollTop < scrollElement.scrollHeight - scrollElement.clientHeight - 10) {
+              scrollElement.scrollTop = scrollElement.scrollHeight;
+            }
+          }, 100);
+          setShowNewMessagesButton(false);
+          setIsAtBottom(true);
+        }
       }
-    }
+    });
   };
+
+  // Auto-scroll отключен - пользователь контролирует скролл вручную
 
   // Détecter si l'utilisateur est en bas de la liste des messages
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
@@ -468,22 +551,6 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
       : `messages_group_${group?.id}`;
 
     try {
-      const cachedData = localStorage.getItem(cacheKey);
-      if (cachedData && retryCount === 0) {
-        const parsed = JSON.parse(cachedData);
-        if (parsed.messages && parsed.messages.length > 0) {
-          console.log(
-            `📦 Chargement depuis cache: ${parsed.messages.length} messages`
-          );
-          setMessages(parsed.messages);
-          // Continuer pour charger les messages frais depuis le serveur
-        }
-      }
-    } catch (error) {
-      console.error("❌ Erreur chargement cache:", error);
-    }
-    
-    try {
       const response = await fetch(endpoint, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -493,127 +560,88 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
       if (response.ok) {
         let data = await response.json();
         
+        // Charger le cache en arrière-plan pour améliorer les performances futures (sans l'utiliser)
+        try {
+          const cachedData = localStorage.getItem(cacheKey);
+          if (cachedData && retryCount === 0) {
+            const parsed = JSON.parse(cachedData);
+            if (parsed.messages && parsed.messages.length > 0) {
+              console.log(
+                `📦 Cache disponible: ${parsed.messages.length} messages (utilisé pour améliorer les performances)`
+              );
+            }
+          }
+        } catch (error) {
+          // Ignorer les erreurs de cache
+        }
+        
         // Pour les conversations tuteur, enrichir les messages avec la structure attendue
         if (isTutorChat) {
-          data = data.map((msg: any, index: number) => {
-            // CRITIQUE: Normaliser senderId pour garantir la cohérence
-            // Certains messages peuvent avoir senderId comme string, number, null, ou undefined
-            const normalizedSenderId = normalizeId(msg.senderId ?? msg.userId);
-            
-            // Transformer senderId/receiverId en userId et ajouter user
-            // CRITIQUE: Utiliser normalizeId pour garantir la précision
-            const msgSenderIdNum = normalizedSenderId;
-            const currentUserIdNum = normalizeId(user?.id);
-            const isOwnMessage =
-              msgSenderIdNum !== null &&
-              currentUserIdNum !== null &&
-              msgSenderIdNum === currentUserIdNum;
-
-            // Vérifier si c'est un message système TYALA
-            const isSystemMessage =
-              msgSenderIdNum === 0 ||
-              msg.userId === 0 ||
-              (msg.user &&
-                (normalizeId(msg.user.id) === 0 ||
-                  msg.user.firstName === "TYALA" ||
-                  msg.user.email === "system@tyala.com"));
+          data = data.map((msg: any) => {
+            // SIMPLIFIÉ: Utiliser directement senderId du backend (déjà enrichi)
+            const senderId = msg.senderId ?? msg.userId ?? msg.user?.id ?? 0;
             
             // Déterminer l'utilisateur affiché pour le message
-            let messageUser;
-            if (isSystemMessage) {
-              // Message système - Afficher TYALA avec badge certifié (PRIORITÉ ABSOLUE)
-              messageUser = {
-                id: 0,
-                firstName: "TYALA",
-                lastName: "",
-                profilePhoto: null,
-                email: "system@tyala.com",
-              };
-            } else if (isOwnMessage) {
-              messageUser = {
-                id: user.id,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                profilePhoto: user.profilePhoto,
-              };
-            } else {
-              // Message du tuteur ou autre utilisateur
-              // Utiliser directement msg.user s'il existe (enrichi par le backend)
-              if (msg.user && normalizeId(msg.user.id) !== 0) {
-                messageUser = msg.user;
+            let messageUser = msg.user;
+            
+            // Si pas d'utilisateur, utiliser les infos de la conversation
+            if (!messageUser || !messageUser.id) {
+              if (senderId === 0) {
+                // Message système TYALA
+                messageUser = {
+                  id: 0,
+                  firstName: "TYALA",
+                  lastName: "",
+                  profilePhoto: null,
+                  email: "system@tyala.com",
+                };
+              } else if (user && senderId === user.id) {
+                // Mon propre message
+                messageUser = {
+                  id: user.id,
+                  firstName: user.firstName,
+                  lastName: user.lastName,
+                  profilePhoto: user.profilePhoto,
+                };
               } else {
-                // Si senderId existe dans les membres du groupe, utiliser cet utilisateur
-                const senderMember = group.members?.find(
-                  (m: any) => normalizeId(m.user?.id) === msgSenderIdNum
+                // Chercher dans les membres
+                const senderMember = group.members?.find((m: any) => 
+                  (m.user?.id === senderId || Number(m.user?.id) === Number(senderId))
                 );
-                messageUser = senderMember?.user ||
-                  group.members?.[0]?.user || {
-                    id: msgSenderIdNum ?? 0,
-                    firstName: "Tuteur",
-                    lastName: "",
-                    profilePhoto: null,
-                  };
+                messageUser = senderMember?.user || {
+                  id: senderId,
+                  firstName: "Utilisateur",
+                  lastName: "",
+                  profilePhoto: null,
+                };
               }
             }
 
-            // CRITIQUE: Garantir que userId et senderId sont toujours définis et normalisés
-            // Préserver TOUS les champs importants incluant audioUrl, fileUrl, etc.
-            const enrichedMessage = {
+            // CRITIQUE: Garantir que userId et senderId sont identiques
+            const finalId = senderId;
+            return {
               ...msg,
-              userId: normalizedSenderId ?? msg.userId ?? msg.user?.id ?? 0, // CRITIQUE: userId = senderId pour les conversations tuteur
+              userId: finalId,
+              senderId: finalId,
               messageType: msg.messageType || "TEXT",
               user: messageUser,
-              // Préserver senderId normalisé pour la comparaison - TOUJOURS utiliser la version normalisée
-              senderId: normalizedSenderId ?? msg.senderId ?? msg.userId ?? msg.user?.id ?? 0,
-              // CRITIQUE: Préserver audioUrl, fileUrl et autres champs pour les messages vocaux/fichiers
+              // Préserver tous les champs audio/fichier
               audioUrl: msg.audioUrl,
               fileUrl: msg.fileUrl,
               fileName: msg.fileName,
               fileType: msg.fileType,
               fileSize: msg.fileSize,
             };
-
-            // DEBUG: Log pour les premiers messages pour vérifier la structure
-            if (index < 3) {
-              console.log(`🔧 MSG ${index} enrichi:`, {
-                originalSenderId: msg.senderId,
-                normalizedSenderId: normalizedSenderId,
-                enrichedUserId: enrichedMessage.userId,
-                enrichedSenderId: enrichedMessage.senderId,
-                isOwnMessage: isOwnMessage,
-                currentUserId: currentUserIdNum,
-              });
-            }
-            
-            return enrichedMessage;
           });
         } else {
-          // Pour les groupes, s'assurer que userId est bien défini et normalisé
+          // Pour les groupes, s'assurer que userId et senderId sont identiques
           data = data.map((msg: any) => {
-            // Normaliser userId pour garantir la cohérence
-            const normalizedUserId = normalizeId(msg.userId ?? msg.user?.id ?? msg.senderId);
-            
-            // Si userId n'existe pas ou est invalide, utiliser user.id ou senderId
-            if (!normalizedUserId && msg.user?.id) {
-              const userIdFromUser = normalizeId(msg.user.id);
-              return {
-                ...msg,
-                userId: userIdFromUser ?? 0,
-                senderId: userIdFromUser ?? 0, // Préserver senderId aussi
-                // CRITIQUE: Préserver audioUrl, fileUrl et autres champs pour les messages vocaux/fichiers
-                audioUrl: msg.audioUrl,
-                fileUrl: msg.fileUrl,
-                fileName: msg.fileName,
-                fileType: msg.fileType,
-                fileSize: msg.fileSize,
-              };
-            }
-            // Garantir que userId est toujours un nombre et que senderId est préservé
+            const finalId = msg.userId ?? msg.senderId ?? msg.user?.id ?? 0;
             return {
               ...msg,
-              userId: normalizedUserId ?? msg.user?.id ?? 0,
-              senderId: normalizedUserId ?? msg.senderId ?? msg.user?.id ?? 0,
-              // CRITIQUE: Préserver audioUrl, fileUrl et autres champs pour les messages vocaux/fichiers
+              userId: finalId,
+              senderId: finalId,
+              // Préserver tous les champs audio/fichier
               audioUrl: msg.audioUrl,
               fileUrl: msg.fileUrl,
               fileName: msg.fileName,
@@ -630,40 +658,46 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           return dateA - dateB; // Ordre croissant (ancien -> récent)
         });
         
+        // Supprimer les doublons basés sur l'ID du message
+        const uniqueMessages = sortedData.filter((msg, index, self) =>
+          index === self.findIndex((m) => m.id === msg.id)
+        );
+        
         // Détecter les nouveaux messages et jouer un son de notification
-        if (sortedData.length > 0) {
-          const lastMessage = sortedData[sortedData.length - 1];
+        if (uniqueMessages.length > 0) {
+          const lastMessage = uniqueMessages[uniqueMessages.length - 1];
           
           // Ne mettre à jour que si lastMessageId était déjà défini (pas le premier chargement)
           // pour éviter de jouer un son pour tous les messages existants au chargement initial
-          if (lastMessageId !== null) {
-            // Vérifier si c'est un nouveau message (pas celui qu'on vient d'envoyer)
-            if (lastMessage.id > lastMessageId) {
-              const msgUserId =
-                lastMessage.userId ??
-                (lastMessage as any).senderId ??
-                lastMessage.user?.id;
-              const msgUserIdNum = normalizeId(msgUserId);
-              const currentUserIdNum = normalizeId(user?.id);
-              const isOwnMessage =
-                msgUserIdNum !== null &&
-                currentUserIdNum !== null &&
-                msgUserIdNum === currentUserIdNum;
+          if (lastMessageId !== null && lastMessageId !== undefined) {
+            // Vérifier si c'est un message vraiment nouveau (ID strictement supérieur)
+            // et si ce n'est pas notre propre message
+            if (lastMessage.id > lastMessageId && !isOwnMessage(lastMessage)) {
+              // Vérifier aussi que le message n'est pas trop ancien (éviter les sons pour messages anciens)
+              const messageTime = new Date(lastMessage.createdAt).getTime();
+              const now = Date.now();
+              const timeDiff = now - messageTime;
               
-              // Jouer le son uniquement si ce n'est pas notre propre message
-              if (!isOwnMessage) {
+              // Ne jouer le son que si le message a été créé dans les 30 dernières secondes
+              // et si on n'a pas déjà joué un son dans les 2 dernières secondes (éviter les répétitions)
+              const timeSinceLastSound = Date.now() - lastNotificationTimeRef.current;
+              if (timeDiff < 30000 && timeSinceLastSound > 2000) {
+                // Mettre à jour l'ID du dernier message AVANT de jouer le son pour éviter les répétitions
+                setLastMessageId(lastMessage.id);
                 playNotificationSound();
+                lastNotificationTimeRef.current = Date.now();
               }
             }
           }
           
-          // Toujours mettre à jour l'ID du dernier message
+          // Toujours mettre à jour l'ID du dernier message (même si on n'a pas joué de son)
+          // Cela arrêtera les notifications pour les messages suivants
           setLastMessageId(lastMessage.id);
         } else {
           setLastMessageId(null);
         }
         
-        setMessages(sortedData);
+        setMessages(uniqueMessages);
 
         // Sauvegarder dans le cache offline pour synchronisation
         try {
@@ -676,7 +710,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           localStorage.setItem(
             cacheKey,
             JSON.stringify({
-              messages: sortedData,
+              messages: uniqueMessages,
               lastSync: Date.now(),
               groupId: group?.id,
               conversationId: group?.conversationId,
@@ -684,7 +718,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           );
 
           console.log(
-            `💾 Messages sauvegardés dans le cache: ${sortedData.length} messages pour ${cacheKey}`
+            `💾 Messages sauvegardés dans le cache: ${uniqueMessages.length} messages pour ${cacheKey}`
           );
         } catch (error) {
           console.error("❌ Erreur sauvegarde cache messages:", error);
@@ -945,6 +979,18 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           audioBlob.type
         );
         
+        // Vérifier que le blob n'est pas vide avant l'envoi
+        if (!audioBlob || audioBlob.size === 0) {
+          console.error("❌ Blob audio vide, impossible d'envoyer");
+          toast({
+            title: "Erreur",
+            description: "L'enregistrement audio est vide. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          setSending(false);
+          return;
+        }
+        
         const formData = new FormData();
         formData.append("content", content || "Message vocal");
         formData.append("messageType", "VOICE");
@@ -962,11 +1008,32 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           ? "mp4"
           : "webm";
 
-        formData.append(
-          "audio",
-          audioBlob,
-          `voice-${Date.now()}.${fileExtension}`
-        );
+        // Créer un nouveau blob avec le bon type MIME
+        const finalBlob = audioBlob.type && audioBlob.type !== 'application/octet-stream'
+          ? audioBlob 
+          : new Blob([audioBlob], { type: `audio/${fileExtension}` });
+        
+        // Vérifier à nouveau que le blob final n'est pas vide
+        if (finalBlob.size === 0) {
+          console.error("❌ Blob final vide après traitement !");
+          toast({
+            title: "Erreur",
+            description: "L'enregistrement audio est vide. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          setSending(false);
+          return;
+        }
+        
+        const filename = `voice-${Date.now()}.${fileExtension}`;
+        formData.append("audio", finalBlob, filename);
+        
+        console.log("🎤 FormData préparé avec blob:", {
+          size: finalBlob.size,
+          type: finalBlob.type,
+          filename: filename,
+          formDataSize: formData.has("audio") ? "présent" : "absent",
+        });
 
         const endpoint = `${baseEndpoint}/messages${
           isTutorChat ? "/audio" : ""
@@ -1129,6 +1196,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         if (response.ok) {
           setNewMessage("");
           setReplyingToMessage(null); // Réinitialiser la réponse après envoi
+          // Recharger les messages immédiatement pour avoir la structure correcte
           await loadMessages();
         } else {
           const errorText = await response.text();
@@ -1216,20 +1284,113 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
+          console.log("🎤 Chunk audio reçu:", event.data.size, "bytes", "type:", event.data.type, "state:", mediaRecorder.state);
           audioChunksRef.current.push(event.data);
+        } else if (event.data) {
+          console.warn("⚠️ Chunk audio vide reçu:", event.data.size, "bytes");
+        } else {
+          console.warn("⚠️ Aucune donnée dans l'événement dataavailable");
+        }
+      };
+      
+      // Gérer les erreurs de l'enregistrement
+      mediaRecorder.onerror = (event) => {
+        console.error("❌ Erreur MediaRecorder:", event);
+        toast({
+          title: "Erreur",
+          description: "Erreur lors de l'enregistrement audio. Veuillez réessayer.",
+          variant: "destructive",
+        });
+        setIsRecording(false);
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
         }
       };
 
       mediaRecorder.onstop = async () => {
+        console.log("🎤 MediaRecorder arrêté, chunks:", audioChunksRef.current.length);
+        
+        // Attendre que tous les chunks soient disponibles
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Vérifier qu'on a des chunks
+        if (audioChunksRef.current.length === 0) {
+          console.error("❌ Aucun chunk audio collecté !");
+          toast({
+            title: "Erreur",
+            description: "Aucune donnée audio enregistrée. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          
+          // Arrêter le stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+          setRecordingDuration(0);
+          audioChunksRef.current = [];
+          return;
+        }
+        
+        // Filtrer les chunks vides
+        const validChunks = audioChunksRef.current.filter(chunk => chunk && chunk.size > 0);
+        
+        if (validChunks.length === 0) {
+          console.error("❌ Aucun chunk valide après filtrage !");
+          toast({
+            title: "Erreur",
+            description: "Aucune donnée audio valide enregistrée. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          
+          // Arrêter le stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+          setRecordingDuration(0);
+          audioChunksRef.current = [];
+          return;
+        }
+        
         const blobType = mimeType || "audio/webm";
-        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+        const audioBlob = new Blob(validChunks, { type: blobType });
         const duration = Math.round(recordingDuration);
+        
+        const chunksTotalSize = validChunks.reduce((sum, chunk) => sum + chunk.size, 0);
         
         console.log("🎤 Blob créé:", {
           size: audioBlob.size,
           type: audioBlob.type,
+          chunksCount: validChunks.length,
+          chunksTotalSize: chunksTotalSize,
+          originalChunksCount: audioChunksRef.current.length,
         });
+        
+        // Vérifier que le blob n'est pas vide
+        if (audioBlob.size === 0 || chunksTotalSize === 0) {
+          console.error("❌ Blob audio vide !", { 
+            blobSize: audioBlob.size, 
+            chunksSize: chunksTotalSize,
+            validChunksCount: validChunks.length 
+          });
+          toast({
+            title: "Erreur",
+            description: "L'enregistrement audio est vide. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          
+          // Arrêter le stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+          setRecordingDuration(0);
+          audioChunksRef.current = [];
+          return;
+        }
         
         // Arrêter le stream
         if (streamRef.current) {
@@ -1238,18 +1399,38 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         }
 
         // Envoyer le message vocal
-        await sendMessage(
-          `🎤 Message vocal (${duration}s)`,
-          "VOICE",
-          audioBlob
-        );
-        
-        setRecordingDuration(0);
+        try {
+          await sendMessage(
+            `🎤 Message vocal (${duration}s)`,
+            "VOICE",
+            audioBlob
+          );
+        } catch (error) {
+          console.error("❌ Erreur lors de l'envoi du message vocal:", error);
+          toast({
+            title: "Erreur",
+            description: "Impossible d'envoyer le message vocal. Veuillez réessayer.",
+            variant: "destructive",
+          });
+        } finally {
+          // Réinitialiser les chunks après envoi
+          audioChunksRef.current = [];
+          setRecordingDuration(0);
+        }
       };
 
-      mediaRecorder.start(100); // Enregistrer par chunks de 100ms
-      setIsRecording(true);
-      setRecordingDuration(0);
+      // S'assurer que l'enregistreur est prêt
+      if (mediaRecorder.state === 'inactive') {
+        // Démarrer l'enregistrement avec timeslice pour garantir la collecte des chunks
+        mediaRecorder.start(200); // Enregistrer par chunks de 200ms
+        console.log("🎤 Enregistrement démarré, state:", mediaRecorder.state);
+        setIsRecording(true);
+        setRecordingDuration(0);
+        audioChunksRef.current = []; // Réinitialiser les chunks
+      } else {
+        console.warn("⚠️ MediaRecorder déjà actif, state:", mediaRecorder.state);
+        setIsRecording(false);
+      }
 
       // Timer pour la durée d'enregistrement
       recordingIntervalRef.current = setInterval(() => {
@@ -1269,13 +1450,31 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      if (mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
+      const state = mediaRecorderRef.current.state;
+      console.log("🎤 Arrêt de l'enregistrement, state:", state);
+      
+      if (state === "recording" || state === "paused") {
+        // Forcer la collecte des derniers chunks
+        try {
+          mediaRecorderRef.current.requestData();
+        } catch (e) {
+          console.warn("⚠️ Impossible de demander les dernières données:", e);
+        }
+        
+        // Attendre un peu avant d'arrêter
+        setTimeout(() => {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+            mediaRecorderRef.current.stop();
+            console.log("🎤 MediaRecorder arrêté");
+          }
+        }, 100);
       }
+      
       setIsRecording(false);
       
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
       }
     }
   };
@@ -1392,30 +1591,30 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
       return;
     }
     
-    // Arrêter toute autre lecture en cours
-    if (audioElement) {
-      audioElement.pause();
-      setAudioProgress((prev) => {
-        const newProgress = { ...prev };
-        if (isPlaying) newProgress[isPlaying] = 0;
-        return newProgress;
-      });
-    }
+      // Arrêter toute autre lecture en cours
+      if (audioElement) {
+        audioElement.pause();
+        setAudioProgress((prev) => {
+          const newProgress = { ...prev };
+          if (isPlaying) newProgress[isPlaying] = 0;
+          return newProgress;
+        });
+      }
 
-    // Vérifier que l'URL est valide
-    if (!audioUrl || audioUrl.trim() === "") {
-      console.error("❌ URL audio vide pour message:", messageId);
-      toast({
-        title: "Erreur",
-        description: "URL audio non disponible pour ce message vocal",
-        variant: "destructive",
-      });
-      return;
-    }
+      // Vérifier que l'URL est valide
+      if (!audioUrl || audioUrl.trim() === "") {
+        console.error("❌ URL audio vide pour message:", messageId);
+        toast({
+          title: "Erreur",
+          description: "URL audio non disponible pour ce message vocal",
+          variant: "destructive",
+        });
+        return;
+      }
 
     // Normaliser l'URL - utiliser getAudioUrl si nécessaire
     let normalizedUrl = audioUrl;
-    if (!audioUrl.startsWith("http://") && !audioUrl.startsWith("https://")) {
+      if (!audioUrl.startsWith("http://") && !audioUrl.startsWith("https://")) {
       console.log("⚠️ URL ne commence pas par http, normalisation...");
       normalizedUrl = getAudioUrl(audioUrl);
       if (!normalizedUrl || normalizedUrl.trim() === "") {
@@ -1427,166 +1626,252 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
         });
         return;
       }
-    }
-    
+      }
+
     console.log("🎵 URL normalisée:", normalizedUrl);
     console.log("🎵 Lecture audio:", normalizedUrl, "pour message:", messageId);
 
-    // Vérifier le support du format audio dans le navigateur
-    const audioElementTest = document.createElement('audio');
-    const canPlayWebM = audioElementTest.canPlayType('audio/webm; codecs=opus') || 
-                       audioElementTest.canPlayType('audio/webm') || 
-                       audioElementTest.canPlayType('audio/ogg; codecs=opus') ||
-                       audioElementTest.canPlayType('audio/mpeg');
-    
+      // Vérifier le support du format audio dans le navigateur
+      const audioElementTest = document.createElement('audio');
+      const canPlayWebM = audioElementTest.canPlayType('audio/webm; codecs=opus') || 
+                         audioElementTest.canPlayType('audio/webm') || 
+                         audioElementTest.canPlayType('audio/ogg; codecs=opus') ||
+                         audioElementTest.canPlayType('audio/mpeg');
+      
     if (!canPlayWebM && normalizedUrl.includes('.webm')) {
-      console.warn("⚠️ Format WebM pas totalement supporté, mais tentative de lecture");
-    }
+        console.warn("⚠️ Format WebM pas totalement supporté, mais tentative de lecture");
+      }
 
-    // Lire l'audio
+      // Lire l'audio
     const audio = new Audio(normalizedUrl);
-    audio.crossOrigin = 'anonymous'; // Permettre CORS si nécessaire
-    audio.preload = 'auto';
-    
-    // Gestion du timeout pour les erreurs de chargement
-    let loadTimeout: NodeJS.Timeout;
-    const clearLoadTimeout = () => {
-      if (loadTimeout) clearTimeout(loadTimeout);
-    };
-    
-    // Timeout de 10 secondes pour le chargement
-    loadTimeout = setTimeout(() => {
-      if (audio.readyState < 2) { // HAVE_CURRENT_DATA
+      // Ne pas utiliser crossOrigin si l'URL est sur le même domaine
+      // Cela évite les problèmes CORS/CORB inutiles
+      if (normalizedUrl.startsWith('http://localhost') || normalizedUrl.includes('localhost')) {
+        // Pour localhost, pas besoin de crossOrigin
+        audio.crossOrigin = null as any;
+      } else {
+        // Pour les autres domaines, utiliser anonymous
+        audio.crossOrigin = 'anonymous';
+      }
+      audio.preload = 'auto'; // Charger l'audio pour permettre la lecture
+      
+      // Gestion du timeout pour les erreurs de chargement
+      let loadTimeout: NodeJS.Timeout;
+      const clearLoadTimeout = () => {
+        if (loadTimeout) clearTimeout(loadTimeout);
+      };
+      
+      // Timeout de 10 secondes pour le chargement
+      loadTimeout = setTimeout(() => {
+        if (audio.readyState < 2) { // HAVE_CURRENT_DATA
         console.error("❌ Timeout chargement audio:", normalizedUrl);
+          toast({
+            title: "Erreur",
+            description: "Le message vocal prend trop de temps à charger. Vérifiez votre connexion.",
+            variant: "destructive",
+          });
+          setIsPlaying(null);
+          setAudioElement(null);
+          clearLoadTimeout();
+        }
+      }, 10000);
+      
+      // Récupérer la durée quand elle est disponible
+      audio.onloadedmetadata = () => {
+        clearLoadTimeout();
+        console.log(
+          "✅ Métadonnées audio chargées:",
+          audio.duration,
+        "secondes"
+        );
+        setAudioDuration((prev) => ({ ...prev, [messageId]: audio.duration }));
+      };
+      
+      // Mettre à jour la progression pendant la lecture
+      audio.ontimeupdate = () => {
+        if (audio.duration && !isNaN(audio.duration)) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+          setAudioProgress((prev) => ({ ...prev, [messageId]: progress }));
+        }
+      };
+      
+      audio.onended = () => {
+        clearLoadTimeout();
+        console.log("✅ Audio terminé");
+        setIsPlaying(null);
+        setAudioElement(null);
+        setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
+      };
+      
+      audio.onerror = (e) => {
+        clearLoadTimeout();
+        console.error("❌ Erreur lecture audio:", e, "URL:", normalizedUrl);
+        console.error("Erreur audio détail:", {
+          error: audio.error,
+          code: audio.error?.code,
+          message: audio.error?.message,
+          networkState: audio.networkState,
+          readyState: audio.readyState,
+          src: audio.src,
+        });
+        
+        // Messages d'erreur plus descriptifs selon le code d'erreur
+        // MediaError.MEDIA_ERR_ABORTED = 1
+        // MediaError.MEDIA_ERR_NETWORK = 2
+        // MediaError.MEDIA_ERR_DECODE = 3
+        // MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+        let errorMessage = "Format non supporté";
+        let errorDetails = "";
+        
+        if (audio.error) {
+          switch (audio.error.code) {
+            case 1: // MEDIA_ERR_ABORTED
+              errorMessage = "Lecture interrompue";
+              break;
+            case 2: // MEDIA_ERR_NETWORK
+              errorMessage = "Erreur réseau. Vérifiez votre connexion.";
+              errorDetails = "Le fichier audio n'a pas pu être chargé depuis le serveur.";
+              break;
+            case 3: // MEDIA_ERR_DECODE
+              errorMessage = "Format audio non supporté par votre navigateur";
+              errorDetails = `Format détecté: ${normalizedUrl.split('.').pop()}. Vérifiez que votre navigateur supporte ce format.`;
+              break;
+            case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+              errorMessage = "Format audio non supporté ou fichier corrompu";
+              errorDetails = `URL: ${normalizedUrl}. Vérifiez que le fichier existe et est valide.`;
+              break;
+            default:
+              errorMessage = audio.error.message || "Erreur de lecture audio";
+              errorDetails = `Code d'erreur: ${audio.error.code}`;
+          }
+        } else {
+          // Si pas d'erreur audio mais problème réseau
+          if (audio.networkState === 3) { // NETWORK_NO_SOURCE
+            errorMessage = "Source audio non disponible";
+            errorDetails = "Le fichier audio n'a pas pu être trouvé ou chargé.";
+          }
+        }
+        
+        console.error("❌ Détails de l'erreur:", errorMessage, errorDetails);
+        
         toast({
           title: "Erreur",
-          description: "Le message vocal prend trop de temps à charger. Vérifiez votre connexion.",
+          description: `Impossible de lire le message vocal: ${errorMessage}${errorDetails ? ` ${errorDetails}` : ''}`,
           variant: "destructive",
+          duration: 5000,
         });
         setIsPlaying(null);
         setAudioElement(null);
+        setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
+      };
+      
+      // Variable pour suivre si on a déjà essayé de jouer
+      let hasTriedToPlay = false;
+      
+      // Fonction pour gérer les erreurs de lecture
+      const handlePlayError = (error: any) => {
         clearLoadTimeout();
-      }
-    }, 10000);
-    
-    // Récupérer la durée quand elle est disponible
-    audio.onloadedmetadata = () => {
-      clearLoadTimeout();
-      console.log(
-        "✅ Métadonnées audio chargées:",
-        audio.duration,
-        "secondes"
-      );
-      setAudioDuration((prev) => ({ ...prev, [messageId]: audio.duration }));
-    };
-    
-    // Mettre à jour la progression pendant la lecture
-    audio.ontimeupdate = () => {
-      if (audio.duration && !isNaN(audio.duration)) {
-        const progress = (audio.currentTime / audio.duration) * 100;
-        setAudioProgress((prev) => ({ ...prev, [messageId]: progress }));
-      }
-    };
-    
-    audio.onended = () => {
-      clearLoadTimeout();
-      console.log("✅ Audio terminé");
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
-    };
-    
-    audio.onerror = (e) => {
-      clearLoadTimeout();
-      console.error("❌ Erreur lecture audio:", e, "URL:", normalizedUrl);
-      console.error("Erreur audio détail:", {
-        error: audio.error,
-        code: audio.error?.code,
-        message: audio.error?.message,
-        networkState: audio.networkState,
-        readyState: audio.readyState,
-      });
-      
-      // Messages d'erreur plus descriptifs selon le code d'erreur
-      // MediaError.MEDIA_ERR_ABORTED = 1
-      // MediaError.MEDIA_ERR_NETWORK = 2
-      // MediaError.MEDIA_ERR_DECODE = 3
-      // MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED = 4
-      let errorMessage = "Format non supporté";
-      if (audio.error) {
-        switch (audio.error.code) {
-          case 1: // MEDIA_ERR_ABORTED
-            errorMessage = "Lecture interrompue";
-            break;
-          case 2: // MEDIA_ERR_NETWORK
-            errorMessage = "Erreur réseau. Vérifiez votre connexion.";
-            break;
-          case 3: // MEDIA_ERR_DECODE
-            errorMessage = "Format audio non supporté par votre navigateur";
-            break;
-          case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
-            errorMessage = "Format audio non supporté ou fichier corrompu";
-            break;
-          default:
-            errorMessage = audio.error.message || "Erreur de lecture audio";
+        console.error("❌ Erreur play audio:", error, "URL:", normalizedUrl);
+        console.error("Audio state:", {
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+          error: audio.error,
+          src: audio.src,
+        });
+        
+        let errorMessage = "Vérifiez votre connexion";
+        
+        if (error.name === 'NotAllowedError') {
+          errorMessage = "Lecture bloquée. Autorisez la lecture audio dans votre navigateur.";
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = "Format audio non supporté par votre navigateur";
+        } else if (error.message) {
+          errorMessage = error.message;
+        } else if (audio.error) {
+          // Utiliser l'erreur de l'élément audio si disponible
+          switch (audio.error.code) {
+            case 2:
+              errorMessage = "Erreur réseau. Vérifiez votre connexion.";
+              break;
+            case 3:
+              errorMessage = "Format audio non supporté par votre navigateur";
+              break;
+            case 4:
+              errorMessage = "Format audio non supporté ou fichier corrompu";
+              break;
+          }
         }
+        
+        toast({
+          title: "Erreur",
+          description: `Impossible de lire le message vocal: ${errorMessage}`,
+          variant: "destructive",
+          duration: 5000,
+        });
+        setIsPlaying(null);
+        setAudioElement(null);
+        setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
+      };
+      
+      // Fonction pour essayer de jouer l'audio
+      const tryPlay = () => {
+        if (hasTriedToPlay) return; // Éviter les appels multiples
+        hasTriedToPlay = true;
+        
+        setAudioElement(audio);
+        setIsPlaying(messageId);
+        
+        // Vérifier que l'audio est prêt
+        if (audio.readyState < 2) {
+          console.warn("⚠️ Audio pas encore prêt, readyState:", audio.readyState);
+          // Attendre un peu plus
+          setTimeout(() => {
+            if (audio.readyState >= 2) {
+              audio.play().catch((error) => handlePlayError(error));
+            } else {
+              handlePlayError(new Error("Audio pas prêt après timeout"));
+            }
+          }, 500);
+          return;
+        }
+        
+        audio.play().catch((error) => handlePlayError(error));
+      };
+      
+      // Gestion des événements de chargement
+      audio.onloadstart = () => {
+        console.log("🔄 Début chargement audio:", normalizedUrl);
+      };
+      
+      audio.onstalled = () => {
+        console.warn("⚠️ Chargement audio bloqué:", normalizedUrl);
+      };
+      
+      // Attendre que l'audio soit prêt avant de jouer
+      audio.oncanplay = () => {
+        clearLoadTimeout();
+        console.log("✅ Audio prêt à être lu");
+        if (!hasTriedToPlay) {
+          tryPlay();
+        }
+      };
+      
+      audio.oncanplaythrough = () => {
+        clearLoadTimeout();
+        console.log("✅ Audio complètement chargé");
+        // Si on n'a pas encore joué, essayer maintenant
+        if (!hasTriedToPlay) {
+          tryPlay();
+        }
+      };
+      
+      // Si l'audio est déjà prêt, jouer immédiatement
+      if (audio.readyState >= 2) {
+        tryPlay();
+      } else {
+        // Charger l'audio pour déclencher les événements
+        audio.load();
       }
-      
-      toast({
-        title: "Erreur",
-        description: `Impossible de lire le message vocal: ${errorMessage}`,
-        variant: "destructive",
-      });
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
-    };
-    
-    // Gestion des événements de chargement
-    audio.oncanplay = () => {
-      clearLoadTimeout();
-      console.log("✅ Audio prêt à être lu");
-    };
-    
-    audio.oncanplaythrough = () => {
-      clearLoadTimeout();
-      console.log("✅ Audio complètement chargé");
-    };
-    
-    audio.onloadstart = () => {
-      console.log("🔄 Début chargement audio:", normalizedUrl);
-    };
-    
-    audio.onstalled = () => {
-      console.warn("⚠️ Chargement audio bloqué:", normalizedUrl);
-    };
-    
-    setAudioElement(audio);
-    setIsPlaying(messageId);
-    
-    // Essayer de jouer l'audio avec meilleure gestion d'erreur
-    audio.play().catch((error) => {
-      clearLoadTimeout();
-      console.error("❌ Erreur play audio:", error, "URL:", normalizedUrl);
-      let errorMessage = "Vérifiez votre connexion";
-      
-      if (error.name === 'NotAllowedError') {
-        errorMessage = "Lecture bloquée. Autorisez la lecture audio dans votre navigateur.";
-      } else if (error.name === 'NotSupportedError') {
-        errorMessage = "Format audio non supporté par votre navigateur";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      toast({
-        title: "Erreur",
-        description: `Impossible de lire le message vocal: ${errorMessage}`,
-        variant: "destructive",
-      });
-      setIsPlaying(null);
-      setAudioElement(null);
-      setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }));
-    });
   };
 
   // Gestion de la sélection de fichiers
@@ -2543,9 +2828,9 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
   // Si inline, retourner tout le contenu sans Dialog
   if (inline) {
     return (
-      <div className="h-full flex flex-col bg-white dark:bg-slate-900 w-full overflow-hidden">
+      <div className="h-full flex flex-col bg-white dark:bg-slate-900 w-full" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header */}
-        <div className="p-4 sm:p-6 pb-4 border-b border-gray-200 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900">
+        <div className="flex-shrink-0 p-4 sm:p-6 pb-4 border-b border-gray-200 dark:border-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900">
           <div className="flex items-start justify-between">
             <div className="flex-1 pr-12">
               {onBack && (
@@ -2700,7 +2985,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
         {/* Barre de recherche */}
         {showSearch && (
-            <div className="border-b bg-white p-4">
+            <div className="flex-shrink-0 border-b bg-white p-4">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -2749,15 +3034,16 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
           )}
 
         {/* Zone de chat */}
-        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {isMember ? (
               <>
                 {/* Zone des messages - Scrollable */}
-                <div className="flex-1 overflow-hidden relative min-h-0">
+                <div className="flex-1" style={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <ScrollArea 
-                    className="h-full" 
+                    className="flex-1 w-full" 
                     ref={scrollRef}
                     onScroll={handleScroll}
+                    style={{ height: '100%' }}
                   >
                   <div className="p-2 sm:p-3 lg:p-4 xl:p-6 pb-safe">
                     {group.isBlocked ? (
@@ -2810,23 +3096,26 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                           }
                           
                           // Déterminer si c'est mon message - style WhatsApp
-                          // Utiliser normalizeId pour garantir la précision
-                          // Utiliser le helper uniforme pour éviter les incohérences entre userId et senderId
-                          const msgUserIdNum = getMessageUserId(msg);
-                          const currentUserIdNum = normalizeId(user?.id);
-                          const isOwnMessage =
-                            msgUserIdNum !== null &&
-                            currentUserIdNum !== null &&
-                            msgUserIdNum === currentUserIdNum;
+                          const isOwnMessageValue = isOwnMessage(msg);
+                          const msgUserId = msg.userId ?? msg.senderId ?? msg.user?.id;
                           
-                          // Détection robuste des messages système TYALA
-                          const isSystemMessage =
-                            msgUserIdNum === 0 ||
-                            (msg.user &&
-                              (msg.user.id === 0 ||
-                                msg.user.firstName === "TYALA" ||
-                                (msg.user as any).email ===
-                                  "system@tyala.com"));
+                          // Debug: afficher les valeurs pour comprendre le problème
+                          if (typeof window !== 'undefined' && localStorage.getItem('debugChatIds') === '1') {
+                            console.log(`🔍 Message ${msg.id}:`, {
+                              isOwnMessageValue,
+                              msgUserId,
+                              currentUserId: user?.id,
+                              msg: {
+                                userId: msg.userId,
+                                senderId: msg.senderId,
+                                user_id: msg.user?.id
+                              }
+                            });
+                          }
+                          
+                          // Détection des messages système TYALA
+                          const isSystemMessage = Number(msgUserId) === 0 || 
+                            (msg.user?.id === 0 || msg.user?.firstName === "TYALA" || msg.user?.email === "system@tyala.com");
                           const isVoiceMessage = msg.messageType === "VOICE";
                           const isImageMessage = msg.messageType === "IMAGE";
                           const isFileMessage = msg.messageType === "FILE";
@@ -2836,22 +3125,15 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                             index > 0 ? messages[index - 1] : null;
                           let shouldAddSpacing;
                           if (prevMessage) {
-                            // Même logique de détection pour le message précédent avec normalizeId
-                            const prevMsgUserIdNum =
-                              getMessageUserId(prevMessage);
-                            const prevIsOwnMessage =
-                              prevMsgUserIdNum !== null &&
-                              currentUserIdNum !== null &&
-                              prevMsgUserIdNum === currentUserIdNum;
+                            const prevIsOwnMessage = isOwnMessage(prevMessage);
 
                             const timeDiff =
                               new Date(msg.createdAt).getTime() -
                               new Date(prevMessage.createdAt).getTime();
+                            const prevMsgUserId = prevMessage.userId ?? prevMessage.senderId ?? prevMessage.user?.id;
                             const sameSender =
-                              (isOwnMessage && prevIsOwnMessage) ||
-                              (!isOwnMessage &&
-                                !prevIsOwnMessage &&
-                                msgUserIdNum === prevMsgUserIdNum);
+                              (isOwnMessageValue && prevIsOwnMessage) ||
+                              (!isOwnMessageValue && !prevIsOwnMessage && (Number(msgUserId) === Number(prevMsgUserId) || String(msgUserId) === String(prevMsgUserId)));
                             shouldAddSpacing =
                               !sameSender || timeDiff > 5 * 60 * 1000; // 5 minutes
                           } else {
@@ -2859,47 +3141,63 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                           }
                           
                           // Couleur du message : violet (primary) pour mes messages à droite, gris pour les autres à gauche
-                          // Style WhatsApp: mes messages = bulle violette à droite, autres = bulle grise à gauche
-                          const messageColor = isOwnMessage 
-                            ? { bg: "bg-primary", text: "text-white" } // Mes messages : violet à droite
-                            : {
-                                bg: "bg-gray-100 dark:bg-gray-800",
-                                text: "text-gray-900 dark:text-white",
-                              }; // Autres messages : gris à gauche
+                          const messageColor = isOwnMessageValue 
+                            ? { bg: "bg-primary", text: "text-white" }
+                            : { bg: "bg-gray-100 dark:bg-gray-800", text: "text-gray-900 dark:text-white" };
                           
                           return (
                             <div
                               key={msg.id}
                               id={`message-${msg.id}`}
                               className={cn(
-                                "flex w-full",
-                                isOwnMessage ? "justify-end" : "justify-start",
                                 shouldAddSpacing ? "mt-3 mb-1" : "mb-1"
                               )}
                               style={{
-                                // Force la position avec style inline pour garantir que ça fonctionne
-                                justifyContent: isOwnMessage
-                                  ? "flex-end"
-                                  : "flex-start",
-                                width: "100%",
                                 display: "flex",
-                              }}
-                              data-is-own={isOwnMessage}
-                              data-msg-user-id={msgUserIdNum}
-                              data-current-user-id={currentUserIdNum}
+                                width: "100%",
+                                justifyContent: isOwnMessageValue ? "flex-end" : "flex-start",
+                                alignItems: "flex-end",
+                                flexDirection: "row",
+                                boxSizing: "border-box",
+                                WebkitBoxPack: isOwnMessageValue ? "end" : "start",
+                                WebkitBoxAlign: "end",
+                                msFlexPack: isOwnMessageValue ? "end" : "start",
+                                MozBoxPack: isOwnMessageValue ? "end" : "start",
+                                MozBoxAlign: "end",
+                                clear: "both",
+                                float: "none",
+                              } as React.CSSProperties}
+                              data-is-own={isOwnMessageValue}
+                              data-msg-user-id={msgUserId}
+                              data-current-user-id={user?.id}
                               onTouchStart={() => longPressStart(msg.id)}
                               onTouchEnd={longPressEnd}
                             >
                               {/* Container pour le message */}
                               <div
                                 className={cn(
-                                "flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-[70%] group relative",
-                                  isOwnMessage ? "flex-row-reverse" : "flex-row"
+                                "max-w-[85%] sm:max-w-[75%] md:max-w-[70%] group",
                                 )}
+                                style={{
+                                  display: "flex",
+                                  flexDirection: isOwnMessageValue ? "row-reverse" : "row",
+                                  alignItems: "flex-end",
+                                  gap: "0.5rem",
+                                  position: "relative",
+                                  boxSizing: "border-box",
+                                  WebkitBoxOrient: "horizontal",
+                                  WebkitBoxDirection: isOwnMessageValue ? "reverse" : "normal",
+                                  WebkitBoxAlign: "end",
+                                  MozBoxOrient: "horizontal",
+                                  MozBoxDirection: isOwnMessageValue ? "reverse" : "normal",
+                                  MozBoxAlign: "end",
+                                  clear: "both",
+                                  float: "none",
+                                } as React.CSSProperties}
                               >
                                 {/* Style WhatsApp : Pas d'avatar dans les conversations 1-à-1 */}
                                 {/* Avatar uniquement pour les groupes */}
-                                {!isOwnMessage &&
+                                {!isOwnMessageValue &&
                                   group &&
                                   !group.isTutorChat && (
                                   <div className="flex-shrink-0">
@@ -2937,38 +3235,50 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                 {/* Menu 3 points - Touch target optimisé mobile */}
                                 <div
                                   className={cn(
-                                  "flex items-center opacity-0 group-hover:opacity-100 transition-opacity",
-                                    isOwnMessage ? "order-3" : ""
+                                  "flex items-center opacity-0 group-hover:opacity-100 transition-opacity relative",
+                                    isOwnMessageValue ? "order-3" : ""
                                   )}
+                                  style={{ position: "relative", zIndex: 10 }}
                                 >
                                   <button
-                                    onClick={() =>
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setActivePostMenu(
                                         activePostMenu === msg.id
                                           ? null
                                           : msg.id
-                                      )
-                                    }
+                                      );
+                                    }}
                                     className="h-6 w-6 sm:h-7 sm:w-7 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 active:bg-gray-200 dark:active:bg-slate-600 flex items-center justify-center transition-colors duration-150 touch-manipulation"
                                     title="Plus d'options"
+                                    type="button"
                                   >
                                     <MoreVertical className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400 dark:text-gray-500" />
                                   </button>
                               
                               {/* Menu déroulant des options */}
                               {activePostMenu === msg.id && (
-                                <div className="absolute top-8 right-0 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 py-1 z-50">
+                                <div 
+                                  className={cn(
+                                    "absolute w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 py-1 z-[100]",
+                                    isOwnMessageValue ? "bottom-full right-0 mb-2" : "bottom-full left-0 mb-2"
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ position: "absolute", zIndex: 100 }}
+                                >
                                   {/* Réagir */}
                                   <button
-                                    onClick={() => {
-                                          setShowReactionPicker(
-                                            showReactionPicker === msg.id
-                                              ? null
-                                              : msg.id
-                                          );
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowReactionPicker(
+                                        showReactionPicker === msg.id
+                                          ? null
+                                          : msg.id
+                                      );
                                       setActivePostMenu(null);
                                     }}
                                     className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                                    type="button"
                                   >
                                     <span className="text-base">😊</span>
                                     <span>Réagir</span>
@@ -2976,7 +3286,8 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                   
                                   {/* Répondre */}
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setReplyingToMessage(msg);
                                       setActivePostMenu(null);
                                       // Scroller vers le bas pour voir le champ de saisie
@@ -2987,31 +3298,36 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                       }, 100);
                                     }}
                                     className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                                    type="button"
                                   >
                                     <MessageSquare className="h-3 w-3" />
                                     <span>Répondre</span>
                                   </button>
                                   
                                   {/* Actions pour l'auteur du message */}
-                                  {isOwnMessage && (
+                                  {isOwnMessageValue && (
                                     <>
                                       <div className="border-t border-gray-100 dark:border-slate-700 my-1"></div>
                                       <button
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           startEdit(msg);
                                           setActivePostMenu(null);
                                         }}
                                         className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2"
+                                        type="button"
                                       >
                                         <Edit className="h-3 w-3" />
                                         <span>Modifier</span>
                                       </button>
                                       <button
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           deleteMessage(msg.id);
                                           setActivePostMenu(null);
                                         }}
                                         className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                                        type="button"
                                       >
                                         <Trash2 className="h-3 w-3" />
                                         <span>Supprimer</span>
@@ -3064,27 +3380,37 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
                                 {/* Style WhatsApp : Bulles de messages */}
                                 <div
-                                  className={cn(
-                                  "flex flex-col relative",
-                                    isOwnMessage ? "items-end" : "items-start"
-                                  )}
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: isOwnMessageValue ? "flex-end" : "flex-start",
+                                    position: "relative",
+                                    boxSizing: "border-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitBoxAlign: isOwnMessageValue ? "end" : "start",
+                                    msFlexAlign: isOwnMessageValue ? "end" : "start",
+                                    MozBoxOrient: "vertical",
+                                    MozBoxAlign: isOwnMessageValue ? "end" : "start",
+                                    clear: "both",
+                                    float: "none",
+                                  } as React.CSSProperties}
                                 >
                                   {/* Bubble de message */}
                                   <div
                                     className={cn(
                                       "relative px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl shadow-sm",
                                       `${messageColor.bg} ${messageColor.text}`,
-                                      isOwnMessage
+                                      isOwnMessageValue
                                         ? "rounded-br-sm"
                                         : "rounded-bl-sm"
                                     )}
                                   >
                                     {/* Nom dans la bulle (uniquement pour les messages reçus) */}
-                                    {!isOwnMessage && (
+                                    {!isOwnMessageValue && (
                                       <div
                                         className={cn(
                                         "text-[10px] sm:text-[11px] font-semibold mb-1",
-                                        isOwnMessage 
+                                        isOwnMessageValue 
                                             ? "text-white/90"
                                           : isSystemMessage 
                                             ? "text-blue-600 dark:text-blue-400"
@@ -3117,7 +3443,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                       size="icon"
                                       className={cn(
                                         "h-9 w-9 sm:h-10 sm:w-10 rounded-full touch-manipulation active:scale-95",
-                                        isOwnMessage 
+                                        isOwnMessageValue 
                                               ? "bg-white/20 hover:bg-white/30 text-white"
                                               : "bg-blue-100 dark:bg-blue-900/20 hover:bg-blue-200 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                                       )}
@@ -3157,7 +3483,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <Volume2
                                               className={cn(
                                           "h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white/80"
                                                   : "text-gray-600 dark:text-gray-400"
                                               )}
@@ -3165,7 +3491,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <span
                                               className={cn(
                                                 "text-xs sm:text-sm font-medium truncate",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white"
                                                   : "text-gray-900 dark:text-gray-100"
                                               )}
@@ -3179,7 +3505,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <div
                                               className={cn(
                                           "h-1 sm:h-1.5 rounded-full overflow-hidden",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "bg-white/20"
                                                   : "bg-gray-200 dark:bg-slate-700"
                                               )}
@@ -3187,7 +3513,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           <div 
                                             className={cn(
                                               "h-full transition-all duration-100",
-                                                  isOwnMessage
+                                                  isOwnMessageValue
                                                     ? "bg-white"
                                                     : "bg-blue-500 dark:bg-blue-400"
                                             )}
@@ -3206,7 +3532,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <div
                                               className={cn(
                                           "flex items-center justify-between text-[9px] sm:text-[10px] md:text-xs",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white/70"
                                                   : "text-gray-500 dark:text-gray-400"
                                               )}
@@ -3237,7 +3563,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             alt={msg.fileName || "Image"}
                                         className={cn(
                                           "max-w-full max-h-64 sm:max-h-80 object-cover cursor-pointer transition-transform active:scale-95 rounded-lg sm:rounded-2xl",
-                                          isOwnMessage 
+                                          isOwnMessageValue 
                                                 ? "rounded-br-md sm:rounded-br-md"
                                                 : "rounded-bl-md sm:rounded-bl-md"
                                             )}
@@ -3256,7 +3582,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <p
                                               className={cn(
                                         "text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white/90"
                                                   : "text-gray-700 dark:text-gray-300"
                                               )}
@@ -3270,7 +3596,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                         <div
                                           className={cn(
                                       "flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border touch-manipulation",
-                                      isOwnMessage 
+                                      isOwnMessageValue 
                                               ? "bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10"
                                               : "bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700"
                                           )}
@@ -3278,7 +3604,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           <div
                                             className={cn(
                                         "p-1.5 sm:p-2 rounded-lg flex-shrink-0",
-                                              isOwnMessage
+                                              isOwnMessageValue
                                                 ? "bg-white/20 dark:bg-white/10"
                                                 : "bg-blue-100 dark:bg-blue-900/20"
                                             )}
@@ -3292,7 +3618,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <p
                                               className={cn(
                                           "text-xs sm:text-sm font-medium truncate",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white"
                                                   : "text-gray-900 dark:text-gray-100"
                                               )}
@@ -3302,7 +3628,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             <p
                                               className={cn(
                                           "text-[10px] sm:text-xs truncate",
-                                                isOwnMessage
+                                                isOwnMessageValue
                                                   ? "text-white/70 dark:text-white/50"
                                                   : "text-gray-500 dark:text-gray-400"
                                               )}
@@ -3325,7 +3651,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             size="icon"
                                             className={cn(
                                               "h-8 w-8 sm:h-9 sm:w-9 touch-manipulation active:scale-95",
-                                              isOwnMessage 
+                                              isOwnMessageValue 
                                                     ? "text-white hover:bg-white/20 dark:hover:bg-white/10"
                                                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
                                                 )}
@@ -3345,7 +3671,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           size="icon"
                                           className={cn(
                                             "h-8 w-8 sm:h-9 sm:w-9 touch-manipulation active:scale-95",
-                                            isOwnMessage 
+                                            isOwnMessageValue 
                                                   ? "text-white hover:bg-white/20 dark:hover:bg-white/10"
                                                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
                                               )}
@@ -3386,7 +3712,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           }
                                       className={cn(
                                         "text-xs sm:text-sm",
-                                        isOwnMessage 
+                                        isOwnMessageValue 
                                               ? "bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10 text-white placeholder-white/70"
                                               : "bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-gray-100"
                                       )}
@@ -3401,7 +3727,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                             }
                                         className={cn(
                                           "h-8 sm:h-9 text-xs sm:text-sm touch-manipulation active:scale-95",
-                                          isOwnMessage 
+                                          isOwnMessageValue 
                                                 ? "bg-white/20 dark:bg-white/10 hover:bg-white/30 dark:hover:bg-white/20 text-white"
                                                 : "bg-primary hover:bg-primary/90 text-white"
                                         )}
@@ -3415,7 +3741,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                         onClick={cancelEdit}
                                         className={cn(
                                           "h-8 sm:h-9 text-xs sm:text-sm touch-manipulation active:scale-95",
-                                          isOwnMessage 
+                                          isOwnMessageValue 
                                                 ? "text-white/70 dark:text-white/50 hover:text-white hover:bg-white/10 dark:hover:bg-white/10"
                                                 : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
                                         )}
@@ -3431,7 +3757,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                           <div
                                             className={cn(
                                         "mb-2 pb-2 border-l-4 pr-2",
-                                        isOwnMessage 
+                                        isOwnMessageValue 
                                                 ? "border-white/40 bg-white/10 dark:bg-white/5"
                                                 : "border-gray-400 dark:border-gray-600 bg-gray-100/50 dark:bg-slate-700/50"
                                             )}
@@ -3468,7 +3794,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                         <p
                                           className={cn(
                                       "text-sm sm:text-base whitespace-pre-wrap break-words leading-relaxed",
-                                            isOwnMessage
+                                            isOwnMessageValue
                                               ? "text-white"
                                               : "text-gray-900 dark:text-white"
                                           )}
@@ -3510,7 +3836,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                   <span
                                     className={cn(
                                   "text-[10px] sm:text-xs mt-0.5 px-1",
-                                      isOwnMessage ? "text-right" : "text-left",
+                                      isOwnMessageValue ? "text-right" : "text-left",
                                   "text-gray-500 dark:text-gray-400"
                                     )}
                                   >
@@ -3546,7 +3872,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                     "grid grid-cols-6 sm:grid-cols-8 gap-1 sm:gap-1.5",
                                     "max-h-32 sm:max-h-40 overflow-auto",
                                     "w-[200px] sm:w-auto",
-                                      isOwnMessage
+                                      isOwnMessageValue
                                         ? "left-0 bottom-full mb-2"
                                         : "right-0 bottom-full mb-2"
                                     )}
@@ -3572,7 +3898,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                   <div
                                     className={cn(
                                     "flex flex-wrap gap-1 sm:gap-1.5 mt-1 px-1 w-full",
-                                      isOwnMessage
+                                      isOwnMessageValue
                                         ? "justify-end"
                                         : "justify-start"
                                     )}
@@ -3756,7 +4082,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                 )}
 
                 {/* Zone de saisie - Design Moderne & Épuré - Responsive Mobile Pro */}
-                <div className="border-t border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 sm:p-4 lg:p-5 flex-shrink-0 backdrop-blur-lg safe-area-inset-bottom">
+                <div className="border-t border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 sm:px-4 lg:px-5 pt-3 sm:pt-4 lg:pt-5 pb-3 sm:pb-4 lg:pb-5 backdrop-blur-lg relative z-10" style={{ flexShrink: 0 }}>
                   {/* Indicateur d'enregistrement - Optimisé mobile */}
                   {isRecording && (
                     <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
@@ -4256,42 +4582,13 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                     ) : (
                       <div className="space-y-2 sm:space-y-3">
                         {messages.map((msg, index) => {
-                            // Déterminer si c'est mon message en utilisant le helper uniforme (supporte senderId/userId/user.id)
-                            const msgSenderIdNum = getMessageUserId(msg);
-                            const currentUserIdNum = normalizeId(user?.id);
-                            const isOwnMessage =
-                              msgSenderIdNum !== null &&
-                              currentUserIdNum !== null &&
-                              msgSenderIdNum === currentUserIdNum;
-
-                            // DEBUG: Log pour les premiers messages
-                            if (index < 3) {
-                              const rawSenderId = (
-                                msg as unknown as {
-                                  senderId?: number | string | null;
-                                }
-                              ).senderId;
-                              console.log(`🔍 MSG ${index}:`, {
-                                msgId: msg.id,
-                                msgSenderIdNum: msgSenderIdNum,
-                                currentUserId: user?.id,
-                                currentUserIdNum: currentUserIdNum,
-                                isOwnMessage: isOwnMessage,
-                                msgUserId: msg.userId,
-                                msgSenderIdRaw: rawSenderId,
-                                userType: typeof user?.id,
-                                msgType: typeof rawSenderId,
-                              });
-                            }
-
-                          // Vérifier si c'est un message système TYALA
-                            const isSystemMessage =
-                              msgSenderIdNum === 0 ||
-                              (msg.user &&
-                                (msg.user.id === 0 ||
-                                  msg.user.firstName === "TYALA" ||
-                                  (msg.user as { email?: string }).email ===
-                                    "system@tyala.com"));
+                            // Déterminer si c'est mon message
+                            const isOwnMessageValue = isOwnMessage(msg);
+                            const msgUserId = msg.userId ?? msg.senderId ?? msg.user?.id;
+                            
+                            // Détection des messages système TYALA
+                            const isSystemMessage = Number(msgUserId) === 0 || 
+                              (msg.user?.id === 0 || msg.user?.firstName === "TYALA" || msg.user?.email === "system@tyala.com");
 
                             const isVoiceMessage = msg.messageType === "VOICE";
                             const isImageMessage = msg.messageType === "IMAGE";
@@ -4302,20 +4599,14 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                               index > 0 ? messages[index - 1] : null;
                           let shouldAddSpacing;
                           if (prevMessage) {
-                              const prevMsgSenderIdNum =
-                                getMessageUserId(prevMessage);
-                              const prevIsOwnMessage =
-                                prevMsgSenderIdNum !== null &&
-                                currentUserIdNum !== null &&
-                                prevMsgSenderIdNum === currentUserIdNum;
+                              const prevIsOwnMessage = isOwnMessage(prevMessage);
+                              const prevMsgUserId = prevMessage.userId ?? prevMessage.senderId ?? prevMessage.user?.id;
                               const timeDiff =
                                 new Date(msg.createdAt).getTime() -
                                 new Date(prevMessage.createdAt).getTime();
                               const sameSender =
-                                (isOwnMessage && prevIsOwnMessage) ||
-                                (!isOwnMessage &&
-                                  !prevIsOwnMessage &&
-                                  msgSenderIdNum === prevMsgSenderIdNum);
+                                (isOwnMessageValue && prevIsOwnMessage) ||
+                                (!isOwnMessageValue && !prevIsOwnMessage && (Number(msgUserId) === Number(prevMsgUserId) || String(msgUserId) === String(prevMsgUserId)));
                               shouldAddSpacing =
                                 !sameSender || timeDiff > 5 * 60 * 1000; // 5 minutes
                           } else {
@@ -4326,28 +4617,34 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                             <div
                               key={msg.id}
                               id={`message-${msg.id}`}
-                              className={cn(
-                                  "flex w-full group relative transition-all duration-200",
-                                  isOwnMessage
-                                    ? "justify-end"
-                                    : "justify-start",
+                                className={cn(
+                                  "group relative transition-all duration-200",
                                   shouldAddSpacing
                                     ? "mt-4 sm:mt-5 mb-1"
-                                    : "mt-1 mb-0.5" // Plus d'espace quand changement d'expéditeur ou délai
+                                    : "mt-1 mb-0.5"
                                 )}
                                 style={{
-                                  justifyContent: isOwnMessage
-                                    ? "flex-end"
-                                    : "flex-start",
-                                  width: "100%",
                                   display: "flex",
-                                }}
+                                  width: "100%",
+                                  justifyContent: isOwnMessageValue ? "flex-end" : "flex-start",
+                                  alignItems: "flex-end",
+                                  flexDirection: "row",
+                                  position: "relative",
+                                  boxSizing: "border-box",
+                                  WebkitBoxPack: isOwnMessageValue ? "end" : "start",
+                                  WebkitBoxAlign: "end",
+                                  msFlexPack: isOwnMessageValue ? "end" : "start",
+                                  MozBoxPack: isOwnMessageValue ? "end" : "start",
+                                  MozBoxAlign: "end",
+                                  clear: "both",
+                                  float: "none",
+                                } as React.CSSProperties}
                               onTouchStart={() => longPressStart(msg.id)}
                               onTouchEnd={longPressEnd}
                             >
                               {/* Style WhatsApp : Pas d'avatar dans les conversations 1-à-1 */}
                               {/* Avatar uniquement pour les messages reçus dans les groupes */}
-                                {!isOwnMessage &&
+                                {!isOwnMessageValue &&
                                   group &&
                                   !group.isTutorChat && (
                                     <div className="flex-shrink-0 mr-2 sm:mr-3">
@@ -4383,13 +4680,27 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
 
                               {/* Style WhatsApp : Bulles de messages */}
                                 <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    maxWidth: "75%",
+                                    alignItems: isOwnMessageValue ? "flex-end" : "flex-start",
+                                    position: "relative",
+                                    boxSizing: "border-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitBoxAlign: isOwnMessageValue ? "end" : "start",
+                                    msFlexAlign: isOwnMessageValue ? "end" : "start",
+                                    MozBoxOrient: "vertical",
+                                    MozBoxAlign: isOwnMessageValue ? "end" : "start",
+                                    clear: "both",
+                                    float: "none",
+                                  } as React.CSSProperties}
                                   className={cn(
-                                    "flex flex-col max-w-[75%] sm:max-w-[70%] md:max-w-[65%] relative",
-                                    isOwnMessage ? "items-end" : "items-start"
+                                    "sm:max-w-[70%] md:max-w-[65%]"
                                   )}
                                 >
                                 {/* Nom d'utilisateur uniquement pour les groupes (pas pour conversations 1-à-1) */}
-                                  {!isOwnMessage &&
+                                  {!isOwnMessageValue &&
                                     group &&
                                     !group.isTutorChat && (
                                   <div className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 px-1">
@@ -4429,7 +4740,7 @@ export const TutorChat: React.FC<GroupDetailDialogProps> = ({
                                         size="icon"
                                         className={cn(
                                           "h-10 w-10 rounded-full",
-                                          isOwnMessage 
+                                          isOwnMessageValue 
                                               ? "bg-white/20 hover:bg-white/30 text-white"
                                               : "bg-blue-100 hover:bg-blue-200 text-blue-600"
                                         )}

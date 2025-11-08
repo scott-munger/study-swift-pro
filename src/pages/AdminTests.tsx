@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { 
   BookOpen, 
   Plus, 
@@ -193,6 +194,10 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6`;
   const [questions, setQuestions] = useState<any[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<any>(null);
   const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [showDeleteQuestionConfirm, setShowDeleteQuestionConfirm] = useState(false);
+  const [questionToDelete, setQuestionToDelete] = useState<number | null>(null);
+  const [showDeleteTestConfirm, setShowDeleteTestConfirm] = useState(false);
+  const [testToDelete, setTestToDelete] = useState<number | null>(null);
   const [questionForm, setQuestionForm] = useState({
     question: '',
     type: 'MULTIPLE_CHOICE',
@@ -399,12 +404,17 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6`;
     }
   };
 
-  const handleDeleteQuestion = async (questionId: number) => {
-    if (!confirm('Supprimer cette question ?')) return;
+  const handleDeleteQuestion = (questionId: number) => {
+    setQuestionToDelete(questionId);
+    setShowDeleteQuestionConfirm(true);
+  };
+
+  const confirmDeleteQuestion = async () => {
+    if (!questionToDelete) return;
 
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/knowledge-questions/${questionId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/knowledge-questions/${questionToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -434,15 +444,23 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6`;
         description: "Erreur de connexion",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteQuestionConfirm(false);
+      setQuestionToDelete(null);
     }
   };
 
-  const handleDeleteTest = async (testId: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce test ?')) return;
+  const handleDeleteTest = (testId: number) => {
+    setTestToDelete(testId);
+    setShowDeleteTestConfirm(true);
+  };
+
+  const confirmDeleteTest = async () => {
+    if (!testToDelete) return;
 
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const response = await fetch(`http://localhost:8081/api/admin/knowledge-tests/${testId}`, {
+      const response = await fetch(`http://localhost:8081/api/admin/knowledge-tests/${testToDelete}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -469,6 +487,9 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6`;
         description: "Erreur de connexion",
         variant: "destructive"
       });
+    } finally {
+      setShowDeleteTestConfirm(false);
+      setTestToDelete(null);
     }
   };
 
@@ -999,6 +1020,48 @@ Test Math,Mathématiques,3+3=?,MULTIPLE_CHOICE,6"
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* AlertDialog de confirmation de suppression de question */}
+        <AlertDialog open={showDeleteQuestionConfirm} onOpenChange={setShowDeleteQuestionConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer la question</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer cette question ? Cette action est irréversible.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeleteQuestion}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* AlertDialog de confirmation de suppression de test */}
+        <AlertDialog open={showDeleteTestConfirm} onOpenChange={setShowDeleteTestConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer le test</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer ce test ? Cette action est irréversible et supprimera toutes les questions associées.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeleteTest}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
